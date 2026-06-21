@@ -1,8 +1,7 @@
-.PHONY: setup lint fmt test ci clean
+.PHONY: setup lint fmt test ci clean gpu-smoke
 
-# Create the venv (Python 3.12) and install core + dev dependency groups.
+# Create the venv (from .python-version) and install all default groups.
 setup:
-	uv venv --python 3.12
 	uv sync
 
 # Lint with ruff.
@@ -16,6 +15,10 @@ fmt:
 # Run the unit test suite (CPU-only; gpu/docker-marked tests skipped).
 test:
 	uv run pytest -m "not gpu and not docker"
+
+# Real-hardware GPU check. Not run in CI.
+gpu-smoke:
+	uv run python scripts/gpu_smoke.py
 
 # What CI runs: lint + format-check + tests.
 ci:

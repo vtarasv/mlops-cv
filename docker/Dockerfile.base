@@ -1,0 +1,16 @@
+FROM nvidia/cuda:13.2.0-cudnn-devel-ubuntu24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3.12 python3.12-venv ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=ghcr.io/astral-sh/uv:0.11.19 /uv /uvx /bin/
+
+ENV UV_PYTHON=python3.12 \
+    UV_LINK_MODE=copy
+
+WORKDIR /app
+
+CMD ["nvidia-smi"]

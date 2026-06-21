@@ -25,14 +25,14 @@ jobs:
           python-version: "3.12"
           enable-cache: true
 
-      - name: Sync dependencies (locked)
-        run: uv sync --locked
+      - name: Sync dependencies (locked, CPU-only)
+        run: uv sync --locked --no-group gpu
 
       - name: Ruff lint
-        run: uv run ruff check --output-format=github .
+        run: uv run --no-sync ruff check --output-format=github .
 
       - name: Ruff format check
-        run: uv run ruff format --check .
+        run: uv run --no-sync ruff format --check .
 
       - name: Pytest (CPU-only)
-        run: uv run pytest -m "not gpu and not docker"
+        run: uv run --no-sync pytest -m "not gpu and not docker"

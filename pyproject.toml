@@ -3,7 +3,7 @@ name = "mlops-cv"
 version = "0.1.0"
 description = "MLOps level-2 pipeline for aerial object detection from video"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.13"
 dependencies = [
     "pydantic-settings>=2.14.2",
     "python-dotenv>=1.2.2",
@@ -14,6 +14,24 @@ dev = [
     "ruff>=0.15.18",
     "pytest>=9.1.1",
 ]
+
+gpu = [
+    "torch==2.12.1",
+    "torchvision==0.27.1",
+    "ultralytics==8.4.72",
+]
+
+[tool.uv]
+default-groups = ["dev", "gpu"]
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu130", marker = "sys_platform == 'linux'" }]
+torchvision = [{ index = "pytorch-cu130", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
 
 [build-system]
 requires = ["hatchling"]

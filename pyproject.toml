@@ -1,7 +1,39 @@
 [project]
 name = "mlops-cv"
 version = "0.1.0"
-description = ""
+description = "MLOps level-2 pipeline for aerial object detection from video"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "pydantic-settings>=2.14.2",
+    "python-dotenv>=1.2.2",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.18",
+    "pytest>=9.1.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mlops_cv"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# pycodestyle(E,W), pyflakes(F), isort(I), pyupgrade(UP), bugbear(B), simplify(SIM)
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "gpu: requires a CUDA GPU (skipped in CI)",
+    "docker: requires Docker services (skipped in CI)",
+]

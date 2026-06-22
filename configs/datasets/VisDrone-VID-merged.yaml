@@ -1,0 +1,9 @@
+# VisDrone-VID with the 10 raw classes merged to 3 (see docs/data.md for the merge table).
+# This committed file is the human-readable source of truth for the class names.
+path: /abs/data/visdrone-vid-small
+train: images/train
+val: images/val
+names:
+  0: person
+  1: vehicle
+  2: two-three-wheeler

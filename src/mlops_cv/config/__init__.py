@@ -1,6 +1,7 @@
 """Configuration: layered env-file settings with a local/dev/stage/prod switch."""
 
 from mlops_cv.config.settings import (
+    DataSettings,
     Environment,
     Settings,
     current_env,
@@ -10,6 +11,7 @@ from mlops_cv.config.settings import (
 )
 
 __all__ = [
+    "DataSettings",
     "Environment",
     "Settings",
     "current_env",

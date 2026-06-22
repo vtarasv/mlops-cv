@@ -5,8 +5,11 @@ description = "MLOps level-2 pipeline for aerial object detection from video"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "pillow>=12.2.0",
+    "pydantic>=2.13.4",
     "pydantic-settings>=2.14.2",
     "python-dotenv>=1.2.2",
+    "pyyaml>=6.0.3",
 ]
 
 [dependency-groups]

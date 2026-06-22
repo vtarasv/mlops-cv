@@ -16,6 +16,10 @@ fmt:
 test:
 	uv run pytest -m "not gpu and not docker"
 
+# Run all tests, including GPU and docker-marked ones.
+test-all:
+	uv run pytest
+
 # Real-hardware GPU check. Not run in CI.
 gpu-smoke:
 	uv run python scripts/gpu_smoke.py

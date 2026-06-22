@@ -7,13 +7,13 @@ page here as it lands.
 
 - [Configuration & environment switch](config.md) — layered `.env` settings,
   `local`/`dev`/`stage`/`prod`, precedence rules.
+- [GPU setup](gpu-setup.md) — CUDA torch install, NVIDIA Container Toolkit.
+- [VisDrone-VID dataset](data.md) — download, frame/label conversion, 3-class merge, validation.
 
 ## Planned
 
 | Doc | Topic |
 |-----|-------|
-| `gpu-setup.md` | Blackwell/CUDA torch install, nvidia-container-toolkit on Fedora |
-| `data.md` | VisDrone-VID download, frame/label conversion, 3-class merge |
 | `mlflow.md` | MLflow + Postgres + MinIO Compose stack |
 | `training.md` | YOLO26s transfer-learning recipe, MLflow logging |
 | `evaluation.md` | Metrics (P/R/mAP), gate, benchmark harness |

@@ -10,6 +10,7 @@ from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import BaseModel
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ENV_VAR = "ENV"
@@ -39,6 +40,14 @@ def env_files(env: str | None = None, base_dir: str | Path = ".") -> tuple[str, 
     return (str(base / ".env"), str(base / f".env.{env}"))
 
 
+class DataSettings(BaseModel):
+    """Dataset locations."""
+
+    raw_dir: Path = Path("data/raw")
+    subset_dir: Path = Path("data/visdrone-vid-small")
+    dataset_yaml: Path = Path("configs/datasets/VisDrone-VID-merged.yaml")
+
+
 class Settings(BaseSettings):
     """Process-wide configuration."""
 
@@ -53,6 +62,7 @@ class Settings(BaseSettings):
 
     env: Environment = Environment.local
     log_level: str = "INFO"
+    data: DataSettings = DataSettings()
 
 
 def load_settings(env: str | None = None, base_dir: str | Path = ".") -> Settings:

@@ -292,8 +292,11 @@ name = "mlops-cv"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "pillow" },
+    { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "python-dotenv" },
+    { name = "pyyaml" },
 ]
 
 [package.dev-dependencies]
@@ -311,8 +314,11 @@ gpu = [
 
 [package.metadata]
 requires-dist = [
+    { name = "pillow", specifier = ">=12.2.0" },
+    { name = "pydantic", specifier = ">=2.13.4" },
     { name = "pydantic-settings", specifier = ">=2.14.2" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
 ]
 
 [package.metadata.requires-dev]

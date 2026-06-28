@@ -1,0 +1,8 @@
+# MLflow tracking server with the Postgres driver + S3 client baked in.
+FROM ghcr.io/mlflow/mlflow:v3.14.0
+
+RUN pip install --no-cache-dir \
+        psycopg2-binary==2.9.12 \
+        boto3==1.43.35
+
+# Server command + env are supplied by docker-compose.mlflow.yml.

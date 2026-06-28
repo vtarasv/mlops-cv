@@ -48,6 +48,14 @@ class DataSettings(BaseModel):
     dataset_yaml: Path = Path("configs/datasets/VisDrone-VID-merged.yaml")
 
 
+class MlflowSettings(BaseModel):
+    """MLflow tracking + registry coordinates."""
+
+    tracking_uri: str = "http://localhost:5000"
+    experiment: str = "aerial-object-detection"
+    registered_model: str = "aerial-object-detector"
+
+
 class Settings(BaseSettings):
     """Process-wide configuration."""
 
@@ -63,6 +71,7 @@ class Settings(BaseSettings):
     env: Environment = Environment.local
     log_level: str = "INFO"
     data: DataSettings = DataSettings()
+    mlflow: MlflowSettings = MlflowSettings()
 
 
 def load_settings(env: str | None = None, base_dir: str | Path = ".") -> Settings:

@@ -3,6 +3,7 @@
 from mlops_cv.config.settings import (
     DataSettings,
     Environment,
+    MlflowSettings,
     Settings,
     current_env,
     env_files,
@@ -13,6 +14,7 @@ from mlops_cv.config.settings import (
 __all__ = [
     "DataSettings",
     "Environment",
+    "MlflowSettings",
     "Settings",
     "current_env",
     "env_files",

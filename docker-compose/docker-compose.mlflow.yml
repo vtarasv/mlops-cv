@@ -1,0 +1,121 @@
+# Local MLflow tracking + registry stack: Postgres (backend store) + RustFS (S3 artifact
+# store) + the MLflow server. Mirrors MLflow's official reference compose with pinned tags.
+#
+#   docker compose -f docker-compose/docker-compose.mlflow.yml \
+#     --env-file docker-compose/.env.mlflow up -d --build
+
+name: mlflow
+
+volumes:
+  pgdata:
+  rustfs-data:
+
+services:
+  postgres:
+    image: postgres:15.18
+    container_name: mlflow-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      PGPORT: ${PGPORT}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "${PGPORT}:${PGPORT}"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB} -p ${PGPORT}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  storage:
+    image: rustfs/rustfs:1.0.0-beta.8
+    container_name: mlflow-storage
+    environment:
+      RUSTFS_ADDRESS: ":${S3_API_PORT}"
+      RUSTFS_SERVER_DOMAINS: storage:${S3_API_PORT}
+      RUSTFS_CONSOLE_ENABLE: ${RUSTFS_CONSOLE_ENABLE}
+      RUSTFS_CONSOLE_ADDRESS: ":${S3_CONSOLE_PORT}"
+      RUSTFS_REGION: ${AWS_DEFAULT_REGION}
+      RUSTFS_ACCESS_KEY: ${AWS_ACCESS_KEY_ID}
+      RUSTFS_SECRET_KEY: ${AWS_SECRET_ACCESS_KEY}
+    volumes:
+      - rustfs-data:/data
+    ports:
+      - "${S3_API_PORT}:${S3_API_PORT}"          # S3 API
+      - "${S3_CONSOLE_PORT}:${S3_CONSOLE_PORT}"  # web console
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:${S3_API_PORT}/health | grep -q '\"status\":\"ok\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # One-shot: create the artifact bucket via the S3 API, then exit.
+  create-bucket:
+    image: amazon/aws-cli:2.35.10
+    container_name: mlflow-create-bucket
+    depends_on:
+      storage:
+        condition: service_healthy
+    environment:
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
+      AWS_S3_ADDRESSING_STYLE: path
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -e
+        if aws --endpoint-url ${MLFLOW_S3_ENDPOINT_URL} s3api head-bucket --bucket ${S3_BUCKET} 2>/dev/null; then
+          echo "bucket ${S3_BUCKET} already exists"
+        else
+          echo "creating bucket ${S3_BUCKET}"
+          aws --endpoint-url ${MLFLOW_S3_ENDPOINT_URL} s3api create-bucket --bucket ${S3_BUCKET}
+        fi
+    restart: "no"
+
+  mlflow:
+    image: mlops-cv-mlflow:3.14.0
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.mlflow
+    container_name: mlflow-server
+    depends_on:
+      postgres:
+        condition: service_healthy
+      storage:
+        condition: service_healthy
+      create-bucket:
+        condition: service_completed_successfully
+    environment:
+      MLFLOW_S3_ENDPOINT_URL: ${MLFLOW_S3_ENDPOINT_URL}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
+      MLFLOW_S3_IGNORE_TLS: "true"
+    command:
+      - mlflow
+      - server
+      - --backend-store-uri=${MLFLOW_BACKEND_STORE_URI}
+      - --artifacts-destination=${MLFLOW_ARTIFACTS_DESTINATION}
+      - --serve-artifacts
+      - --host=0.0.0.0
+      - --port=${MLFLOW_PORT}
+    ports:
+      - "${MLFLOW_PORT}:${MLFLOW_PORT}"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://localhost:${MLFLOW_PORT}/health')
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+networks:
+  default:
+    name: mlflow-network

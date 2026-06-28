@@ -1,6 +1,7 @@
 # Project-specific
 .env*
 !.env.example
+!docker-compose/.env.mlflow
 
 *.pt
 

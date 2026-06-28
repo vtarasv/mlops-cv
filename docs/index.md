@@ -9,12 +9,12 @@ page here as it lands.
   `local`/`dev`/`stage`/`prod`, precedence rules.
 - [GPU setup](gpu-setup.md) — CUDA torch install, NVIDIA Container Toolkit.
 - [VisDrone-VID dataset](data.md) — download, frame/label conversion, 3-class merge, validation.
+- [MLflow tracking & registry](mlflow.md) — Postgres + RustFS + MLflow Compose stack.
 
 ## Planned
 
 | Doc | Topic |
 |-----|-------|
-| `mlflow.md` | MLflow + Postgres + MinIO Compose stack |
 | `training.md` | YOLO26s transfer-learning recipe, MLflow logging |
 | `evaluation.md` | Metrics (P/R/mAP), gate, benchmark harness |
 | `orchestration.md` | Airflow continuous-training DAG |

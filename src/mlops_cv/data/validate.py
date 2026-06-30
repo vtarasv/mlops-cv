@@ -11,7 +11,7 @@ from pathlib import Path
 from mlops_cv.config import get_settings
 from mlops_cv.data.convert_visdrone_vid import YOLO_NAMES
 
-SPLITS = ("train", "val")
+SPLITS = ("train", "val", "test")
 IMG_EXTS = {".jpg", ".jpeg", ".png", ".bmp"}
 ALLOWED_CLASSES = set(YOLO_NAMES)
 
@@ -31,7 +31,7 @@ class Report:
     n_boxes: int
 
     def summary(self) -> str:
-        per_split = ", ".join(f"{s}={self.splits.get(s, 0)}" for s in SPLITS)
+        per_split = ", ".join(f"{s}={self.splits[s]}" for s in SPLITS if s in self.splits)
         per_class = ", ".join(
             f"{YOLO_NAMES[c]}={self.class_counts.get(c, 0)}" for c in sorted(YOLO_NAMES)
         )
@@ -55,9 +55,9 @@ def validate_dataset(
 ) -> Report:
     """Validate the YOLO dataset under ``dataset_dir``; raise on any failure, else return a Report.
 
-    Checks: train & val splits non-empty; exact image<->label pairing per split; every class id in
-    ``{0,1,2}``; every bbox coord in [0, 1] with positive width/height; and each merged class within
-    ``class_bounds`` (default: at least 1 box each).
+    Checks: every split (train, val, test) non-empty; exact image<->label pairing per split; every
+    class id in ``{0,1,2}``; every bbox coord in [0, 1] with positive width/height; and each merged
+    class within ``class_bounds`` (default: at least 1 box each).
     """
     root = Path(dataset_dir)
     errors: list[str] = []

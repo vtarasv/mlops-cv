@@ -1,4 +1,4 @@
-.PHONY: setup lint fmt test ci clean gpu-smoke mlflow-up mlflow-down mlflow-logs
+.PHONY: setup lint fmt test test-all ci clean gpu-smoke mlflow-up mlflow-down mlflow-logs train
 
 MLFLOW_COMPOSE := docker compose -f docker-compose/docker-compose.mlflow.yml --env-file docker-compose/.env.mlflow
 
@@ -28,13 +28,17 @@ gpu-smoke:
 
 # MLflow tracking + registry stack (Postgres + RustFS + MLflow server).
 mlflow-up:
-	$(MLFLOW_COMPOSE) up -d --build
+	$(MLFLOW_COMPOSE) up -d --build --wait
 
 mlflow-down:
 	$(MLFLOW_COMPOSE) down
 
 mlflow-logs:
 	$(MLFLOW_COMPOSE) logs -f
+
+# Train YOLO26s on the VisDrone-VID subset, logging to MLflow.
+train: mlflow-up
+	uv run python -m mlops_cv.training.train
 
 # What CI runs: lint + format-check + tests.
 ci:

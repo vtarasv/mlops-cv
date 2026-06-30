@@ -5,7 +5,7 @@ detection) benchmark: drone-captured video frames with the 10 raw object categor
 
 ```mermaid
 flowchart LR
-  raw["VisDrone2019-VID-{train,val}/<br/>sequences/ + annotations/"]
+  raw["VisDrone2019-VID-{train,val,test-dev}/<br/>sequences/ + annotations/"]
   raw -->|"build_subset<br/>(frame-stride, 3-class merge)"| subset["data/visdrone-vid-small/<br/>images/ · labels/ · manifest.csv · YAML"]
   subset -->|validate| gate["pass / fail-fast"]
   subset -->|absolute-path YAML| yolo["ultralytics train / val"]
@@ -14,9 +14,9 @@ flowchart LR
 ## Download
 
 The VID ZIPs are hosted on **Google Drive / Baidu Yun** (linked from the
-[VisDrone-Dataset](https://github.com/VisDrone/VisDrone-Dataset) repo). Download `VisDrone2019-VID-train` and
-`VisDrone2019-VID-val`, unzip, and point the converter at the parent directory. Each split is
-already a set of **extracted frames** (not video files):
+[VisDrone-Dataset](https://github.com/VisDrone/VisDrone-Dataset) repo). Download `VisDrone2019-VID-train`,
+`VisDrone2019-VID-val`, and `VisDrone2019-VID-test-dev`, unzip, and point the converter at the parent
+directory. Each split is already a set of **extracted frames** (not video files):
 
 ```
 <DATA__RAW_DIR>/
@@ -25,12 +25,14 @@ already a set of **extracted frames** (not video files):
     annotations/<seq>.txt
   VisDrone2019-VID-val/
     sequences/ ... · annotations/ ...
+  VisDrone2019-VID-test-dev/
+    sequences/ ... · annotations/ ...
 ```
 
 Set the location (via the `export` or `.env`):
 
 ```bash
-export DATA__RAW_DIR=/abs/path/to/VisDrone-VID    # holds VisDrone2019-VID-{train,val}/
+export DATA__RAW_DIR=/abs/path/to/VisDrone-VID    # holds VisDrone2019-VID-{train,val,test-dev}/
 ```
 
 ## Annotation format and 3-class merge
@@ -81,7 +83,7 @@ uv run python -m mlops_cv.data.build_subset --frame-stride 10 --link
 The builder shrinks the set with `--frame-stride N` — keeping every Nth frame to drop the near-duplicate
 consecutive frames of a video. Flags:
 
-- `--frame-stride N` — keep every Nth frame in train and val splits (default 20).
+- `--frame-stride N` — keep every Nth frame in train, val, and test splits (default 20).
 - `--sequences NAME ...` — restrict to specific sequences (default: all) for a quick smoke.
 - `--link` — symlink frames instead of copying (faster, same filesystem only).
 - `--raw-dir / --out-dir / --template-yaml` — override the `Settings.data.*` defaults.
@@ -90,8 +92,8 @@ It writes a self-contained YOLO tree:
 
 ```
 data/visdrone-vid-small/
-  images/{train,val}/<seq>_<NNNNNNN>.jpg
-  labels/{train,val}/<seq>_<NNNNNNN>.txt
+  images/{train,val,test}/<seq>_<NNNNNNN>.jpg
+  labels/{train,val,test}/<seq>_<NNNNNNN>.txt
   manifest.csv
   VisDrone-VID-merged.yaml
 ```
@@ -112,7 +114,7 @@ uv run python -m mlops_cv.data.validate     # exits non-zero on any failure
 ```
 
 `validate_dataset()` aggregates every failure and either raises `DatasetValidationError` or returns
-a `Report` whose `summary()` is a one-line string. It checks: train & val splits non-empty; exact
+a `Report` whose `summary()` is a one-line string. It checks: train, val, and test splits non-empty; exact
 image↔label pairing per split; every class id in `{0, 1, 2}`; every bbox coordinate in `[0, 1]` with
 positive width/height; and each merged class present. The function is intended to be reused as a
 fail-fast data-validation gate in the orchestration pipeline.

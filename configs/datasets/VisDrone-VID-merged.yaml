@@ -3,6 +3,7 @@
 path: /abs/data/visdrone-vid-small
 train: images/train
 val: images/val
+test: images/test
 names:
   0: person
   1: vehicle

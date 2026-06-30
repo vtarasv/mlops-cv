@@ -56,6 +56,21 @@ class MlflowSettings(BaseModel):
     registered_model: str = "aerial-object-detector"
 
 
+class TrainingSettings(BaseModel):
+    """YOLO26s transfer-learning recipe (tuned for an 8 GB Blackwell GPU)."""
+
+    weights: str = "yolo26s.pt"
+    epochs: int = 30
+    imgsz: int = 640
+    batch: int = -1  # -1 = ultralytics autobatch; the resolved value is logged as a run param
+    nbs: int = 64  # nominal batch size -> accumulate = round(nbs / batch) for the small VRAM budget
+    patience: int = 20
+    workers: int = 4
+    cache: str = "disk"
+    amp: bool = True
+    device: str = "0"
+
+
 class Settings(BaseSettings):
     """Process-wide configuration."""
 
@@ -72,6 +87,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     data: DataSettings = DataSettings()
     mlflow: MlflowSettings = MlflowSettings()
+    training: TrainingSettings = TrainingSettings()
 
 
 def load_settings(env: str | None = None, base_dir: str | Path = ".") -> Settings:

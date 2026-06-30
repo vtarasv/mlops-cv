@@ -1,10 +1,10 @@
 """Build a small YOLO dataset from VisDrone-VID: all sequences, frame-strided.
 
-Keeps **every** train/val sequence (max scene diversity, guaranteed class coverage) and shrinks the
-set by ``--frame-stride`` (keep every Nth 1-based frame), which removes near-duplicate consecutive
-video frames. Copies (or symlinks) the kept frames into ``images/{train,val}/`` with flattened
-``<seq>_<NNNNNNN>.jpg`` names, writes matching YOLO ``labels/...``, a ``manifest.csv``, and an
-**absolute-path** copy of the dataset YAML.
+Keeps **every** train/val/test sequence (max scene diversity, guaranteed class coverage) and
+shrinks the set by ``--frame-stride`` (keep every Nth 1-based frame), which removes
+near-duplicate consecutive video frames. Copies (or symlinks) the kept frames into
+``images/{train,val,test}/`` with flattened ``<seq>_<NNNNNNN>.jpg`` names, writes matching YOLO
+``labels/...``, a ``manifest.csv``, and an **absolute-path** copy of the dataset YAML.
 
 Run as a CLI:
     DATA__RAW_DIR=/path/to/VisDrone-VID uv run python -m mlops_cv.data.build_subset
@@ -39,15 +39,23 @@ MANIFEST_FIELDS = [
     "n_two_three_wheeler",
 ]
 
+# YOLO split name -> raw VisDrone-VID directory.
+SPLITS = ("train", "val", "test")
+RAW_SPLIT_DIRS = {
+    "train": "VisDrone2019-VID-train",
+    "val": "VisDrone2019-VID-val",
+    "test": "VisDrone2019-VID-test-dev",
+}
+
 
 def list_sequences(raw_dir: Path, split: str, only: list[str] | None = None) -> list[str]:
     """Sorted sequence names under ``VisDrone2019-VID-<split>/sequences/`` (optionally filtered)."""
-    seq_dir = raw_dir / f"VisDrone2019-VID-{split}" / "sequences"
+    seq_dir = raw_dir / RAW_SPLIT_DIRS[split] / "sequences"
     if not seq_dir.is_dir():
         raise FileNotFoundError(
             f"VisDrone-VID {split} sequences not found at {seq_dir}. Download the dataset "
             "(see docs/data.md) and point DATA__RAW_DIR at the directory holding "
-            "VisDrone2019-VID-{train,val}/."
+            "VisDrone2019-VID-{train,val,test-dev}/."
         )
     available = sorted(p.name for p in seq_dir.iterdir() if p.is_dir())
     if only is None:
@@ -70,7 +78,7 @@ def build_split(
     raw_dir: Path, out_dir: Path, split: str, sequences: list[str], stride: int, link: bool
 ) -> list[dict]:
     """Convert + place the strided, non-empty frames of ``sequences``; return manifest rows."""
-    base = raw_dir / f"VisDrone2019-VID-{split}"
+    base = raw_dir / RAW_SPLIT_DIRS[split]
     img_out, lbl_out = out_dir / "images" / split, out_dir / "labels" / split
     img_out.mkdir(parents=True, exist_ok=True)
     lbl_out.mkdir(parents=True, exist_ok=True)
@@ -137,7 +145,7 @@ def main(argv: list[str] | None = None) -> int:
         "--out-dir", type=Path, default=None, help="defaults to settings.data.subset_dir"
     )
     parser.add_argument(
-        "--frame-stride", type=int, default=20, help="keep every Nth frame (both splits)"
+        "--frame-stride", type=int, default=20, help="keep every Nth frame (all splits)"
     )
     parser.add_argument(
         "--sequences", nargs="+", default=None, help="restrict to these sequences (default: all)"
@@ -154,13 +162,13 @@ def main(argv: list[str] | None = None) -> int:
     out_dir = args.out_dir or settings.data.subset_dir
     template = args.template_yaml or settings.data.dataset_yaml
 
-    selected = {
-        split: list_sequences(raw_dir, split, only=args.sequences) for split in ("train", "val")
+    selected: dict[str, list[str]] = {
+        split: list_sequences(raw_dir, split, only=args.sequences) for split in SPLITS
     }
     if args.sequences:
-        matched = set(selected["train"]) | set(selected["val"])
+        matched = {seq for seqs in selected.values() for seq in seqs}
         if unknown := [s for s in args.sequences if s not in matched]:
-            parser.error(f"--sequences not found in train or val: {unknown}")
+            parser.error(f"--sequences not found in any split: {unknown}")
 
     out_dir.mkdir(parents=True, exist_ok=True)
     for sub in ("images", "labels"):  # clean rebuild — drop any stale frames/labels
@@ -168,7 +176,9 @@ def main(argv: list[str] | None = None) -> int:
             shutil.rmtree(out_dir / sub)
 
     rows: list[dict] = []
-    for split in ("train", "val"):
+    for split in SPLITS:
+        if not selected[split]:
+            continue
         split_rows = build_split(
             raw_dir, out_dir, split, selected[split], args.frame_stride, args.link
         )

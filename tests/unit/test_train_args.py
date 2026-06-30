@@ -7,7 +7,7 @@ from mlops_cv.training.train import build_parser
 
 
 def _settings():
-    return load_settings("local", base_dir="/nonexistent")  # model defaults, no env files
+    return load_settings(base_dir="/nonexistent")  # model defaults, no env files
 
 
 def test_defaults_from_settings() -> None:
@@ -19,7 +19,6 @@ def test_defaults_from_settings() -> None:
     assert args.device == s.training.device
     assert args.amp is True
     assert args.data is None
-    assert args.env is None
 
 
 def test_flag_overrides() -> None:
@@ -29,7 +28,6 @@ def test_flag_overrides() -> None:
     assert args.amp is False
 
 
-def test_env_and_batch_override() -> None:
-    args = build_parser(_settings()).parse_args(["--env", "dev", "--batch", "8"])
-    assert args.env == "dev"
+def test_batch_override() -> None:
+    args = build_parser(_settings()).parse_args(["--batch", "8"])
     assert args.batch == 8

@@ -135,8 +135,8 @@ def stamp_dataset_yaml(template: Path, out_dir: Path) -> Path:
 
 
 def main(argv: list[str] | None = None) -> int:
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
     settings = get_settings()
+    logging.basicConfig(level=settings.log_level.upper(), format="%(message)s")
     parser = argparse.ArgumentParser(description="Build a YOLO subset from VisDrone-VID.")
     parser.add_argument(
         "--raw-dir", type=Path, default=None, help="defaults to settings.data.raw_dir"

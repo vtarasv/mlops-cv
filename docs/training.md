@@ -23,7 +23,7 @@ flowchart LR
 ```bash
 make train   # brings the MLflow stack up (idempotently), then trains with the defaults
 # or, with custom flags (the stack must be up — `make mlflow-up`):
-uv run python -m mlops_cv.training.train --env local --epochs 10
+uv run python -m mlops_cv.training.train --epochs 10
 ```
 
 `DATA__RAW_DIR` (in `.env`) must point at the VisDrone-VID download — it supplies the raw frames for

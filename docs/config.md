@@ -1,32 +1,31 @@
-# Configuration & environment switch
+# Configuration
 
-One code path runs in every environment; only the `ENV` variable — and the values it
-pulls in — change. This is the single switch the whole project (local Docker Compose →
-GCP) pivots on.
+One code path runs in every environment; configuration comes from a single `.env` file plus the
+OS environment, and only the values change. Local development reads `.env`; containers/cloud inject
+variables or secrets.
 
 ## Precedence
 
 Configuration is layered, **lowest precedence first**:
 
 ```
-.env   <   .env.<ENV>   <   OS environment
+.env   <   OS environment
 ```
 
-- **`.env`** — your local base (gitignored); `cp` it from the committed **`.env.example`**. Optional
-  — the app runs on the model defaults without it.
-- **`.env.<ENV>`** — per-environment overlay (gitignored); overrides `.env`.
-- **OS environment** — overrides both. In containers/cloud, inject variables directly
-  (Cloud Run env vars / Secret Manager) and ship **no** `.env.<ENV>` file.
+- **`.env`** — your local values (gitignored); `cp` it from the committed **`.env.example`**.
+  Optional — the app runs on the model defaults without it.
+- **OS environment** — overrides the file. In containers/cloud, inject variables directly
+  (Cloud Run env vars / Secret Manager) and ship **no** `.env` file.
 
-`ENV` is one of `local` (default), `dev`, `stage`, `prod`.
+`settings.env` is a `local` (default) / `dev` / `stage` / `prod` identifier read from the `ENV`
+variable — use it for environment-aware branching or run labels.
 
 ## Files
 
 | File | Purpose |
 |------|---------|
-| `.env.example` | Base template (git tracked) |
+| `.env.example` | Template (git tracked) |
 | `.env` | Your local copy / overrides — `cp .env.example .env` (optional; runs on model defaults without it) |
-| `.env.local`, `.env.dev`, `.env.stage`, `.env.prod` | Per-env overlays — only the keys that differ; may hold secrets |
 
 Local setup (optional — runs on defaults without it):
 
@@ -39,22 +38,17 @@ cp .env.example .env
 ```python
 from mlops_cv.config import get_settings
 
-settings = get_settings()          # cached, uses the active ENV
+settings = get_settings()          # cached; reads .env + OS env (OS wins)
 print(settings.env, settings.log_level)
 ```
 
-To load a specific environment explicitly (e.g. in scripts/tests):
-
-```python
-from mlops_cv.config import load_settings
-
-prod = load_settings("prod")       # layers (.env, .env.prod), env pinned to "prod"
-```
+`load_settings(base_dir=…)` builds an uncached instance from `<base_dir>/.env` — used by tests to
+isolate from the repo's `.env`.
 
 ## Nested settings
 
-`Settings` sets `env_nested_delimiter="__"`, so when a component adds a nested config group,
-`MLFLOW__TRACKING_URI=...` will map to `settings.mlflow.tracking_uri`.
+`Settings` sets `env_nested_delimiter="__"`, so a nested config group is set with the `__`
+separator: `MLFLOW__TRACKING_URI=...` maps to `settings.mlflow.tracking_uri`.
 
 ## Quick check
 

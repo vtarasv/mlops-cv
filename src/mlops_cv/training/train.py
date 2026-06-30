@@ -10,7 +10,7 @@ import os
 import warnings
 from pathlib import Path
 
-from mlops_cv.config import Settings, load_settings
+from mlops_cv.config import Settings, get_settings
 from mlops_cv.tracking import client
 from mlops_cv.training.callbacks import (
     make_batch_params_callback,
@@ -27,7 +27,6 @@ def build_parser(settings: Settings) -> argparse.ArgumentParser:
     """CLI parser whose defaults come from ``settings.training``."""
     t = settings.training
     p = argparse.ArgumentParser(description="Train YOLO26s on VisDrone-VID with MLflow logging.")
-    p.add_argument("--env", default=None, help="config environment (default: $ENV or 'local')")
     p.add_argument("--epochs", type=int, default=t.epochs)
     p.add_argument("--imgsz", type=int, default=t.imgsz)
     p.add_argument("--batch", type=int, default=t.batch, help="-1 = ultralytics autobatch")
@@ -90,12 +89,8 @@ def _register_model(run, name: str) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
-
-    # Resolve --env first so the parser's defaults come from the right environment overlay.
-    pre = argparse.ArgumentParser(add_help=False)
-    pre.add_argument("--env", default=None)
-    settings = load_settings(pre.parse_known_args(argv)[0].env)
+    settings = get_settings()
+    logging.basicConfig(level=settings.log_level.upper(), format="%(message)s")
     args = build_parser(settings).parse_args(argv)
 
     client.configure()  # export MLFLOW_TRACKING_URI so the ultralytics callback hits our server

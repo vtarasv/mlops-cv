@@ -1,4 +1,4 @@
-"""Configuration: layered env-file settings with a local/dev/stage/prod switch."""
+"""Configuration: settings from a single ``.env`` file plus the OS environment."""
 
 from mlops_cv.config.settings import (
     DataSettings,
@@ -6,8 +6,6 @@ from mlops_cv.config.settings import (
     MlflowSettings,
     Settings,
     TrainingSettings,
-    current_env,
-    env_files,
     get_settings,
     load_settings,
 )
@@ -18,8 +16,6 @@ __all__ = [
     "MlflowSettings",
     "Settings",
     "TrainingSettings",
-    "current_env",
-    "env_files",
     "get_settings",
     "load_settings",
 ]

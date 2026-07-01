@@ -121,7 +121,7 @@ def write_report(
     if checks:
         sections += ["| Check | Value | Threshold | Pass |", "|---|---|---|---|"]
         sections += [
-            f"| {c.name} | {_fmt(c.value)} | {_fmt(c.threshold)} | {'TRUE' if c.passed else 'FALSE'} |"
+            f"| {c.name} | {_fmt(c.value)} | {_fmt(c.threshold)} | {str(c.passed).upper()} |"
             for c in checks
         ]
         sections.append("")

@@ -9,6 +9,7 @@ import logging
 import os
 import warnings
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from mlops_cv.config import Settings, get_settings
 from mlops_cv.eval.report import headline_metrics
@@ -18,6 +19,12 @@ from mlops_cv.training.callbacks import (
     make_per_class_callback,
     per_class_metrics,
 )
+
+if TYPE_CHECKING:
+    from types import ModuleType
+
+    from mlflow import ActiveRun
+    from ultralytics.utils.metrics import DetMetrics
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +47,7 @@ def build_parser(settings: Settings) -> argparse.ArgumentParser:
     return p
 
 
-def _log_test_metrics(mlflow, results) -> None:
+def _log_test_metrics(mlflow: ModuleType, results: DetMetrics) -> None:
     """Log the held-out test-dev metrics as the run's headline (overall + per merged class)."""
     mlflow.log_metrics(headline_metrics(results.box, prefix="test"))
     mlflow.log_metrics(
@@ -50,7 +57,7 @@ def _log_test_metrics(mlflow, results) -> None:
     )
 
 
-def _log_dataset(mlflow, manifest: Path) -> None:
+def _log_dataset(mlflow: ModuleType, manifest: Path) -> None:
     """Log the dataset manifest as an MLflow input + a content hash tag for lineage."""
     import pandas as pd
 
@@ -65,7 +72,7 @@ def _log_dataset(mlflow, manifest: Path) -> None:
     mlflow.set_tag("dataset_sha", sha)
 
 
-def _register_model(run, name: str) -> None:
+def _register_model(run: ActiveRun, name: str) -> None:
     """Register the val-selected ``best.pt`` as a new model version.
 
     ``weights/best.pt`` is already logged by ultralytics' built-in callback.

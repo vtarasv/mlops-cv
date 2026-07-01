@@ -1,10 +1,14 @@
-"""The promotion gate: absolute metric floors **plus** champion/challenger vs the registry champion.
-"""
+"""The promotion gate: absolute metric floors **plus** champion/challenger vs the registry
+champion."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from mlflow.entities.model_registry import ModelVersion
 
 
 @dataclass(frozen=True)
@@ -118,7 +122,7 @@ def fetch_champion_metrics(model_name: str, alias: str = "champion") -> dict[str
 
     client = MlflowClient()
     try:
-        version = client.get_model_version_by_alias(model_name, alias)
+        version: ModelVersion = client.get_model_version_by_alias(model_name, alias)
     except MlflowException:
         return None
     if version is None or version.run_id is None:

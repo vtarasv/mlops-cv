@@ -15,6 +15,7 @@ import tempfile
 import time
 from collections.abc import Sequence
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from mlops_cv.config import Settings, get_settings
 from mlops_cv.eval import gate as gate_mod
@@ -22,6 +23,10 @@ from mlops_cv.eval import report as report_mod
 from mlops_cv.eval.report import headline_metrics, percentiles
 from mlops_cv.tracking import client
 from mlops_cv.training.callbacks import per_class_metrics
+
+if TYPE_CHECKING:
+    from mlflow.entities.model_registry import ModelVersion
+    from ultralytics import YOLO
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +62,7 @@ def build_parser(settings: Settings) -> argparse.ArgumentParser:
 
 
 def benchmark_latency(
-    model: object,
+    model: YOLO,
     images: Sequence[str | Path],
     *,
     warmup: int = 3,
@@ -80,7 +85,7 @@ def benchmark_latency(
     for i in range(warmup + runs):
         src = paths[i % len(paths)]
         start = time.perf_counter()
-        model.predict(src, verbose=False)  # type: ignore[attr-defined]
+        model.predict(src, verbose=False)
         if i >= warmup:
             timings.append((time.perf_counter() - start) * 1000.0)
     pct = percentiles(timings, (50.0, 95.0))
@@ -112,7 +117,7 @@ def _resolve_model(model_ref: str) -> tuple[Path, str]:
 
         spec = model_ref.removeprefix("models:/")
         registry = MlflowClient()
-        version = (
+        version: ModelVersion = (
             registry.get_model_version_by_alias(*spec.split("@", 1))
             if "@" in spec
             else registry.get_model_version(*spec.rsplit("/", 1))

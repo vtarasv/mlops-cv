@@ -11,6 +11,7 @@ import warnings
 from pathlib import Path
 
 from mlops_cv.config import Settings, get_settings
+from mlops_cv.eval.report import headline_metrics
 from mlops_cv.tracking import client
 from mlops_cv.training.callbacks import (
     make_batch_params_callback,
@@ -26,7 +27,7 @@ DEMO_CLIPS = Path("configs/demo_clips.yaml")
 def build_parser(settings: Settings) -> argparse.ArgumentParser:
     """CLI parser whose defaults come from ``settings.training``."""
     t = settings.training
-    p = argparse.ArgumentParser(description="Train YOLO26s on VisDrone-VID with MLflow logging.")
+    p = argparse.ArgumentParser(description="Train YOLO26s on a dataset with MLflow logging.")
     p.add_argument("--epochs", type=int, default=t.epochs)
     p.add_argument("--imgsz", type=int, default=t.imgsz)
     p.add_argument("--batch", type=int, default=t.batch, help="-1 = ultralytics autobatch")
@@ -41,15 +42,7 @@ def build_parser(settings: Settings) -> argparse.ArgumentParser:
 
 def _log_test_metrics(mlflow, results) -> None:
     """Log the held-out test-dev metrics as the run's headline (overall + per merged class)."""
-    box = results.box
-    mlflow.log_metrics(
-        {
-            "test/precision": float(box.mp),
-            "test/recall": float(box.mr),
-            "test/mAP50": float(box.map50),
-            "test/mAP50-95": float(box.map),
-        }
-    )
+    mlflow.log_metrics(headline_metrics(results.box, prefix="test"))
     mlflow.log_metrics(
         per_class_metrics(
             results.maps, results.ap_class_index, results.names, prefix="test/mAP50-95"
@@ -100,6 +93,7 @@ def main(argv: list[str] | None = None) -> int:
     from ultralytics import YOLO
     from ultralytics import settings as yolo_settings
 
+    from mlops_cv.eval.error_analysis import run_error_analysis
     from mlops_cv.eval.visualize import load_demo_clips, render_demo_clips
 
     t = settings.training
@@ -161,6 +155,23 @@ def main(argv: list[str] | None = None) -> int:
             logger.info("logged %d demo videos", len(videos))
         except Exception as exc:
             logger.warning("demo rendering failed: %s", exc)
+
+        try:
+            crops = run_error_analysis(
+                evaluator,
+                settings.data.subset_dir / "images" / "test",
+                settings.data.subset_dir / "labels" / "test",
+                evaluator.names,
+                save_dir / "error_analysis",
+            )
+            mlflow.log_artifacts(str(save_dir / "error_analysis"), artifact_path="error_analysis")
+            logger.info(
+                "logged %d low-conf TP + %d high-conf FP crops",
+                len(crops.low_conf_tp),
+                len(crops.high_conf_fp),
+            )
+        except Exception as exc:
+            logger.warning("error analysis failed: %s", exc)
 
     return 0
 

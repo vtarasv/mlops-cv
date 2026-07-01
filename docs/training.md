@@ -11,10 +11,12 @@ flowchart LR
     yolo["YOLO26s<br/>transfer learning"] --> best["best.pt<br/>(selected on val)"]
     best --> testeval["test-dev eval<br/>(headline metrics)"]
     best --> demos["3 demo videos<br/>(GT vs prediction)"]
+    best --> crops["error-analysis crops<br/>(low-conf TP / high-conf FP)"]
   end
   yolo -->|"params, per-epoch +<br/>per-class val mAP"| mlflow[("MLflow")]
   testeval -->|"test/* metrics"| mlflow
   demos -->|"mp4 artifacts"| mlflow
+  crops -->|"jpg + segments.csv"| mlflow
   best -->|"register"| registry[["model registry<br/>aerial-object-detector"]]
 ```
 
@@ -42,6 +44,7 @@ defaults; the run logs to the server named by `MLFLOW__TRACKING_URI` (the local 
 | `best.pt` | logged + registered as `aerial-object-detector` |
 | dataset input + `dataset_sha` | the subset `manifest.csv` |
 | 3 demo videos | the GT-vs-prediction renderer (below) |
+| error-analysis crops (`error_analysis/`) | low-confidence TP / high-confidence FP picks (below) |
 
 ### Validation vs test
 
@@ -66,6 +69,22 @@ Frames are downscaled so the longest side is `≤ max_side` before inference, an
 (libx264, yuv420p) via `imageio[ffmpeg]` so they play in any standard player. `fps` is playback speed
 only: VisDrone-VID stores frames indexed by number, with no source video, timestamps, or capture
 rate, so the true frame rate is not recoverable.
+
+## Error-analysis crops
+
+Two buckets of crops surface where the freshly trained model is uncertain or wrong on the held-out
+**test** split — the same visual-validation purpose as the demo videos, logged to the same run under
+`error_analysis/`:
+
+- **low-confidence true positives** — correct detections with the *smallest* confidence (near the
+  decision boundary; candidates for threshold tuning or hard-example mining);
+- **high-confidence false positives** — wrong detections with the *largest* confidence (the worst,
+  most misleading errors, annotation issues).
+
+Each pick is a padded, annotated crop (the box drawn with its class + confidence) indexed by
+`segments.csv`. Predictions are labelled TP/FP by a greedy **per-class IoU matcher**: each prediction
+(highest confidence first) claims the unused same-class ground-truth box of greatest IoU; `IoU ≥ 0.5`
+is a TP (that GT is consumed), otherwise an FP.
 
 ## Scaling up
 

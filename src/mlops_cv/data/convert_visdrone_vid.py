@@ -107,3 +107,24 @@ def write_label_file(boxes: list[YoloBox], dest: str | Path) -> None:
     """Write YOLO label lines (one per box) to ``dest``."""
     text = "\n".join(box.to_line() for box in boxes)
     Path(dest).write_text(text + "\n" if text else "", encoding="utf-8")
+
+
+def read_yolo_labels(path: str | Path) -> list[YoloBox]:
+    """Read a YOLO label file (``<cls> <xc> <yc> <w> <h>`` per line) into :class:`YoloBox` es.
+    The inverse of :func:`write_label_file`.
+    """
+    label_path = Path(path)
+    if not label_path.is_file():
+        return []
+    boxes: list[YoloBox] = []
+    for line in label_path.read_text(encoding="utf-8").splitlines():
+        fields = line.split()
+        if len(fields) != 5:
+            continue
+        try:
+            cls = int(fields[0])
+            xc, yc, w, h = (float(v) for v in fields[1:])
+        except ValueError:
+            continue
+        boxes.append(YoloBox(cls, xc, yc, w, h))
+    return boxes

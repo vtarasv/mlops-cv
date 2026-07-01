@@ -49,3 +49,8 @@ def test_model_defaults_when_no_file(tmp_path: Path) -> None:
 def test_all_env_values_valid(env: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ENV", env)
     assert load_settings(base_dir=tmp_path).env == env
+
+
+def test_mlflow_champion_alias_default(tmp_path: Path) -> None:
+    # The registry alias marking the deployed model for the champion/challenger gate.
+    assert load_settings(base_dir=tmp_path).mlflow.champion_alias == "champion"

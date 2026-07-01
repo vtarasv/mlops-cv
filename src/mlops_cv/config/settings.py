@@ -36,6 +36,7 @@ class MlflowSettings(BaseModel):
     tracking_uri: str = "http://localhost:5000"
     experiment: str = "aerial-object-detection"
     registered_model: str = "aerial-object-detector"
+    champion_alias: str = "champion"  # registry alias marking the deployed model
 
 
 class TrainingSettings(BaseModel):

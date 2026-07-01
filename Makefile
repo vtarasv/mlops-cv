@@ -1,4 +1,4 @@
-.PHONY: setup lint fmt test test-all ci clean gpu-smoke mlflow-up mlflow-down mlflow-logs train
+.PHONY: setup lint fmt test test-all ci clean gpu-smoke mlflow-up mlflow-down mlflow-logs train eval
 
 MLFLOW_COMPOSE := docker compose -f docker-compose/docker-compose.mlflow.yml --env-file docker-compose/.env.mlflow
 
@@ -39,6 +39,11 @@ mlflow-logs:
 # Train YOLO26s on the VisDrone-VID subset, logging to MLflow.
 train: mlflow-up
 	uv run python -m mlops_cv.training.train
+
+# Evaluate an MLflow model on the held-out test split -> metrics + report + gate in MLflow.
+# Pass MODEL=<models:/aerial-object-detector@champion | runs:/<run_id>/weights/best.pt>.
+eval: mlflow-up
+	uv run python -m mlops_cv.eval.evaluate --model "$(MODEL)"
 
 # What CI runs: lint + format-check + tests.
 ci:

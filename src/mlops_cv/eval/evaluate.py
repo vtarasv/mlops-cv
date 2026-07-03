@@ -1,14 +1,17 @@
 """Evaluate a model from MLflow (a registry ref or a run URI) on the data subset and log a
 reproducible report to MLflow: P/R/mAP50/mAP50-95 (overall + per merged class), a comparison table,
-a pass/fail gate (floors + champion/challenger), and a latency stub.
+a pass/fail gate (floors + champion/challenger), a latency stub, and the qualitative artifacts —
+the fixed demo-clip and the TP/FP error-analysis crops.
 
-The exit code is ``0`` on a gate pass and ``1`` on a fail,
-so a shell or Airflow branch can act on it.
+The exit code is ``0`` on a gate pass and ``1`` on a fail (``--exit-zero`` forces ``0`` for
+orchestrators that branch on the verdict, not the exit code); the last stdout line is a
+machine-readable verdict JSON.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import re
 import tempfile
@@ -29,6 +32,8 @@ if TYPE_CHECKING:
     from ultralytics import YOLO
 
 logger = logging.getLogger(__name__)
+
+DEMO_CLIPS = Path("configs/demo_clips.yaml")
 
 
 def build_parser(settings: Settings) -> argparse.ArgumentParser:
@@ -57,7 +62,19 @@ def build_parser(settings: Settings) -> argparse.ArgumentParser:
         "--min-improvement", type=float, default=0.01, help="challenger margin over the champion"
     )
     p.add_argument("--promote", action="store_true", help="on a gate pass, set the champion alias")
+    p.add_argument(
+        "--run-id",
+        default=None,
+        help="log to this existing run (e.g. the training run) instead of creating a new one",
+    )
+    p.add_argument(
+        "--exit-zero",
+        action="store_true",
+        help="always exit 0 (orchestrators branch on the verdict line, not the exit code)",
+    )
     p.add_argument("--no-latency", dest="latency_enabled", action="store_false")
+    p.add_argument("--no-demos", dest="demos_enabled", action="store_false")
+    p.add_argument("--no-crops", dest="crops_enabled", action="store_false")
     return p
 
 
@@ -169,7 +186,8 @@ def main(argv: list[str] | None = None) -> int:
 
     logger.info("evaluating %s on %s[%s]", model_ref, data_yaml, args.split)
 
-    with mlflow.start_run(run_name=f"eval-{model_ref}"):
+    run_kwargs = {"run_id": args.run_id} if args.run_id else {"run_name": f"eval-{model_ref}"}
+    with mlflow.start_run(**run_kwargs):  # type: ignore[arg-type]
         mlflow.autolog(disable=True)
         mlflow.set_tags({"eval.model": model_ref, "eval.split": args.split})
         model = YOLO(str(weights))
@@ -210,16 +228,53 @@ def main(argv: list[str] | None = None) -> int:
             )
             mlflow.log_metrics(latency)
 
-        report_dir = Path(tempfile.mkdtemp(prefix="eval-report-"))
+        work_dir = Path(tempfile.mkdtemp(prefix="eval-"))
+
+        if args.demos_enabled:
+            try:
+                from mlops_cv.eval.visualize import load_demo_clips, render_demo_clips
+
+                videos = render_demo_clips(
+                    model, load_demo_clips(DEMO_CLIPS), settings.data.raw_dir, work_dir / "demo"
+                )
+                for video in videos:
+                    mlflow.log_artifact(str(video), artifact_path="demo")
+                logger.info("logged %d demo videos", len(videos))
+            except Exception as exc:
+                logger.warning("demo rendering failed: %s", exc)
+
+        if args.crops_enabled:
+            try:
+                from mlops_cv.eval.error_analysis import run_error_analysis
+
+                crops = run_error_analysis(
+                    model,
+                    settings.data.subset_dir / "images" / args.split,
+                    settings.data.subset_dir / "labels" / args.split,
+                    model.names,
+                    work_dir / "error_analysis",
+                )
+                mlflow.log_artifacts(
+                    str(work_dir / "error_analysis"), artifact_path="error_analysis"
+                )
+                logger.info(
+                    "logged %d low-conf TP + %d high-conf FP crops",
+                    len(crops.low_conf_tp),
+                    len(crops.high_conf_fp),
+                )
+            except Exception as exc:
+                logger.warning("error analysis failed: %s", exc)
+
         md, csv_path = report_mod.write_report(
-            report_dir,
+            work_dir,
             candidate=candidate,
             champion=champion,
             gate=gate,
             latency=latency,
         )
-        mlflow.log_artifact(str(md))
-        mlflow.log_artifact(str(csv_path))
+
+        mlflow.log_artifact(str(md), artifact_path="eval")
+        mlflow.log_artifact(str(csv_path), artifact_path="eval")
 
         if args.promote and gate.passed:
             version = _promotion_version(args.model, settings.mlflow.registered_model)
@@ -235,7 +290,18 @@ def main(argv: list[str] | None = None) -> int:
 
         logger.info(gate.summary())
 
-    return 0 if gate.passed else 1
+    # Machine-readable verdict: orchestrators read the last stdout line (DockerOperator XCom).
+    print(
+        json.dumps(
+            {
+                "passed": gate.passed,
+                "candidate_primary": gate.candidate_primary,
+                "champion_primary": gate.champion_primary,
+            }
+        ),
+        flush=True,
+    )
+    return 0 if args.exit_zero or gate.passed else 1
 
 
 if __name__ == "__main__":

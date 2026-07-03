@@ -1,10 +1,16 @@
-"""Train YOLO26s on the VisDrone-VID subset, log to MLflow, and register the model."""
+"""Train YOLO26s on the VisDrone-VID subset, log to MLflow, and register the model.
+
+Training is pure model production (train + per-epoch val); the held-out test metrics, report,
+gate, and qualitative artifacts are the eval harness's job (``mlops_cv.eval.evaluate --run-id``).
+The last stdout line is a machine-readable JSON for orchestrators.
+"""
 
 from __future__ import annotations
 
 import argparse
 import contextlib
 import hashlib
+import json
 import logging
 import os
 import warnings
@@ -12,23 +18,15 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from mlops_cv.config import Settings, get_settings
-from mlops_cv.eval.report import headline_metrics
 from mlops_cv.tracking import client
-from mlops_cv.training.callbacks import (
-    make_batch_params_callback,
-    make_per_class_callback,
-    per_class_metrics,
-)
+from mlops_cv.training.callbacks import make_batch_params_callback, make_per_class_callback
 
 if TYPE_CHECKING:
     from types import ModuleType
 
     from mlflow import ActiveRun
-    from ultralytics.utils.metrics import DetMetrics
 
 logger = logging.getLogger(__name__)
-
-DEMO_CLIPS = Path("configs/demo_clips.yaml")
 
 
 def build_parser(settings: Settings) -> argparse.ArgumentParser:
@@ -47,16 +45,6 @@ def build_parser(settings: Settings) -> argparse.ArgumentParser:
     return p
 
 
-def _log_test_metrics(mlflow: ModuleType, results: DetMetrics) -> None:
-    """Log the held-out test-dev metrics as the run's headline (overall + per merged class)."""
-    mlflow.log_metrics(headline_metrics(results.box, prefix="test"))
-    mlflow.log_metrics(
-        per_class_metrics(
-            results.maps, results.ap_class_index, results.names, prefix="test/mAP50-95"
-        )
-    )
-
-
 def _log_dataset(mlflow: ModuleType, manifest: Path) -> None:
     """Log the dataset manifest as an MLflow input + a content hash tag for lineage."""
     import pandas as pd
@@ -72,8 +60,8 @@ def _log_dataset(mlflow: ModuleType, manifest: Path) -> None:
     mlflow.set_tag("dataset_sha", sha)
 
 
-def _register_model(run: ActiveRun, name: str) -> None:
-    """Register the val-selected ``best.pt`` as a new model version.
+def _register_model(run: ActiveRun, name: str) -> str:
+    """Register the val-selected ``best.pt`` as a new model version; return its version number.
 
     ``weights/best.pt`` is already logged by ultralytics' built-in callback.
     """
@@ -83,9 +71,10 @@ def _register_model(run: ActiveRun, name: str) -> None:
     registry = MlflowClient()
     with contextlib.suppress(RestException):
         registry.create_registered_model(name)  # ok if it already exists
-    registry.create_model_version(
+    version = registry.create_model_version(
         name=name, source=f"{run.info.artifact_uri}/weights/best.pt", run_id=run.info.run_id
     )
+    return version.version
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -96,12 +85,8 @@ def main(argv: list[str] | None = None) -> int:
     client.configure()  # export MLFLOW_TRACKING_URI so the ultralytics callback hits our server
 
     import mlflow
-    import torch
     from ultralytics import YOLO
     from ultralytics import settings as yolo_settings
-
-    from mlops_cv.eval.error_analysis import run_error_analysis
-    from mlops_cv.eval.visualize import load_demo_clips, render_demo_clips
 
     t = settings.training
     data_yaml = (args.data or settings.data.subset_dir / settings.data.dataset_yaml.name).resolve()
@@ -131,55 +116,12 @@ def main(argv: list[str] | None = None) -> int:
             patience=t.patience,
         )
         mlflow.autolog(disable=True)  # the built-in callback enabled autolog
-        best = Path(model.trainer.best)  # type: ignore
-        save_dir = Path(model.trainer.save_dir)  # type: ignore
-        test_batch = model.trainer.batch_size * 2  # type: ignore
-        del model
-        torch.cuda.empty_cache()
-
-        # Headline metrics on the held-out test split (best.pt was selected on val).
-        evaluator = YOLO(str(best))
-        _log_test_metrics(
-            mlflow,
-            evaluator.val(
-                data=str(data_yaml),
-                split="test",
-                imgsz=args.imgsz,
-                device=args.device,
-                batch=test_batch,
-            ),
-        )
-
         _log_dataset(mlflow, settings.data.subset_dir / "manifest.csv")
-        _register_model(run, settings.mlflow.registered_model)
+        version = _register_model(run, settings.mlflow.registered_model)
+        run_id = run.info.run_id
 
-        try:
-            videos = render_demo_clips(
-                evaluator, load_demo_clips(DEMO_CLIPS), settings.data.raw_dir, save_dir / "demo"
-            )
-            for video in videos:
-                mlflow.log_artifact(str(video), artifact_path="demo")
-            logger.info("logged %d demo videos", len(videos))
-        except Exception as exc:
-            logger.warning("demo rendering failed: %s", exc)
-
-        try:
-            crops = run_error_analysis(
-                evaluator,
-                settings.data.subset_dir / "images" / "test",
-                settings.data.subset_dir / "labels" / "test",
-                evaluator.names,
-                save_dir / "error_analysis",
-            )
-            mlflow.log_artifacts(str(save_dir / "error_analysis"), artifact_path="error_analysis")
-            logger.info(
-                "logged %d low-conf TP + %d high-conf FP crops",
-                len(crops.low_conf_tp),
-                len(crops.high_conf_fp),
-            )
-        except Exception as exc:
-            logger.warning("error analysis failed: %s", exc)
-
+    # Machine-readable handoff: orchestrators read the last stdout line (DockerOperator XCom).
+    print(json.dumps({"version": version, "run_id": run_id}), flush=True)
     return 0
 
 

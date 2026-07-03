@@ -31,10 +31,11 @@ def test_register_model_registers_file_source_version_and_round_trips(registry, 
         with mlflow.start_run() as run:
             mlflow.log_artifact(str(weights), artifact_path="weights")
             _register_model(run, name)
-            _register_model(run, name)  # 2nd create_registered_model is suppressed, not raised
+            returned = _register_model(run, name)  # 2nd model-create is suppressed, not raised
         versions = registry.search_model_versions(f"name='{name}'")
         assert len(versions) == 2  # one version per call; the duplicate model-create didn't crash
         latest = max(versions, key=lambda v: int(v.version))
+        assert returned == latest.version  # the returned version feeds the orchestrator handoff
         assert latest.source.endswith("weights/best.pt")  # a bare-file source (our pattern)
         assert latest.run_id == run.info.run_id
         # register -> resolve round-trip: the version we just made downloads back to a .pt

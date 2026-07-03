@@ -36,14 +36,15 @@ mlflow-down:
 mlflow-logs:
 	$(MLFLOW_COMPOSE) logs -f
 
-# Train YOLO26s on the VisDrone-VID subset, logging to MLflow.
+# Train YOLO26s on the train subset -> MLflow run + registered version.
 train: mlflow-up
 	uv run python -m mlops_cv.training.train
 
-# Evaluate an MLflow model on the held-out test split -> metrics + report + gate in MLflow.
+# Evaluate an MLflow model -> test metrics + report + gate + demo videos + TP/FP crops in MLflow.
 # Pass MODEL=<models:/aerial-object-detector@champion | runs:/<run_id>/weights/best.pt>.
+# Add RUN_ID=<train run id> to log onto that run (one run per model version) instead of a new one.
 eval: mlflow-up
-	uv run python -m mlops_cv.eval.evaluate --model "$(MODEL)"
+	uv run python -m mlops_cv.eval.evaluate --model "$(MODEL)" $(if $(RUN_ID),--run-id "$(RUN_ID)")
 
 # What CI runs: lint + format-check + tests.
 ci:

@@ -2,6 +2,7 @@
 .env*
 !.env.example
 !docker-compose/.env.mlflow
+!docker-compose/.env.airflow
 
 *.pt
 

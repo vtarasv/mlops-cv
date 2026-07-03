@@ -10,6 +10,11 @@ volumes:
   pgdata:
   rustfs-data:
 
+networks:
+  default:
+    # Shared platform network: the Airflow stack and the CT DAG's train/eval containers join it too (external).
+    name: mlops-cv-network
+
 services:
   postgres:
     image: postgres:15.18
@@ -96,6 +101,7 @@ services:
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
       AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
       MLFLOW_S3_IGNORE_TLS: "true"
+      MLFLOW_SERVER_ALLOWED_HOSTS: "localhost:${MLFLOW_PORT},127.0.0.1:${MLFLOW_PORT},mlflow:${MLFLOW_PORT}"
     command:
       - mlflow
       - server
@@ -115,7 +121,3 @@ services:
       interval: 10s
       timeout: 5s
       retries: 30
-
-networks:
-  default:
-    name: mlflow-network

@@ -21,12 +21,14 @@ flowchart LR
 ## Run it
 
 ```bash
-make train   # brings the MLflow stack up (idempotently), then trains with the defaults
-# or, with custom flags (the stack must be up — `make mlflow-up`):
+make mlflow-up
 uv run python -m mlops_cv.training.train --epochs 10
+# or with `make train` (brings the MLflow stack up idempotently)
 
 # then evaluate the new version onto the same run (test metrics + report + visuals):
-make eval MODEL=runs:/<run_id>/weights/best.pt RUN_ID=<run_id>
+uv run python -m mlops_cv.eval.evaluate --model runs:/<run_id>/weights/best.pt --run-id=<run_id>
+# or with `make eval MODEL=runs:/<run_id>/weights/best.pt RUN_ID=<run_id>`
+
 ```
 
 CLI flags `--epochs --imgsz --batch --device --data --no-amp` override the `Settings` defaults; the

@@ -1,6 +1,17 @@
-.PHONY: setup lint fmt test test-all ci clean gpu-smoke mlflow-up mlflow-down mlflow-logs train eval
+.PHONY: setup lint fmt test test-all ci clean gpu-smoke mlflow-up mlflow-down mlflow-logs \
+	train eval train-image airflow-up airflow-down airflow-logs airflow-env
 
 MLFLOW_COMPOSE := docker compose -f docker-compose/docker-compose.mlflow.yml --env-file docker-compose/.env.mlflow
+AIRFLOW_COMPOSE := docker compose -f docker-compose/docker-compose.airflow.yml --env-file docker-compose/.env.airflow
+TRAIN_IMAGE := mlops-cv-train:0.1.0
+
+# Derived host wiring for the Airflow stack:
+#   HOST_PROJECT_DIR : repo root (wherever make runs)
+#   HOST_RAW_DIR     : reuses DATA__RAW_DIR from the gitignored root .env (raw frames for demo clips)
+#   DOCKER_GID       : host docker group id — the scheduler needs it to use the mounted socket
+export HOST_PROJECT_DIR := $(CURDIR)
+export HOST_RAW_DIR := $(shell sed -n 's/^DATA__RAW_DIR=//p' .env 2>/dev/null)
+export DOCKER_GID := $(shell getent group docker | cut -d: -f3)
 
 # Create the venv (from .python-version) and install all default groups.
 setup:
@@ -45,6 +56,26 @@ train: mlflow-up
 # Add RUN_ID=<train run id> to log onto that run (one run per model version) instead of a new one.
 eval: mlflow-up
 	uv run python -m mlops_cv.eval.evaluate --model "$(MODEL)" $(if $(RUN_ID),--run-id "$(RUN_ID)")
+
+# Build the GPU train/eval image the CT DAG's DockerOperator tasks run.
+train-image:
+	docker build -f docker/Dockerfile.train -t $(TRAIN_IMAGE) .
+
+# Print the derived host wiring the Airflow stack resolves ([brackets] surface stray whitespace).
+airflow-env:
+	@echo "HOST_PROJECT_DIR=[$(HOST_PROJECT_DIR)]"
+	@echo "HOST_RAW_DIR=[$(HOST_RAW_DIR)]"
+	@echo "DOCKER_GID=[$(DOCKER_GID)]"
+
+# Airflow CT stack (Postgres + api-server + scheduler + dag-processor + triggerer).
+airflow-up: mlflow-up train-image airflow-env
+	$(AIRFLOW_COMPOSE) up -d --build --wait
+
+airflow-down:
+	$(AIRFLOW_COMPOSE) down
+
+airflow-logs:
+	$(AIRFLOW_COMPOSE) logs -f
 
 # What CI runs: lint + format-check + tests.
 ci:

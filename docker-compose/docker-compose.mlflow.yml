@@ -19,6 +19,7 @@ services:
   postgres:
     image: postgres:15.18
     container_name: mlflow-postgres
+    restart: always
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -37,6 +38,7 @@ services:
   storage:
     image: rustfs/rustfs:1.0.0-beta.8
     container_name: mlflow-storage
+    restart: always
     environment:
       RUSTFS_ADDRESS: ":${S3_API_PORT}"
       RUSTFS_SERVER_DOMAINS: storage:${S3_API_PORT}
@@ -88,6 +90,7 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.mlflow
     container_name: mlflow-server
+    restart: always
     depends_on:
       postgres:
         condition: service_healthy

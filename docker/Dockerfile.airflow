@@ -1,0 +1,14 @@
+# Airflow image for the CT stack: official base + the Docker provider (DockerOperator), the
+# MLflow client (the in-process `promote` task), and `mlops_cv` with base deps only — the DAG's
+# in-process tasks are pure, so no torch/ultralytics here (GPU work runs in mlops-cv-train).
+FROM apache/airflow:3.2.2-python3.12
+
+# Build context is the repo root (see docker-compose.airflow.yml).
+COPY --chown=airflow:0 pyproject.toml README.md /opt/mlops-cv/
+COPY --chown=airflow:0 src/ /opt/mlops-cv/src/
+
+USER airflow
+RUN pip install --no-cache-dir \
+        apache-airflow-providers-docker==4.5.7 \
+        mlflow-skinny==3.14.0 \
+        /opt/mlops-cv

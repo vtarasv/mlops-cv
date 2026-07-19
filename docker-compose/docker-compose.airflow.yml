@@ -1,0 +1,163 @@
+# Local Airflow stack for the continuous-training DAG: Postgres (metadata DB) + api-server +
+# scheduler + dag-processor + triggerer, LocalExecutor (no redis/worker). Trimmed from the
+# official apache/airflow 3.2.2 reference compose, with the repo's tag pins.
+#
+# Joins the shared platform network (external `mlops-cv-network`, created by the MLflow stack).
+# Service names are unique on the shared network (`airflow-postgres`, not `postgres`) to avoid
+# DNS-alias collisions with the MLflow stack's services.
+#
+#   docker compose -f docker-compose/docker-compose.airflow.yml \
+#     --env-file docker-compose/.env.airflow up -d --build
+
+name: airflow
+
+volumes:
+  pgdata:
+  logs:
+
+networks:
+  default:
+    name: mlops-cv-network
+    external: true
+
+x-airflow-common: &airflow-common
+  image: mlops-cv-airflow:3.2.2
+  build:
+    context: ..
+    dockerfile: docker/Dockerfile.airflow
+  environment: &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@airflow-postgres:5432/${POSTGRES_DB}
+    # Airflow 3 task-execution API: task supervisors call the api-server; the localhost default breaks from the scheduler container.
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-apiserver:${AIRFLOW_PORT}/execution/
+    AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_JWT_SECRET}
+    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+    # Wiring the CT DAG reads at parse time (dag-processor) and task time (scheduler).
+    # Required: `make airflow-up` injects it (the repo root); export it to run docker compose direct.
+    HOST_PROJECT_DIR: ${HOST_PROJECT_DIR:?run via make airflow-up, or export HOST_PROJECT_DIR yourself}
+    HOST_RAW_DIR: ${HOST_RAW_DIR}
+    TRAIN_IMAGE: ${TRAIN_IMAGE}
+    MLFLOW__TRACKING_URI: http://mlflow:${MLFLOW_PORT}
+  volumes:
+    - ../dags:/opt/airflow/dags:ro
+    - logs:/opt/airflow/logs
+  user: "${AIRFLOW_UID}:0"
+  depends_on: &airflow-common-depends-on
+    airflow-postgres:
+      condition: service_healthy
+
+services:
+  airflow-postgres:
+    image: postgres:15.18
+    container_name: airflow-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # One-shot: create dirs, run DB migrations, create the admin user, then exit.
+  airflow-init:
+    <<: *airflow-common
+    container_name: airflow-init
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        mkdir -p /opt/airflow/logs
+        chown -R "${AIRFLOW_UID}:0" /opt/airflow/logs
+        exec /entrypoint airflow version
+    environment:
+      <<: *airflow-common-env
+      _AIRFLOW_DB_MIGRATE: "true"
+      _AIRFLOW_WWW_USER_CREATE: "true"
+      _AIRFLOW_WWW_USER_USERNAME: ${AIRFLOW_ADMIN_USER}
+      _AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD}
+    user: "0:0"
+    restart: "no"
+
+  airflow-apiserver:
+    <<: *airflow-common
+    container_name: airflow-apiserver
+    command: api-server
+    ports:
+      - "${AIRFLOW_PORT}:${AIRFLOW_PORT}"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:${AIRFLOW_PORT}/api/v2/monitor/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: airflow-scheduler
+    command: scheduler
+    # The only task runner under LocalExecutor. The socket is root:docker on the
+    # host and the container's airflow user isn't in that group -> group_add the host gid.
+    group_add:
+      - "${DOCKER_GID:?run via make airflow-up, or export DOCKER_GID (getent group docker | cut -d: -f3)}"
+    volumes:
+      - ../dags:/opt/airflow/dags:ro
+      - logs:/opt/airflow/logs
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${HOST_PROJECT_DIR}/data:${HOST_PROJECT_DIR}/data:ro
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-dag-processor:
+    <<: *airflow-common
+    container_name: airflow-dag-processor
+    command: dag-processor  # required standalone component in Airflow 3.x
+    healthcheck:
+      test: ["CMD-SHELL", 'airflow jobs check --job-type DagProcessorJob --hostname "$${HOSTNAME}"']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-triggerer:
+    <<: *airflow-common
+    container_name: airflow-triggerer
+    command: triggerer
+    healthcheck:
+      test: ["CMD-SHELL", 'airflow jobs check --job-type TriggererJob --hostname "$${HOSTNAME}"']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully

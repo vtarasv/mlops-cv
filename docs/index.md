@@ -10,14 +10,16 @@ page here as it lands.
 - [GPU setup](gpu-setup.md) — CUDA torch install, NVIDIA Container Toolkit.
 - [VisDrone-VID dataset](data.md) — download, frame/label conversion, 3-class merge, validation.
 - [MLflow tracking & registry](mlflow.md) — Postgres + RustFS + MLflow Compose stack.
-- [Training](training.md) — YOLO26s transfer-learning recipe, MLflow logging, demo videos.
+- [Training](training.md) — YOLO26s transfer-learning recipe, MLflow logging.
+- [Evaluation](evaluation.md) — metrics (P/R/mAP), promotion gate, demo videos, error analysis,
+  latency stub.
+- [Orchestration](orchestration.md) — Airflow continuous-training DAG (LocalExecutor,
+  DockerOperator GPU tasks, asset-event trigger).
 
 ## Planned
 
 | Doc | Topic |
 |-----|-------|
-| `evaluation.md` | Metrics (P/R/mAP), gate, benchmark harness |
-| `orchestration.md` | Airflow continuous-training DAG |
 | `batch-pipeline.md` | Apache Beam tiling pipeline |
 | `streaming.md` | Redpanda/Kafka streaming inference |
 | `optimization.md` | ONNX / TensorRT FP16 + INT8 (edge-sim) |

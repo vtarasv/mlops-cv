@@ -53,6 +53,13 @@ the S3 endpoint and credentials and uploads artifacts to RustFS on the client's 
 **client needs only `MLFLOW_TRACKING_URI`** — no S3 endpoint, credentials, or `boto3`.
 `mlops_cv.tracking.client` resolves that single variable from `Settings`:
 
+> **In-network clients & the Host-header guard.** Containers on the compose network reach the
+> server as `http://mlflow:5000`. MLflow validates the `Host` header against localhost + private
+> IPs by default (DNS-rebinding protection) and rejects other hostnames with
+> `403 Invalid Host header`, so the compose file sets
+> `MLFLOW_SERVER_ALLOWED_HOSTS: localhost:5000,127.0.0.1:5000,mlflow:5000`. Add any new hostname
+> a client uses (e.g. a cloud DNS name) to that list.
+
 ```python
 from mlops_cv.tracking import client
 

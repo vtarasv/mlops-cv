@@ -6,7 +6,7 @@ detection) benchmark: drone-captured video frames with the 10 raw object categor
 ```mermaid
 flowchart LR
   raw["VisDrone2019-VID-{train,val,test-dev}/<br/>sequences/ + annotations/"]
-  raw -->|"build_subset<br/>(frame-stride, 3-class merge)"| subset["data/visdrone-vid-small/<br/>images/ · labels/ · manifest.csv · YAML"]
+  raw -->|"build_subset<br/>(frame-stride, 3-class merge)"| subset["&lt;DATA__SUBSET_DIR&gt;/<br/>images/ · labels/ · manifest.csv · YAML"]
   subset -->|validate| gate["pass / fail-fast"]
   subset -->|absolute-path YAML| yolo["ultralytics train / val"]
 ```
@@ -29,10 +29,11 @@ directory. Each split is already a set of **extracted frames** (not video files)
     sequences/ ... · annotations/ ...
 ```
 
-Set the location (via the `export` or `.env`):
+Set the locations (via the `export` or `.env`):
 
 ```bash
 export DATA__RAW_DIR=/abs/path/to/VisDrone-VID    # holds VisDrone2019-VID-{train,val,test-dev}/
+export DATA__SUBSET_DIR=/abs/path/to/subset       # where build_subset writes
 ```
 
 ## Annotation format and 3-class merge
@@ -88,10 +89,12 @@ consecutive frames of a video. Flags:
 - `--link` — symlink frames instead of copying (faster, same filesystem only).
 - `--raw-dir / --out-dir / --template-yaml` — override the `Settings.data.*` defaults.
 
-It writes a self-contained YOLO tree:
+It writes a self-contained YOLO tree to `DATA__SUBSET_DIR` (default: `data/visdrone-vid-small`
+inside the repo; any absolute path works — training, validation, evaluation, and the CT DAG all
+read the same setting, and the directory's basename becomes the MLflow dataset name):
 
 ```
-data/visdrone-vid-small/
+<DATA__SUBSET_DIR>/
   images/{train,val,test}/<seq>_<NNNNNNN>.jpg
   labels/{train,val,test}/<seq>_<NNNNNNN>.txt
   manifest.csv
@@ -101,7 +104,7 @@ data/visdrone-vid-small/
 Point training/validation at generated YAML file:
 
 ```bash
-yolo val model=yolo26s.pt data=data/visdrone-vid-small/VisDrone-VID-merged.yaml
+yolo val model=yolo26s.pt data=<DATA__SUBSET_DIR>/VisDrone-VID-merged.yaml
 ```
 
 The committed [`configs/datasets/VisDrone-VID-merged.yaml`](../configs/datasets/VisDrone-VID-merged.yaml)

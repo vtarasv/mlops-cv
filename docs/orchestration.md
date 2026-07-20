@@ -86,16 +86,19 @@ Every task is a thin wrapper over `mlops_cv` code — the DAG contains orchestra
 5. **`gate`** (branch, in-process) — pure JSON check on the verdict: `promote` or `skip_promotion`.
 6. **`promote`** (in-process) — points the `champion` registry alias at the challenger version.
 
-Task containers get the host's dataset directory bind-mounted **at the same absolute path**
+Task containers get the host's dataset directories bind-mounted **at the same absolute path**
 ("path parity"), so the absolute `path:` stamped into the generated dataset YAML resolves
-in-container unchanged. The raw dataset directory (`HOST_RAW_DIR`) is mounted read-only for
-demo-video rendering — leave it empty to skip demos.
+in-container unchanged: the subset (`HOST_SUBSET_DIR`) and the pretrained-weights directory
+(`HOST_WEIGHTS`'s parent) read-write, and the raw dataset directory (`HOST_RAW_DIR`) read-only for
+demo-video rendering — leave the latter empty to skip demos.
 
-The three machine-specific values — `HOST_PROJECT_DIR` (the repo root), `HOST_RAW_DIR` (reused from
-`DATA__RAW_DIR` in your local `.env`), and `DOCKER_GID` (the host `docker` group) — are **derived
-and exported by `make airflow-up`**, so none is committed. `make airflow-env` prints the resolved
-values. Invoking `docker compose` directly without exporting `HOST_PROJECT_DIR`/`DOCKER_GID` **fails
-loudly** with a hint, rather than silently mounting the wrong path.
+The four machine-specific values — `HOST_SUBSET_DIR` (reused from `DATA__SUBSET_DIR` in your local
+`.env`; **required**), `HOST_WEIGHTS` (reused from `TRAINING__WEIGHTS`; **required**),
+`HOST_RAW_DIR` (reused from `DATA__RAW_DIR`), and `DOCKER_GID` (the host `docker` group) — are
+**derived and exported by `make airflow-up`**, so none is committed. `make airflow-env` prints the
+resolved values. Invoking `docker compose` directly without exporting
+`HOST_SUBSET_DIR`/`HOST_WEIGHTS`/`DOCKER_GID` **fails loudly** with a hint, rather than silently
+mounting the wrong path.
 
 ## Scheduling: cron + asset events
 

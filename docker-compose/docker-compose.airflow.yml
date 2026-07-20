@@ -37,9 +37,10 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__LOAD_EXAMPLES: "false"
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
     # Wiring the CT DAG reads at parse time (dag-processor) and task time (scheduler).
-    # Required: `make airflow-up` injects it (the repo root); export it to run docker compose direct.
-    HOST_PROJECT_DIR: ${HOST_PROJECT_DIR:?run via make airflow-up, or export HOST_PROJECT_DIR yourself}
+    # Required values come from the root .env via `make airflow-up`; export them to run compose direct.
     HOST_RAW_DIR: ${HOST_RAW_DIR}
+    HOST_SUBSET_DIR: ${HOST_SUBSET_DIR:?set DATA__SUBSET_DIR in the root .env (or export HOST_SUBSET_DIR)}
+    HOST_WEIGHTS: ${HOST_WEIGHTS:?set TRAINING__WEIGHTS (absolute path) in the root .env (or export HOST_WEIGHTS)}
     TRAIN_IMAGE: ${TRAIN_IMAGE}
     MLFLOW__TRACKING_URI: http://mlflow:${MLFLOW_PORT}
   volumes:
@@ -117,7 +118,8 @@ services:
       - ../dags:/opt/airflow/dags:ro
       - logs:/opt/airflow/logs
       - /var/run/docker.sock:/var/run/docker.sock
-      - ${HOST_PROJECT_DIR}/data:${HOST_PROJECT_DIR}/data:ro
+      # The in-process validate_data task reads the subset at its host path (path parity).
+      - ${HOST_SUBSET_DIR}:${HOST_SUBSET_DIR}:ro
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
       interval: 30s

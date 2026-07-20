@@ -47,7 +47,7 @@ a shell script) reads it to evaluate and promote the exact version this run prod
 | per-merged-class val mAP50-95 (`metrics/mAP50-95/<class>`) | a custom `on_fit_epoch_end` callback |
 | `resolved_batch` / `accumulate` / `effective_batch` | a custom `on_train_start` callback |
 | `best.pt` | logged + registered as `aerial-object-detector` |
-| dataset input + `dataset_sha` | the subset `manifest.csv` |
+| dataset input + `dataset_sha` | the subset `manifest.csv`; the dataset name is the subset directory's basename |
 
 ### Validation vs test
 

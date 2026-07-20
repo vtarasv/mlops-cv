@@ -54,7 +54,7 @@ def _log_dataset(mlflow: ModuleType, manifest: Path) -> None:
         # mlflow.data emits benign hints here
         warnings.simplefilter("ignore", UserWarning)
         dataset = mlflow.data.from_pandas(
-            pd.read_csv(manifest), source=manifest.resolve().as_uri(), name="visdrone-vid-small"
+            pd.read_csv(manifest), source=manifest.resolve().as_uri(), name=manifest.parent.name
         )
         mlflow.log_input(dataset, context="training")
     mlflow.set_tag("dataset_sha", sha)

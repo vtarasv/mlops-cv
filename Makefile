@@ -6,11 +6,13 @@ AIRFLOW_COMPOSE := docker compose -f docker-compose/docker-compose.airflow.yml -
 TRAIN_IMAGE := mlops-cv-train:0.1.0
 
 # Derived host wiring for the Airflow stack:
-#   HOST_PROJECT_DIR : repo root (wherever make runs)
-#   HOST_RAW_DIR     : reuses DATA__RAW_DIR from the gitignored root .env (raw frames for demo clips)
-#   DOCKER_GID       : host docker group id — the scheduler needs it to use the mounted socket
-export HOST_PROJECT_DIR := $(CURDIR)
+#   HOST_RAW_DIR    : reuses DATA__RAW_DIR from the root .env (raw frames for demo clips)
+#   HOST_SUBSET_DIR : reuses DATA__SUBSET_DIR from the root .env (the training subset the DAG mounts)
+#   HOST_WEIGHTS    : reuses TRAINING__WEIGHTS from the root .env (pretrained-weights cache)
+#   DOCKER_GID      : host docker group id — the scheduler needs it to use the mounted socket
 export HOST_RAW_DIR := $(shell sed -n 's/^DATA__RAW_DIR=//p' .env 2>/dev/null)
+export HOST_SUBSET_DIR := $(shell sed -n 's/^DATA__SUBSET_DIR=//p' .env 2>/dev/null)
+export HOST_WEIGHTS := $(shell sed -n 's/^TRAINING__WEIGHTS=//p' .env 2>/dev/null)
 export DOCKER_GID := $(shell getent group docker | cut -d: -f3)
 
 # Create the venv (from .python-version) and install all default groups.
@@ -63,8 +65,9 @@ train-image:
 
 # Print the derived host wiring the Airflow stack resolves ([brackets] surface stray whitespace).
 airflow-env:
-	@echo "HOST_PROJECT_DIR=[$(HOST_PROJECT_DIR)]"
 	@echo "HOST_RAW_DIR=[$(HOST_RAW_DIR)]"
+	@echo "HOST_SUBSET_DIR=[$(HOST_SUBSET_DIR)]"
+	@echo "HOST_WEIGHTS=[$(HOST_WEIGHTS)]"
 	@echo "DOCKER_GID=[$(DOCKER_GID)]"
 
 # Airflow CT stack (Postgres + api-server + scheduler + dag-processor + triggerer).

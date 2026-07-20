@@ -16,6 +16,7 @@ import json
 import logging
 import os
 from datetime import timedelta
+from pathlib import Path
 
 import pendulum
 from airflow.providers.docker.operators.docker import DockerOperator
@@ -30,15 +31,15 @@ from mlops_cv.data.validate import validate_dataset
 logger = logging.getLogger(__name__)
 
 # Orchestration wiring is injected by the Airflow stack (docker-compose/.env.airflow + Makefile).
-HOST_PROJECT_DIR = os.environ["HOST_PROJECT_DIR"]
 HOST_RAW_DIR = os.environ.get("HOST_RAW_DIR", "")  # optional: demo clips render from raw frames
+SUBSET_DIR = os.environ["HOST_SUBSET_DIR"]
+WEIGHTS = os.environ["HOST_WEIGHTS"]  # pretrained-weights cache: downloaded once, reused
 TRAIN_IMAGE = os.environ["TRAIN_IMAGE"]
 MLFLOW_URI = os.environ["MLFLOW__TRACKING_URI"]
 
 # Host paths are bind-mounted at identical container paths ("path parity") so the absolute
 # `path:` stamped into the generated dataset YAML resolves inside the task containers too.
-DATA_DIR = f"{HOST_PROJECT_DIR}/data"
-SUBSET_DIR = f"{DATA_DIR}/visdrone-vid-small"
+WEIGHTS_DIR = str(Path(WEIGHTS).parent)  # mount the dir: the file only exists after 1st download
 
 NEW_DATA_ASSET = Asset("new-training-data")
 
@@ -46,11 +47,13 @@ _TASK_ENV = {
     "MLFLOW__TRACKING_URI": MLFLOW_URI,
     "ENV": "{{ var.value.get('CONFIG_ENV', 'local') }}",
     "DATA__SUBSET_DIR": SUBSET_DIR,
-    # Pretrained weights cache inside the data mount: downloaded once, reused across runs.
-    "TRAINING__WEIGHTS": f"{DATA_DIR}/weights/yolo26s.pt",
+    "TRAINING__WEIGHTS": WEIGHTS,
 }
-# rw: ultralytics `cache=disk` writes .npy files next to the images; the weights cache lives here.
-_MOUNTS = [Mount(source=DATA_DIR, target=DATA_DIR, type="bind")]
+# rw: ultralytics `cache=disk` writes .npy files next to the images
+_MOUNTS = [Mount(source=SUBSET_DIR, target=SUBSET_DIR, type="bind")]
+# rw: the pre-trained weights land in WEIGHTS_DIR.
+_MOUNTS.append(Mount(source=WEIGHTS_DIR, target=WEIGHTS_DIR, type="bind"))
+
 if HOST_RAW_DIR:
     _TASK_ENV["DATA__RAW_DIR"] = HOST_RAW_DIR
     _MOUNTS.append(Mount(source=HOST_RAW_DIR, target=HOST_RAW_DIR, type="bind", read_only=True))

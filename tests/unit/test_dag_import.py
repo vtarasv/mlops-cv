@@ -28,7 +28,9 @@ def dagbag():
     # The CT DAG requires these at parse time (no in-DAG fallbacks). Set them only while the DagBag
     # parses and revert on return, so they don't leak into other test modules' os.environ.
     with pytest.MonkeyPatch.context() as mp:
-        mp.setenv("HOST_PROJECT_DIR", str(Path(__file__).resolve().parents[2]))
+        repo = Path(__file__).resolve().parents[2]
+        mp.setenv("HOST_SUBSET_DIR", str(repo / "data" / "subset"))
+        mp.setenv("HOST_WEIGHTS", str(repo / "data" / "weights" / "yolo26s.pt"))
         mp.setenv("TRAIN_IMAGE", "mlops-cv-train:test")
         mp.setenv("MLFLOW__TRACKING_URI", "http://mlflow:5000")
         return DagBag(dag_folder=str(DAGS_DIR), include_examples=False)

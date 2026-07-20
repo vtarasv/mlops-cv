@@ -39,6 +39,11 @@ def test_env_field_from_os(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
     assert load_settings(base_dir=tmp_path).env == Environment.stage
 
 
+def test_nested_data_override_from_os(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATA__SUBSET_DIR", "/somewhere/outside/the/repo")
+    assert load_settings(base_dir=tmp_path).data.subset_dir == Path("/somewhere/outside/the/repo")
+
+
 def test_model_defaults_when_no_file(tmp_path: Path) -> None:
     s = load_settings(base_dir=tmp_path)  # empty dir -> model defaults
     assert s.log_level == "INFO"

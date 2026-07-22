@@ -15,7 +15,7 @@ from pathlib import Path
 import yaml
 from PIL import Image, ImageDraw, ImageFont
 
-from mlops_cv.data.convert_visdrone_vid import YOLO_NAMES, YoloBox, convert_sequence, image_size
+from mlops_cv.data.convert_visdrone_vid import YOLO_NAMES, YoloBox, image_size, read_yolo_labels
 
 GT_COLOR = (0, 200, 0)  # ground truth: green
 PRED_COLOR = (220, 40, 40)  # predictions: red
@@ -32,9 +32,11 @@ class ClipSpec:
 
 @dataclass(frozen=True)
 class DemoClipsConfig:
-    """Parsed ``demo_clips.yaml``: which raw split, playback fps, downscale cap, and the clips."""
+    """Parsed ``demo_clips.yaml``: raw source split, playback fps, downscale cap, and the clips."""
 
-    split: str  # raw VisDrone-VID split suffix, e.g. "test-dev"
+    # Raw VisDrone-VID split suffix, e.g. "test-dev". Used only by the ingest pipeline (it
+    # materializes the clips into the subset's demo store); rendering never touches raw data.
+    split: str
     fps: int
     max_side: int
     clips: list[ClipSpec]
@@ -156,10 +158,14 @@ def _frame_window(frame_paths: list[Path], clip: ClipSpec) -> list[Path]:
 def render_demo_clips(
     model: object,
     config: DemoClipsConfig,
-    raw_dir: str | Path,
+    demo_dir: str | Path,
     out_dir: str | Path,
 ) -> list[Path]:
-    """Render one GT-vs-prediction ``.mp4`` per clip; return the written paths."""
+    """Render one GT-vs-prediction ``.mp4`` per clip; return the written paths.
+
+    Frames and per-frame YOLO ground-truth labels come from the subset's **demo store**
+    (``<subset>/demo/images|labels/<sequence>/``.
+    """
     import imageio.v2 as imageio
     import numpy as np
     from ultralytics import YOLO
@@ -168,13 +174,13 @@ def render_demo_clips(
         model = YOLO(str(model))
     names = getattr(model, "names", YOLO_NAMES)
 
-    split_root = Path(raw_dir) / f"VisDrone2019-VID-{config.split}"
+    demo_dir = Path(demo_dir)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
 
     for clip in config.clips:
-        frame_paths = sorted((split_root / "sequences" / clip.sequence).glob("*.jpg"))
+        frame_paths = sorted((demo_dir / "images" / clip.sequence).glob("*.jpg"))
         frames = _frame_window(frame_paths, clip)
         if not frames:
             continue
@@ -184,9 +190,7 @@ def render_demo_clips(
         dst_w, dst_h = dst_w - dst_w % 2, dst_h - dst_h % 2  # even dims required by yuv420p/libx264
         line_w = _line_width(dst_h)
         font = _load_font(_label_font_size(dst_h))
-        gt_by_frame = convert_sequence(
-            split_root / "annotations" / f"{clip.sequence}.txt", (src_w, src_h)
-        )
+        labels_dir = demo_dir / "labels" / clip.sequence
 
         dest = out_dir / f"{clip.sequence}.mp4"
         writer = imageio.get_writer(
@@ -210,7 +214,9 @@ def render_demo_clips(
                     strict=True,
                 )
             ]
-            gt = [yolo_to_pixel(b, dst_w, dst_h) for b in gt_by_frame.get(int(fp.stem), [])]
+            # Missing label file == no GT on that frame (the demo store only writes non-empty).
+            gt_boxes = read_yolo_labels(labels_dir / f"{fp.stem}.txt")
+            gt = [yolo_to_pixel(b, dst_w, dst_h) for b in gt_boxes]
             draw_boxes(frame, gt, GT_COLOR, width=line_w, font=font)
             draw_boxes(frame, preds, PRED_COLOR, width=line_w, font=font, with_conf=True)
             writer.append_data(np.asarray(frame))

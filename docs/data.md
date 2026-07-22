@@ -6,7 +6,7 @@ detection) benchmark: drone-captured video frames with the 10 raw object categor
 ```mermaid
 flowchart LR
   raw["VisDrone2019-VID-{train,val,test-dev}/<br/>sequences/ + annotations/"]
-  raw -->|"build_subset<br/>(frame-stride, 3-class merge)"| subset["&lt;DATA__SUBSET_DIR&gt;/<br/>images/ · labels/ · manifest.csv · YAML"]
+  raw -->|"ingest pipeline<br/>(frame-stride, 3-class merge)"| subset["&lt;DATA__SUBSET_DIR&gt;/<br/>images/ · labels/ · demo/ · manifest.csv · YAML"]
   subset -->|validate| gate["pass / fail-fast"]
   subset -->|absolute-path YAML| yolo["ultralytics train / val"]
 ```
@@ -33,7 +33,7 @@ Set the locations (via the `export` or `.env`):
 
 ```bash
 export DATA__RAW_DIR=/abs/path/to/VisDrone-VID    # holds VisDrone2019-VID-{train,val,test-dev}/
-export DATA__SUBSET_DIR=/abs/path/to/subset       # where build_subset writes
+export DATA__SUBSET_DIR=/abs/path/to/subset       # where the ingest pipeline writes
 ```
 
 ## Annotation format and 3-class merge
@@ -77,17 +77,21 @@ detections there are neither rewarded nor penalized during the official evaluati
 ## Building the subset
 
 ```bash
-uv run python -m mlops_cv.data.build_subset
-uv run python -m mlops_cv.data.build_subset --frame-stride 10 --link
+make ingest
+# OR with custom flags:
+uv run python -m mlops_cv.pipelines.ingest_pipeline --runner DirectRunner \
+  --frame-stride 10
 ```
 
-The builder shrinks the set with `--frame-stride N` — keeping every Nth frame to drop the near-duplicate
+Subset building is the Beam **ingestion pipeline** ([batch-pipeline.md](batch-pipeline.md)). It
+shrinks the set with `--frame-stride N` — keeping every Nth frame to drop the near-duplicate
 consecutive frames of a video. Flags:
 
 - `--frame-stride N` — keep every Nth frame in train, val, and test splits (default 20).
 - `--sequences NAME ...` — restrict to specific sequences (default: all) for a quick smoke.
-- `--link` — symlink frames instead of copying (faster, same filesystem only).
-- `--raw-dir / --out-dir / --template-yaml` — override the `Settings.data.*` defaults.
+- `--demo-clips PATH` — demo-clips YAML for the demo store (default
+  `configs/demo_clips.yaml`; `none` disables).
+- `--raw-dir / --output-dir / --template-yaml` — override the `Settings.data.*` defaults.
 
 It writes a self-contained YOLO tree to `DATA__SUBSET_DIR` (default: `data/visdrone-vid-small`
 inside the repo; any absolute path works — training, validation, evaluation, and the CT DAG all
@@ -97,6 +101,8 @@ read the same setting, and the directory's basename becomes the MLflow dataset n
 <DATA__SUBSET_DIR>/
   images/{train,val,test}/<seq>_<NNNNNNN>.jpg
   labels/{train,val,test}/<seq>_<NNNNNNN>.txt
+  demo/{images,labels}/<sequence>/<NNNNNNN>.{jpg,txt}   # full-rate demo-clip store (evaluation)
+  profile/{profile.json,quality_report.csv}             # written by the profiling pipeline
   manifest.csv
   VisDrone-VID-merged.yaml
 ```

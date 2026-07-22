@@ -232,10 +232,15 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.demos_enabled:
             try:
+                from mlops_cv.data.manifest import DEMO_DIRNAME
                 from mlops_cv.eval.visualize import load_demo_clips, render_demo_clips
 
+                # Frames + GT come from the subset's demo store (built by the ingest pipeline).
                 videos = render_demo_clips(
-                    model, load_demo_clips(DEMO_CLIPS), settings.data.raw_dir, work_dir / "demo"
+                    model,
+                    load_demo_clips(DEMO_CLIPS),
+                    settings.data.subset_dir / DEMO_DIRNAME,
+                    work_dir / "demo",
                 )
                 for video in videos:
                     mlflow.log_artifact(str(video), artifact_path="demo")

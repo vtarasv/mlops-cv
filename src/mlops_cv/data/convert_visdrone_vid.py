@@ -82,13 +82,11 @@ def convert_annotation_line(line: str, img_w: int, img_h: int) -> tuple[int, Yol
     return frame_index, YoloBox(CLASS_MERGE[category], (x1 + x2) / 2, (y1 + y2) / 2, nw, nh)
 
 
-def convert_sequence(
-    annotation_path: str | Path, image_size: tuple[int, int]
-) -> dict[int, list[YoloBox]]:
-    """Convert one sequence's annotation file into ``{frame_index: [YoloBox, ...]}``."""
+def convert_sequence_text(text: str, image_size: tuple[int, int]) -> dict[int, list[YoloBox]]:
+    """Convert one sequence's annotation text into ``{frame_index: [YoloBox, ...]}``."""
     img_w, img_h = image_size
     by_frame: dict[int, list[YoloBox]] = {}
-    for line in Path(annotation_path).read_text(encoding="utf-8").splitlines():
+    for line in text.splitlines():
         result = convert_annotation_line(line, img_w, img_h)
         if result is None:
             continue
@@ -97,27 +95,31 @@ def convert_sequence(
     return by_frame
 
 
+def convert_sequence(
+    annotation_path: str | Path, image_size: tuple[int, int]
+) -> dict[int, list[YoloBox]]:
+    """Convert one sequence's annotation file into ``{frame_index: [YoloBox, ...]}``."""
+    return convert_sequence_text(Path(annotation_path).read_text(encoding="utf-8"), image_size)
+
+
 def image_size(path: str | Path) -> tuple[int, int]:
     """Return an image's ``(width, height)``."""
     with Image.open(path) as im:
         return im.size
 
 
-def write_label_file(boxes: list[YoloBox], dest: str | Path) -> None:
-    """Write YOLO label lines (one per box) to ``dest``."""
+def labels_to_text(boxes: list[YoloBox]) -> str:
+    """Serialize boxes to YOLO label-file text (empty string for no boxes)."""
     text = "\n".join(box.to_line() for box in boxes)
-    Path(dest).write_text(text + "\n" if text else "", encoding="utf-8")
+    return text + "\n" if text else ""
 
 
-def read_yolo_labels(path: str | Path) -> list[YoloBox]:
-    """Read a YOLO label file (``<cls> <xc> <yc> <w> <h>`` per line) into :class:`YoloBox` es.
-    The inverse of :func:`write_label_file`.
+def labels_from_text(text: str) -> list[YoloBox]:
+    """Parse YOLO label-file text (``<cls> <xc> <yc> <w> <h>`` per line), skipping malformed
+    lines. The inverse of :func:`labels_to_text`.
     """
-    label_path = Path(path)
-    if not label_path.is_file():
-        return []
     boxes: list[YoloBox] = []
-    for line in label_path.read_text(encoding="utf-8").splitlines():
+    for line in text.splitlines():
         fields = line.split()
         if len(fields) != 5:
             continue
@@ -128,3 +130,16 @@ def read_yolo_labels(path: str | Path) -> list[YoloBox]:
             continue
         boxes.append(YoloBox(cls, xc, yc, w, h))
     return boxes
+
+
+def write_label_file(boxes: list[YoloBox], dest: str | Path) -> None:
+    """Write YOLO label lines (one per box) to ``dest``."""
+    Path(dest).write_text(labels_to_text(boxes), encoding="utf-8")
+
+
+def read_yolo_labels(path: str | Path) -> list[YoloBox]:
+    """Read a YOLO label file into :class:`YoloBox` es (missing file == zero objects)."""
+    label_path = Path(path)
+    if not label_path.is_file():
+        return []
+    return labels_from_text(label_path.read_text(encoding="utf-8"))

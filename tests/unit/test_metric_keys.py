@@ -1,5 +1,4 @@
-"""Unit tests for the run-metric key vocabulary (pure; no ultralytics, no mlflow, no numpy).
-"""
+"""Unit tests for the run-metric key vocabulary (pure; no ultralytics, no mlflow, no numpy)."""
 
 from __future__ import annotations
 

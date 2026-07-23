@@ -7,6 +7,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from mlops_cv.tracking.metric_keys import PRIMARY, metric_key
+
 if TYPE_CHECKING:
     from mlflow.entities.model_registry import ModelVersion
 
@@ -62,7 +64,6 @@ def evaluate_gate(
     thresholds: GateThresholds,
     champion_metrics: Mapping[str, float] | None,
     *,
-    primary: str = "test/mAP50-95",
     prefix: str = "test",
 ) -> GateResult:
     """Decide pass/fail from already-computed metric dicts.
@@ -70,15 +71,17 @@ def evaluate_gate(
     Two parts:
     (1) absolute floors — each ``min_*`` against ``metrics[f"{prefix}/<name>"]`` (``>=``,
     boundary inclusive);
-    (2) champion/challenger — if ``champion_metrics`` is ``None`` or lacks the
-    ``primary`` key this is a bootstrap win, else the candidate wins when its ``primary`` ``>=`` the
-    champion's ``primary`` plus ``min_improvement``. ``passed`` is all floors **and** the win.
+    (2) champion/challenger — on the primary key (``prefix`` + :data:`PRIMARY`) — if
+    ``champion_metrics`` is ``None`` or lacks it this is a bootstrap win, else the candidate wins
+    when its primary ``>=`` the champion's plus ``min_improvement``. ``passed`` is all floors
+    **and** the win.
     """
+    primary = metric_key(prefix, PRIMARY)
     floor_specs: Sequence[tuple[str, str, float]] = (
-        ("mAP50-95", f"{prefix}/mAP50-95", thresholds.min_map50_95),
-        ("mAP50", f"{prefix}/mAP50", thresholds.min_map50),
-        ("precision", f"{prefix}/precision", thresholds.min_precision),
-        ("recall", f"{prefix}/recall", thresholds.min_recall),
+        (PRIMARY, primary, thresholds.min_map50_95),
+        ("mAP50", metric_key(prefix, "mAP50"), thresholds.min_map50),
+        ("precision", metric_key(prefix, "precision"), thresholds.min_precision),
+        ("recall", metric_key(prefix, "recall"), thresholds.min_recall),
     )
     checks = [
         GateCheck(name, float(metrics.get(key, 0.0)), thr, float(metrics.get(key, 0.0)) >= thr)

@@ -5,26 +5,9 @@ from __future__ import annotations
 import csv
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any
 
 from mlops_cv.eval.gate import GateResult
-
-# Headline detection metrics, in display order, keyed by the ultralytics ``results.box`` attribute.
-HEADLINE_ATTRS: dict[str, str] = {
-    "precision": "mp",
-    "recall": "mr",
-    "mAP50": "map50",
-    "mAP50-95": "map",
-}
-
-
-def headline_metrics(box: Any, prefix: str = "test") -> dict[str, float]:
-    """Map an ultralytics ``results.box`` to ``{prefix/precision, recall, mAP50, mAP50-95}``.
-
-    ``box`` is duck-typed (anything exposing ``mp``/``mr``/``map50``/``map``), so callers/tests can
-    pass a stub and CI never imports ultralytics.
-    """
-    return {f"{prefix}/{name}": float(getattr(box, attr)) for name, attr in HEADLINE_ATTRS.items()}
+from mlops_cv.tracking.metric_keys import HEADLINE_ATTRS, PRIMARY, metric_key
 
 
 def percentiles(samples: Sequence[float], ps: Sequence[float] = (50.0, 95.0)) -> dict[float, float]:
@@ -50,20 +33,20 @@ def comparison_table_md(
     candidate: Mapping[str, float],
     champion: Mapping[str, float] | None,
     *,
-    metric_order: Sequence[str] = ("precision", "recall", "mAP50", "mAP50-95"),
+    metric_order: Sequence[str] = tuple(HEADLINE_ATTRS),
     prefix: str = "test",
 ) -> str:
     """Markdown table of the headline metrics: ``Candidate`` (+ ``Champion``/``Δ`` if present)."""
     if champion is None:
         lines = ["| Metric | Candidate |", "|---|---|"]
         for name in metric_order:
-            lines.append(f"| {name} | {_fmt(candidate.get(f'{prefix}/{name}'))} |")
+            lines.append(f"| {name} | {_fmt(candidate.get(metric_key(prefix, name)))} |")
         return "\n".join(lines)
 
     lines = ["| Metric | Candidate | Champion | Δ |", "|---|---|---|---|"]
     for name in metric_order:
-        cand = candidate.get(f"{prefix}/{name}")
-        champ = champion.get(f"{prefix}/{name}")
+        cand = candidate.get(metric_key(prefix, name))
+        champ = champion.get(metric_key(prefix, name))
         delta = f"{cand - champ:+.4f}" if cand is not None and champ is not None else "—"
         lines.append(f"| {name} | {_fmt(cand)} | {_fmt(champ)} | {delta} |")
     return "\n".join(lines)
@@ -71,10 +54,10 @@ def comparison_table_md(
 
 def _per_class_md(candidate: Mapping[str, float]) -> str:
     """A markdown table of per-class mAP50-95 (the ``.../mAP50-95/<class>`` keys), or ``""``."""
-    rows = {k.rsplit("/", 1)[1]: v for k, v in candidate.items() if "/mAP50-95/" in k}
+    rows = {k.rsplit("/", 1)[1]: v for k, v in candidate.items() if f"/{PRIMARY}/" in k}
     if not rows:
         return ""
-    lines = ["| Class | mAP50-95 |", "|---|---|"]
+    lines = [f"| Class | {PRIMARY} |", "|---|---|"]
     lines += [f"| {name} | {_fmt(value)} |" for name, value in sorted(rows.items())]
     return "\n".join(lines)
 
@@ -129,7 +112,7 @@ def write_report(
 
     per_class = _per_class_md(candidate)
     if per_class:
-        sections += ["### Per class (mAP50-95)", "", per_class, ""]
+        sections += [f"### Per class ({PRIMARY})", "", per_class, ""]
     if latency:
         sections += ["## Latency", "", _latency_md(latency), ""]
     if extra_md:

@@ -68,6 +68,10 @@ module `mlops_cv.orchestration.handoff`, which both the emitter and the orchestr
 | `eval/report.md` (gate verdict + comparison + per-class + latency tables) | the report writer |
 | `eval/metrics.csv` (candidate + champion rows) | the report writer |
 
+The metric-key strings are authored once, in `mlops_cv.tracking.metric_keys`, and every producer
+and reader (evaluation, the per-epoch training callback, the gate, the report) builds keys through
+it.
+
 ## The gate
 
 The gate returns a single pass/fail from two parts:

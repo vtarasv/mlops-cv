@@ -28,10 +28,10 @@ from mlops_cv.data.subset import (
 )
 from mlops_cv.eval import gate as gate_mod
 from mlops_cv.eval import report as report_mod
-from mlops_cv.eval.report import headline_metrics, percentiles
+from mlops_cv.eval.report import percentiles
 from mlops_cv.orchestration.handoff import GateVerdict
 from mlops_cv.tracking import client
-from mlops_cv.training.callbacks import per_class_metrics
+from mlops_cv.tracking.metric_keys import PRIMARY, headline_metrics, metric_key, per_class_metrics
 
 if TYPE_CHECKING:
     from mlflow.entities.model_registry import ModelVersion
@@ -188,7 +188,6 @@ def main(argv: list[str] | None = None) -> int:
     data_yaml = (args.data or settings.data.subset_dir / settings.data.dataset_yaml.name).resolve()
     weights, model_ref = _resolve_model(args.model)
     images_dir = settings.data.subset_dir / "images" / args.split
-    primary = f"{args.split}/mAP50-95"
 
     logger.info("evaluating %s on %s[%s]", model_ref, data_yaml, args.split)
 
@@ -207,7 +206,10 @@ def main(argv: list[str] | None = None) -> int:
         )
         candidate = headline_metrics(results.box, prefix=args.split)
         candidate |= per_class_metrics(
-            results.maps, results.ap_class_index, results.names, prefix=primary
+            results.maps,
+            results.ap_class_index,
+            results.names,
+            prefix=metric_key(args.split, PRIMARY),
         )
         mlflow.log_metrics(candidate)
 
@@ -221,9 +223,7 @@ def main(argv: list[str] | None = None) -> int:
             min_recall=args.min_recall,
             min_improvement=args.min_improvement,
         )
-        gate = gate_mod.evaluate_gate(
-            candidate, thresholds, champion, primary=primary, prefix=args.split
-        )
+        gate = gate_mod.evaluate_gate(candidate, thresholds, champion, prefix=args.split)
         mlflow.set_tags({"gate.passed": gate.passed, "gate.challenger_win": gate.is_challenger_win})
         mlflow.log_metric("gate/passed", float(gate.passed))
 

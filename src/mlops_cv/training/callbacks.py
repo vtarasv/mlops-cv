@@ -3,25 +3,15 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
+from mlops_cv.tracking.metric_keys import per_class_metrics
+
 if TYPE_CHECKING:
-    from numpy.typing import NDArray
     from ultralytics.engine.trainer import BaseTrainer
 
 logger = logging.getLogger(__name__)
-
-
-def per_class_metrics(
-    maps: Sequence[float] | NDArray,
-    ap_class_index: Sequence[int] | NDArray,
-    names: Mapping[int, str],
-    *,
-    prefix: str = "metrics/mAP50-95",
-) -> dict[str, float]:
-    """Map per-class mAP50-95 to ``{prefix}/<class-name>`` for the classes actually evaluated."""
-    return {f"{prefix}/{names[int(c)]}": float(maps[int(c)]) for c in ap_class_index}
 
 
 def make_per_class_callback() -> Callable[[BaseTrainer], None]:

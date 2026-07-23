@@ -10,16 +10,10 @@ import pytest
 
 from mlops_cv.eval.report import (
     comparison_table_md,
-    headline_metrics,
     metrics_csv_rows,
     percentiles,
     write_report,
 )
-
-
-def _box(mp: float, mr: float, map50: float, map_: float) -> SimpleNamespace:
-    """An ultralytics-``results.box`` stand-in exposing the four headline attributes."""
-    return SimpleNamespace(mp=mp, mr=mr, map50=map50, map=map_)
 
 
 def _metrics(p: float, r: float, m50: float, m: float, prefix: str = "test") -> dict[str, float]:
@@ -29,27 +23,6 @@ def _metrics(p: float, r: float, m50: float, m: float, prefix: str = "test") -> 
         f"{prefix}/mAP50": m50,
         f"{prefix}/mAP50-95": m,
     }
-
-
-def test_headline_metrics_keys_and_values() -> None:
-    out = headline_metrics(_box(0.8, 0.7, 0.6, 0.5))
-    assert out == {
-        "test/precision": 0.8,
-        "test/recall": 0.7,
-        "test/mAP50": 0.6,
-        "test/mAP50-95": 0.5,
-    }
-
-
-def test_headline_metrics_prefix_override() -> None:
-    out = headline_metrics(_box(1, 1, 1, 1), prefix="val")
-    assert set(out) == {"val/precision", "val/recall", "val/mAP50", "val/mAP50-95"}
-
-
-def test_headline_metrics_coerces_float() -> None:
-    out = headline_metrics(_box(1, 0, 0, 0))  # ints in
-    assert out["test/precision"] == 1.0
-    assert isinstance(out["test/precision"], float)
 
 
 def test_percentiles_median() -> None:

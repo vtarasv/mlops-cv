@@ -1,17 +1,25 @@
 # Orchestration (Airflow continuous training)
 
 An Airflow **3.2.2** stack (LocalExecutor, Docker Compose) runs the continuous-training loop as a
-DAG: validate the dataset, train a challenger, evaluate it against the champion, and promote it to
-the `champion` registry alias **only on a champion/challenger win**. The DAG fires weekly **or**
-on an external *new data* asset event — the hook a drift monitor POSTs to close the
-monitor → trigger → retrain loop.
+DAG: ensure the dataset exists and is valid (rebuilding it from raw via the Beam **ingestion**
+pipeline if not), **profile** it (quality report + drift baseline, skipped when already up to
+date — see [batch-pipeline.md](batch-pipeline.md)), validate what training will consume, train a
+challenger, evaluate it against the champion, and promote it to the `champion` registry alias
+**only on a champion/challenger win**. The DAG fires weekly **or** on an external *new data*
+asset event — the hook a drift monitor POSTs to close the monitor → trigger → retrain loop.
 
 ```mermaid
 flowchart LR
   cron["weekly cron<br/>(Mon 03:00 UTC)"] --> dagrun
   asset["asset event<br/>new-training-data"] --> dagrun
   subgraph dagrun["aerial_object_detection_ct"]
-    v["validate_data"] --> t["train (GPU container)"]
+    cs{"check_subset"} -->|missing / invalid| bs["build_subset<br/>(Beam ingest, CPU container)"]
+    cs -->|ok| cp{"check_profiled"}
+    bs --> cp
+    cp -->|stale| pf["profile<br/>(Beam, CPU container)"]
+    cp -->|current| v["validate_data"]
+    pf --> v
+    v --> t["train (GPU container)"]
     t --> p["parse_train_output"] --> e["evaluate (GPU container)"]
     e --> g{"gate"}
     g -->|passed| pr["promote"]
@@ -31,9 +39,10 @@ make airflow-up      # brings the MLflow stack up, builds the GPU train image, s
 # make airflow-env   # print the derived host wiring (paths + docker gid) for debugging
 ```
 
-`make airflow-up` depends on the MLflow stack (shared Docker network + tracking server) and on
-`make train-image` (the GPU image the DAG launches). DAGs start **paused**: trigger `smoke_test`
-once to prove the stack executes tasks, then unpause/trigger `aerial_object_detection_ct`.
+`make airflow-up` depends on the MLflow stack (shared Docker network + tracking server), on
+`make train-image` (the GPU image the DAG launches), and on `make beam-image` (the CPU data-prep
+image for the ingestion and profiling tasks). DAGs start **paused**: trigger `smoke_test` once to
+prove the stack executes tasks, then unpause/trigger `aerial_object_detection_ct`.
 
 ## Topology
 
@@ -72,33 +81,60 @@ Notable wiring (all in `docker-compose/docker-compose.airflow.yml` + `.env.airfl
 
 Every task is a thin wrapper over `mlops_cv` code — the DAG contains orchestration only:
 
-1. **`validate_data`** (in-process) — `validate_dataset(...)` fails fast on schema/value skew
+1. **`check_subset`** (branch, in-process) — validates the source subset (including its demo
+   store); on missing/invalid it self-heals via `build_subset`, otherwise jumps ahead to
+   `check_profiled`.
+2. **`build_subset`** (`DockerOperator`, CPU, `mlops-cv-beam` image) — the Beam **ingestion
+   pipeline** (`python -m mlops_cv.pipelines.ingest_pipeline`, DirectRunner): rebuilds the
+   subset **and its demo store** from the raw dataset (requires `HOST_RAW_DIR`; the raw
+   directory is mounted read-only into this task only). Airflow↔Beam
+   handoff: Airflow decides *when* a pipeline runs; Beam parallelizes *the work inside it*.
+3. **`check_profiled`** (branch, in-process) — compares the profile's provenance stamp (source
+   manifest hash + profile parameters) against the subset; **skips the profile task when up to
+   date**.
+4. **`profile`** (`DockerOperator`, CPU, `mlops-cv-beam` image) — the Beam **profiling
+   pipeline** (see [batch-pipeline.md](batch-pipeline.md)): per-frame quality metrics,
+   dataset-level aggregations, and the drift baseline. Fails **only** on corrupt/unreadable
+   images; statistical flags are informational rows in the quality report.
+5. **`validate_data`** (in-process) — `validate_dataset(...)` fails fast on schema/value skew
    before any GPU time is spent.
-2. **`train`** (`DockerOperator`, GPU) — `python -m mlops_cv.training.train` in the
-   `mlops-cv-train` image: trains, logs to MLflow, registers a challenger version. Its last stdout
-   line — `{"version", "run_id"}` — becomes the task's XCom.
-3. **`parse_train_output`** (in-process) — parses that JSON for downstream templating.
-4. **`evaluate`** (`DockerOperator`, GPU) — `python -m mlops_cv.eval.evaluate --run-id <train run>
+6. **`train`** (`DockerOperator`, GPU) — `python -m mlops_cv.training.train` in the
+   `mlops-cv-train` image: trains, logs to MLflow, registers a challenger version. Its last
+   stdout line — `{"version", "run_id"}` — becomes the task's XCom.
+7. **`parse_train_output`** (in-process) — parses that JSON for downstream templating.
+8. **`evaluate`** (`DockerOperator`, GPU) — `python -m mlops_cv.eval.evaluate --run-id <train run>
    --exit-zero`: logs the held-out test metrics, comparison report, gate, and the qualitative
    artifacts **onto the training run** (one run = one model version's full record; see
-   [evaluation.md](evaluation.md)). `--exit-zero` keeps a challenger loss from failing the task —
-   the verdict is data, not an error. Its last stdout line is the gate-verdict JSON.
-5. **`gate`** (branch, in-process) — pure JSON check on the verdict: `promote` or `skip_promotion`.
-6. **`promote`** (in-process) — points the `champion` registry alias at the challenger version.
+   [evaluation.md](evaluation.md)). Demo videos render from the subset's demo store — no raw
+   data involved. `--exit-zero` keeps a challenger loss from failing the task — the verdict is
+   data, not an error. Its last stdout line is the gate-verdict JSON.
+9. **`gate`** (branch, in-process) — pure JSON check on the verdict: `promote` or `skip_promotion`.
+10. **`promote`** (in-process) — points the `champion` registry alias at the challenger version.
+
+The two tasks that *join* the graph after a branch — `check_profiled` and `validate_data` —
+carry `trigger_rule="none_failed_min_one_success"`: with the default `all_success` a skipped
+upstream path (subset already valid, profile already current) would cascade the skip through the
+rest of the DAG.
 
 Task containers get the host's dataset directories bind-mounted **at the same absolute path**
 ("path parity"), so the absolute `path:` stamped into the generated dataset YAML resolves
-in-container unchanged: the subset (`HOST_SUBSET_DIR`) and the pretrained-weights directory
-(`HOST_WEIGHTS`'s parent) read-write, and the raw dataset directory (`HOST_RAW_DIR`) read-only for
-demo-video rendering — leave the latter empty to skip demos.
+in-container unchanged: the subset directory (`HOST_SUBSET_DIR` — including its `demo/` store
+and `profile/` outputs) and the pretrained-weights directory (`HOST_WEIGHTS`'s parent)
+read-write, and the raw dataset directory (`HOST_RAW_DIR`) read-only **into the `build_subset`
+task only** — leave it empty if the subset (with demo store) already exists; the self-heal
+rebuild then fails if ever needed. `make airflow-up` **pre-creates the subset directory**
+(user-owned) so every bind mount has an existing source — the daemon rejects a `DockerOperator`
+mount whose source path is missing.
 
-The four machine-specific values — `HOST_SUBSET_DIR` (reused from `DATA__SUBSET_DIR` in your local
+The machine-specific values — `HOST_SUBSET_DIR` (reused from `DATA__SUBSET_DIR` in your local
 `.env`; **required**), `HOST_WEIGHTS` (reused from `TRAINING__WEIGHTS`; **required**),
-`HOST_RAW_DIR` (reused from `DATA__RAW_DIR`), and `DOCKER_GID` (the host `docker` group) — are
-**derived and exported by `make airflow-up`**, so none is committed. `make airflow-env` prints the
-resolved values. Invoking `docker compose` directly without exporting
-`HOST_SUBSET_DIR`/`HOST_WEIGHTS`/`DOCKER_GID` **fails loudly** with a hint, rather than silently
-mounting the wrong path.
+`HOST_RAW_DIR` (reused from `DATA__RAW_DIR`), and `DOCKER_GID`
+(the host `docker` group) — are **derived and exported by `make airflow-up`**, so none is
+committed. The image tags `TRAIN_IMAGE`/`BEAM_IMAGE` are exported from the same place — the
+Makefile is their **single source**.
+`make airflow-env` prints all resolved values. Invoking `docker compose`
+directly without exporting them **fails loudly** with a hint, rather than silently mounting the
+wrong path or launching a stale image.
 
 ## Scheduling: cron + asset events
 
@@ -137,5 +173,6 @@ and the branch don't change between local and cloud. Only the infrastructure und
 - **The GPU tasks swap `DockerOperator` → `KubernetesPodOperator`**.
   Each `train`/`evaluate` task becomes a pod on
   a GPU node pool. It is isolated to the operator definition; the surrounding DAG is untouched.
+- **The Beam tasks (`build_subset`, `profile`)** - see [batch-pipeline.md](batch-pipeline.md).
 - **MLflow is reached over a cloud endpoint** injected as an env var / secret instead of Docker DNS,
   selected by the `ENV` config switch.

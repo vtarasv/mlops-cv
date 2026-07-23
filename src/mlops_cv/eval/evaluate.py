@@ -11,7 +11,6 @@ machine-readable verdict JSON.
 from __future__ import annotations
 
 import argparse
-import json
 import logging
 import re
 import tempfile
@@ -30,6 +29,7 @@ from mlops_cv.data.subset import (
 from mlops_cv.eval import gate as gate_mod
 from mlops_cv.eval import report as report_mod
 from mlops_cv.eval.report import headline_metrics, percentiles
+from mlops_cv.orchestration.handoff import GateVerdict
 from mlops_cv.tracking import client
 from mlops_cv.training.callbacks import per_class_metrics
 
@@ -304,13 +304,11 @@ def main(argv: list[str] | None = None) -> int:
 
     # Machine-readable verdict: orchestrators read the last stdout line (DockerOperator XCom).
     print(
-        json.dumps(
-            {
-                "passed": gate.passed,
-                "candidate_primary": gate.candidate_primary,
-                "champion_primary": gate.champion_primary,
-            }
-        ),
+        GateVerdict(
+            passed=gate.passed,
+            candidate_primary=gate.candidate_primary,
+            champion_primary=gate.champion_primary,
+        ).to_line(),
         flush=True,
     )
     return 0 if args.exit_zero or gate.passed else 1

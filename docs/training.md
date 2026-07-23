@@ -36,7 +36,9 @@ run logs to the server named by `MLFLOW__TRACKING_URI` (the local stack by defau
 
 The process's **last stdout line** is a machine-readable handoff for orchestrators:
 `{"version": "<registered version>", "run_id": "<mlflow run id>"}` — a continuous-training DAG (or
-a shell script) reads it to evaluate and promote the exact version this run produced.
+a shell script) reads it to evaluate and promote the exact version this run produced. The payload
+schema (`TrainHandoff`) and the container command line are owned by the shared contract module
+`mlops_cv.orchestration.handoff`, which both the emitter and the orchestrator import.
 
 ## What gets logged
 

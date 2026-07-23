@@ -100,16 +100,28 @@ Every task is a thin wrapper over `mlops_cv` code — the DAG contains orchestra
    before any GPU time is spent.
 6. **`train`** (`DockerOperator`, GPU) — `python -m mlops_cv.training.train` in the
    `mlops-cv-train` image: trains, logs to MLflow, registers a challenger version. Its last
-   stdout line — `{"version", "run_id"}` — becomes the task's XCom.
-7. **`parse_train_output`** (in-process) — parses that JSON for downstream templating.
+   stdout line — the `TrainHandoff` line `{"version", "run_id"}` — becomes the task's XCom.
+7. **`parse_train_output`** (in-process) — parses that handoff line for downstream templating.
 8. **`evaluate`** (`DockerOperator`, GPU) — `python -m mlops_cv.eval.evaluate --run-id <train run>
    --exit-zero`: logs the held-out test metrics, comparison report, gate, and the qualitative
    artifacts **onto the training run** (one run = one model version's full record; see
    [evaluation.md](evaluation.md)). Demo videos render from the subset's demo store — no raw
    data involved. `--exit-zero` keeps a challenger loss from failing the task — the verdict is
-   data, not an error. Its last stdout line is the gate-verdict JSON.
-9. **`gate`** (branch, in-process) — pure JSON check on the verdict: `promote` or `skip_promotion`.
+   data, not an error. Its last stdout line is the `GateVerdict` JSON.
+9. **`gate`** (branch, in-process) — pure verdict-line check: `promote` or `skip_promotion`.
 10. **`promote`** (in-process) — points the `champion` registry alias at the challenger version.
+
+### The container contract
+
+The DAG↔container seam is owned by one module — `mlops_cv.orchestration.handoff` — imported by
+both ends. The DAG builds every container command with it (`train_cmd`, `evaluate_cmd`,
+`ingest_cmd`, `profile_cmd`); standing policy is the module's body — `--exit-zero`, the
+DirectRunner choice, deriving the model under test from the training run
+(`best_weights_uri(run_id)` → `runs:/<id>/weights/best.pt`) — and the DAG passes only per-run
+values (some of them Airflow Jinja templates, rendered before the container starts). The replying
+entrypoints emit their last stdout line through the same module's payload models: train's
+`TrainHandoff`, evaluate's `GateVerdict`. Parsing tolerates unknown JSON keys, because the
+Airflow and task images are built separately and may skew.
 
 The two tasks that *join* the graph after a branch — `check_profiled` and `validate_data` —
 carry `trigger_rule="none_failed_min_one_success"`: with the default `all_success` a skipped

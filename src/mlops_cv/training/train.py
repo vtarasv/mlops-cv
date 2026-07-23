@@ -10,7 +10,6 @@ from __future__ import annotations
 import argparse
 import contextlib
 import hashlib
-import json
 import logging
 import os
 import warnings
@@ -18,6 +17,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from mlops_cv.config import Settings, get_settings
+from mlops_cv.orchestration.handoff import BEST_WEIGHTS_RELPATH, TrainHandoff
 from mlops_cv.tracking import client
 from mlops_cv.training.callbacks import make_batch_params_callback, make_per_class_callback
 
@@ -72,7 +72,7 @@ def _register_model(run: ActiveRun, name: str) -> str:
     with contextlib.suppress(RestException):
         registry.create_registered_model(name)  # ok if it already exists
     version = registry.create_model_version(
-        name=name, source=f"{run.info.artifact_uri}/weights/best.pt", run_id=run.info.run_id
+        name=name, source=f"{run.info.artifact_uri}/{BEST_WEIGHTS_RELPATH}", run_id=run.info.run_id
     )
     return version.version
 
@@ -121,7 +121,7 @@ def main(argv: list[str] | None = None) -> int:
         run_id = run.info.run_id
 
     # Machine-readable handoff: orchestrators read the last stdout line (DockerOperator XCom).
-    print(json.dumps({"version": version, "run_id": run_id}), flush=True)
+    print(TrainHandoff(version=version, run_id=run_id).to_line(), flush=True)
     return 0
 
 

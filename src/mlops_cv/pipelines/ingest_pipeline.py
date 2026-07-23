@@ -17,7 +17,6 @@ Run locally:
 
 from __future__ import annotations
 
-import csv
 import io
 import logging
 from collections.abc import Iterator
@@ -32,11 +31,21 @@ from PIL import Image
 
 from mlops_cv.config import get_settings
 from mlops_cv.data.convert_visdrone_vid import convert_sequence_text, labels_to_text
-from mlops_cv.data.manifest import (
+from mlops_cv.data.subset import (
     DEMO_DIRNAME,
+    IMAGES_DIRNAME,
+    LABELS_DIRNAME,
     MANIFEST_FIELDS,
-    RAW_SPLIT_DIRS,
+    MANIFEST_FILENAME,
     SPLITS,
+    demo_image_relpath,
+    demo_label_relpath,
+    frame_name,
+    image_relpath,
+    label_relpath,
+    manifest_csv_line,
+    manifest_header,
+    raw_split_dir,
     stamp_dataset_yaml,
 )
 from mlops_cv.eval.visualize import ClipSpec, load_demo_clips
@@ -109,7 +118,7 @@ class ConvertSequenceDoFn(beam.DoFn):
     def process(self, element: tuple[str, str]) -> Iterator[dict]:
         split, seq = element
         self.sequences_processed.inc()
-        base = FileSystems.join(self.raw_dir, RAW_SPLIT_DIRS[split])
+        base = FileSystems.join(self.raw_dir, raw_split_dir(split))
         frames = _match_frames(FileSystems.join(base, "sequences", seq))
         if not frames:
             self.sequences_empty.inc()
@@ -122,7 +131,7 @@ class ConvertSequenceDoFn(beam.DoFn):
         for idx in sorted(by_frame):  # only frames that have surviving boxes
             if (idx - 1) % self.stride != 0 or idx not in frames:
                 continue
-            name = f"{seq}_{idx:07d}"
+            name = frame_name(seq, idx)
             boxes = by_frame[idx]
             counts = {0: 0, 1: 0, 2: 0}
             for box in boxes:
@@ -132,8 +141,8 @@ class ConvertSequenceDoFn(beam.DoFn):
                 "split": split,
                 "sequence": seq,
                 "frame_index": idx,
-                "image_relpath": f"images/{split}/{name}.jpg",
-                "label_relpath": f"labels/{split}/{name}.txt",
+                "image_relpath": image_relpath(split, name),
+                "label_relpath": label_relpath(split, name),
                 "width": width,
                 "height": height,
                 "n_boxes": len(boxes),
@@ -166,15 +175,15 @@ class MaterializeFrameDoFn(beam.DoFn):
 class ExpandDemoClipDoFn(beam.DoFn):
     """Expand one demo clip into per-frame copy tasks (full frame rate, empties included)."""
 
-    def __init__(self, raw_dir: str, raw_split: str) -> None:
+    def __init__(self, raw_dir: str, split: str) -> None:
         super().__init__()
         self.raw_dir = raw_dir
-        self.raw_split = raw_split  # raw split dir suffix, e.g. "test-dev"
+        self.split = split  # YOLO split name, e.g. "test"
         self.demo_clips = Metrics.counter(COUNTER_NAMESPACE, "demo_clips")
 
     def process(self, clip: ClipSpec) -> Iterator[dict]:
         self.demo_clips.inc()
-        base = FileSystems.join(self.raw_dir, f"VisDrone2019-VID-{self.raw_split}")
+        base = FileSystems.join(self.raw_dir, raw_split_dir(self.split))
         frames = _match_frames(FileSystems.join(base, "sequences", clip.sequence))
         if not frames:
             logger.warning("demo clip %s has no frames under %s", clip.sequence, base)
@@ -191,10 +200,10 @@ class ExpandDemoClipDoFn(beam.DoFn):
             yield {
                 "sequence": clip.sequence,
                 "src_image": frames[idx],
-                "dest_image": f"{DEMO_DIRNAME}/images/{clip.sequence}/{idx:07d}.jpg",
+                "dest_image": demo_image_relpath(clip.sequence, idx),
                 # No boxes -> no label file: the renderer treats a missing file as "no GT".
                 "label_text": labels_to_text(boxes) if boxes else None,
-                "dest_label": f"{DEMO_DIRNAME}/labels/{clip.sequence}/{idx:07d}.txt",
+                "dest_label": demo_label_relpath(clip.sequence, idx),
             }
 
 
@@ -216,15 +225,9 @@ class MaterializeDemoFrameDoFn(beam.DoFn):
         self.demo_frames_copied.inc()
 
 
-def _row_to_csv_line(row: dict[str, object]) -> str:
-    buf = io.StringIO()
-    csv.writer(buf).writerow([row[field] for field in MANIFEST_FIELDS])
-    return buf.getvalue().rstrip("\r\n")
-
-
 def _list_sequences(raw_dir: str, split: str) -> list[str]:
     """Sorted sequence names of one raw split, from its annotation files (portable matching)."""
-    pattern = FileSystems.join(raw_dir, RAW_SPLIT_DIRS[split], "annotations", "*.txt")
+    pattern = FileSystems.join(raw_dir, raw_split_dir(split), "annotations", "*.txt")
     names = sorted(Path(m.path).stem for m in FileSystems.match([pattern])[0].metadata_list)
     if not names:
         raise RuntimeError(
@@ -241,11 +244,11 @@ def _prepare_output_dirs(output_dir: str, demo_sequences: list[str]) -> None:
     ``FileSystems.copy`` does not create parent directories (and ``mkdirs`` raises on an
     existing leaf), so everything is created here up front.
     """
-    for sub in ("images", "labels", DEMO_DIRNAME):
+    for sub in (IMAGES_DIRNAME, LABELS_DIRNAME, DEMO_DIRNAME):
         root = FileSystems.join(output_dir, sub)
         if FileSystems.exists(root):
             FileSystems.delete([root])
-    for sub in ("images", "labels"):
+    for sub in (IMAGES_DIRNAME, LABELS_DIRNAME):
         for split in SPLITS:
             FileSystems.mkdirs(FileSystems.join(output_dir, sub, split))
         for seq in demo_sequences:
@@ -286,13 +289,12 @@ def run(options: IngestOptions) -> int:
             # Fusion break: sequences can be heavily skewed; rebalance the per-frame IO.
             | "RebalanceFrames" >> beam.Reshuffle()
             | "MaterializeFrames" >> beam.ParDo(MaterializeFrameDoFn(output_dir))
-            | "ToCsvLine" >> beam.Map(_row_to_csv_line)
+            | "ToCsvLine" >> beam.Map(manifest_csv_line)
             | "WriteManifest"
             >> WriteToText(
-                FileSystems.join(output_dir, "manifest"),
-                file_name_suffix=".csv",
+                FileSystems.join(output_dir, MANIFEST_FILENAME),
                 shard_name_template="",
-                header=",".join(MANIFEST_FIELDS),
+                header=manifest_header(),
             )
         )
         if demo_config:

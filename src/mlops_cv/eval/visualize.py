@@ -16,6 +16,7 @@ import yaml
 from PIL import Image, ImageDraw, ImageFont
 
 from mlops_cv.data.convert_visdrone_vid import YOLO_NAMES, YoloBox, image_size, read_yolo_labels
+from mlops_cv.data.subset import IMAGES_DIRNAME, LABELS_DIRNAME
 
 GT_COLOR = (0, 200, 0)  # ground truth: green
 PRED_COLOR = (220, 40, 40)  # predictions: red
@@ -32,10 +33,10 @@ class ClipSpec:
 
 @dataclass(frozen=True)
 class DemoClipsConfig:
-    """Parsed ``demo_clips.yaml``: raw source split, playback fps, downscale cap, and the clips."""
+    """Parsed ``demo_clips.yaml``: source split, playback fps, downscale cap, and the clips."""
 
-    # Raw VisDrone-VID split suffix, e.g. "test-dev". Used only by the ingest pipeline (it
-    # materializes the clips into the subset's demo store); rendering never touches raw data.
+    # YOLO split name, e.g. "test". Used only by the ingest pipeline (it materializes the
+    # clips into the subset's demo store); rendering never touches raw data.
     split: str
     fps: int
     max_side: int
@@ -70,7 +71,7 @@ def load_demo_clips(path: str | Path) -> DemoClipsConfig:
     """Parse the demo-clips YAML into a :class:`DemoClipsConfig`."""
     data = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
     return DemoClipsConfig(
-        split=str(data.get("split", "test-dev")),
+        split=str(data.get("split", "test")),
         fps=int(data.get("fps", 30)),
         max_side=int(data.get("max_side", 1280)),
         clips=[_parse_clip(c) for c in data["clips"]],
@@ -180,7 +181,7 @@ def render_demo_clips(
     written: list[Path] = []
 
     for clip in config.clips:
-        frame_paths = sorted((demo_dir / "images" / clip.sequence).glob("*.jpg"))
+        frame_paths = sorted((demo_dir / IMAGES_DIRNAME / clip.sequence).glob("*.jpg"))
         frames = _frame_window(frame_paths, clip)
         if not frames:
             continue
@@ -190,7 +191,7 @@ def render_demo_clips(
         dst_w, dst_h = dst_w - dst_w % 2, dst_h - dst_h % 2  # even dims required by yuv420p/libx264
         line_w = _line_width(dst_h)
         font = _load_font(_label_font_size(dst_h))
-        labels_dir = demo_dir / "labels" / clip.sequence
+        labels_dir = demo_dir / LABELS_DIRNAME / clip.sequence
 
         dest = out_dir / f"{clip.sequence}.mp4"
         writer = imageio.get_writer(

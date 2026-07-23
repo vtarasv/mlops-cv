@@ -19,7 +19,13 @@ from apache_beam.testing.test_pipeline import TestPipeline as BeamTestPipeline  
 from apache_beam.testing.util import assert_that, equal_to  # noqa: E402
 from PIL import Image  # noqa: E402
 
-from mlops_cv.data.manifest import DEMO_DIRNAME, MANIFEST_FIELDS, RAW_SPLIT_DIRS  # noqa: E402
+from mlops_cv.data.subset import (  # noqa: E402
+    DEMO_DIRNAME,
+    MANIFEST_FIELDS,
+    MANIFEST_FILENAME,
+    RAW_SPLIT_DIRS,
+    demo_store_present,
+)
 from mlops_cv.data.validate import validate_dataset  # noqa: E402
 from mlops_cv.pipelines.ingest_pipeline import ConvertSequenceDoFn, main  # noqa: E402
 
@@ -66,7 +72,7 @@ def raw(tmp_path: Path) -> Path:
 @pytest.fixture
 def demo_yaml(tmp_path: Path) -> Path:
     p = tmp_path / "demo_clips.yaml"
-    p.write_text("split: test-dev\nfps: 30\nmax_side: 1920\nclips:\n  - seqC\n", encoding="utf-8")
+    p.write_text("split: test\nfps: 30\nmax_side: 1920\nclips:\n  - seqC\n", encoding="utf-8")
     return p
 
 
@@ -120,7 +126,7 @@ def test_main_end_to_end(raw: Path, demo_yaml: Path, tmp_path: Path) -> None:
     # Manifest: 2 train + 1 val + 2 test rows, standard schema, single shard.
     import csv
 
-    with (out / "manifest.csv").open(newline="", encoding="utf-8") as fh:
+    with (out / MANIFEST_FILENAME).open(newline="", encoding="utf-8") as fh:
         rows = list(csv.DictReader(fh))
     assert list(rows[0].keys()) == MANIFEST_FIELDS
     assert sorted((r["split"], r["sequence"], r["frame_index"]) for r in rows) == [
@@ -132,6 +138,7 @@ def test_main_end_to_end(raw: Path, demo_yaml: Path, tmp_path: Path) -> None:
     ]
 
     # Demo store: ALL 3 seqC frames at full rate; labels only for frames with boxes (1 and 3).
+    assert demo_store_present(out)
     demo = out / DEMO_DIRNAME
     assert sorted(p.name for p in (demo / "images" / "seqC").glob("*.jpg")) == [
         "0000001.jpg",
@@ -165,6 +172,7 @@ def test_main_without_demo_clips(raw: Path, tmp_path: Path) -> None:
     ]
     assert main(argv) == 0
     assert not (out / DEMO_DIRNAME / "images").exists()
+    assert not demo_store_present(out)
 
 
 def test_main_rejects_unknown_sequence(raw: Path, tmp_path: Path) -> None:

@@ -10,9 +10,8 @@ from pathlib import Path
 
 from mlops_cv.config import get_settings
 from mlops_cv.data.convert_visdrone_vid import YOLO_NAMES
+from mlops_cv.data.subset import IMAGES_DIRNAME, IMG_EXTS, LABELS_DIRNAME, SPLITS
 
-SPLITS = ("train", "val", "test")
-IMG_EXTS = {".jpg", ".jpeg", ".png", ".bmp"}
 ALLOWED_CLASSES = set(YOLO_NAMES)
 
 
@@ -66,7 +65,8 @@ def validate_dataset(
     n_images = n_labels = n_boxes = 0
 
     for split in SPLITS:
-        images_dir, labels_dir = root / "images" / split, root / "labels" / split
+        images_dir = root / IMAGES_DIRNAME / split
+        labels_dir = root / LABELS_DIRNAME / split
         img_stems = _image_stems(images_dir)
         label_paths = _label_paths(labels_dir)
         label_stems = {p.stem for p in label_paths}

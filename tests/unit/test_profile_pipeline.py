@@ -19,7 +19,11 @@ logging.getLogger("apache_beam.utils.subprocess_server").setLevel(logging.ERROR)
 
 from PIL import Image  # noqa: E402
 
-from mlops_cv.data.manifest import write_manifest  # noqa: E402
+from mlops_cv.data.subset import (  # noqa: E402
+    MANIFEST_FILENAME,
+    manifest_csv_line,
+    manifest_header,
+)
 from mlops_cv.pipelines.profile_pipeline import StatsCombineFn, main  # noqa: E402
 from mlops_cv.pipelines.profiling import (  # noqa: E402
     PROFILE_DIRNAME,
@@ -92,7 +96,8 @@ def subset(tmp_path: Path) -> Path:
         _write_frame(root, "val", "seqA_0000041", _checkerboard(), "1 0.5 0.5 0.5 0.5\n"),
         _write_frame(root, "test", "seqA_0000061", half_split, "2 0.5 0.5 0.5 0.5\n"),
     ]
-    write_manifest(rows, root / "manifest.csv")
+    lines = [manifest_header(), *(manifest_csv_line(row) for row in rows)]
+    (root / MANIFEST_FILENAME).write_text("\n".join(lines) + "\n", encoding="utf-8")
     return root
 
 
@@ -144,7 +149,7 @@ def test_main_end_to_end(subset: Path) -> None:
     # Stamp lifecycle: current now, stale after the manifest changes.
     assert (profile_dir / STAMP_FILENAME).is_file()
     assert is_profile_current(subset)
-    (subset / "manifest.csv").write_text("changed", encoding="utf-8")
+    (subset / MANIFEST_FILENAME).write_text("changed", encoding="utf-8")
     assert not is_profile_current(subset)
 
 

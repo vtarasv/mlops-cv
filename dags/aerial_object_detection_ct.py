@@ -28,7 +28,7 @@ from airflow.timetables.assets import AssetOrTimeSchedule
 from airflow.timetables.trigger import CronTriggerTimetable
 from docker.types import DeviceRequest, Mount
 
-from mlops_cv.data.manifest import DEMO_DIRNAME
+from mlops_cv.data.subset import demo_store_present
 from mlops_cv.data.validate import DatasetValidationError, validate_dataset
 from mlops_cv.pipelines.profiling import is_profile_current
 
@@ -122,7 +122,7 @@ def aerial_object_detection_ct() -> None:
             logger.warning("subset missing/invalid (%s) -> rebuilding from raw", exc)
             return "build_subset"
         logger.info(report.summary())
-        if not any((Path(SUBSET_DIR) / DEMO_DIRNAME / "images").glob("*/*.jpg")):
+        if not demo_store_present(SUBSET_DIR):
             if HOST_RAW_DIR:
                 logger.warning("demo store missing -> rebuilding the subset from raw")
                 return "build_subset"

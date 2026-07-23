@@ -36,7 +36,7 @@ from apache_beam.options.pipeline_options import PipelineOptions
 
 from mlops_cv.config import get_settings
 from mlops_cv.data.convert_visdrone_vid import YOLO_NAMES, labels_from_text
-from mlops_cv.data.manifest import SPLITS
+from mlops_cv.data.subset import MANIFEST_FILENAME, SPLITS, manifest_rows
 from mlops_cv.pipelines import profiling, provenance
 
 logger = logging.getLogger(__name__)
@@ -210,8 +210,8 @@ def _build_profile(
 
 
 def _read_manifest(input_dir: str) -> list[dict[str, str]]:
-    with FileSystems.open(FileSystems.join(input_dir, "manifest.csv")) as fh:
-        return list(csv.DictReader(io.TextIOWrapper(fh, encoding="utf-8")))
+    with FileSystems.open(FileSystems.join(input_dir, MANIFEST_FILENAME)) as fh:
+        return manifest_rows(io.TextIOWrapper(fh, encoding="utf-8"))
 
 
 def _query_counters(result) -> dict[str, int]:  # noqa: ANN001 - Beam PipelineResult
@@ -228,7 +228,7 @@ def run(options: ProfileOptions) -> int:
     FileSystems.mkdirs(profile_dir)
 
     rows = _read_manifest(input_dir)
-    manifest_sha = provenance.manifest_sha256(Path(input_dir) / "manifest.csv")
+    manifest_sha = provenance.manifest_sha256(Path(input_dir) / MANIFEST_FILENAME)
 
     with beam.Pipeline(options=options) as p:
         outputs = (

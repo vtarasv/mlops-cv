@@ -21,6 +21,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from mlops_cv.config import Settings, get_settings
+from mlops_cv.data.subset import (
+    DEMO_DIRNAME,
+    IMAGES_DIRNAME,
+    LABELS_DIRNAME,
+    demo_store_present,
+)
 from mlops_cv.eval import gate as gate_mod
 from mlops_cv.eval import report as report_mod
 from mlops_cv.eval.report import headline_metrics, percentiles
@@ -230,9 +236,10 @@ def main(argv: list[str] | None = None) -> int:
 
         work_dir = Path(tempfile.mkdtemp(prefix="eval-"))
 
-        if args.demos_enabled:
+        if args.demos_enabled and not demo_store_present(settings.data.subset_dir):
+            logger.warning("subset has no demo store; skipping demo videos")
+        elif args.demos_enabled:
             try:
-                from mlops_cv.data.manifest import DEMO_DIRNAME
                 from mlops_cv.eval.visualize import load_demo_clips, render_demo_clips
 
                 # Frames + GT come from the subset's demo store (built by the ingest pipeline).
@@ -254,8 +261,8 @@ def main(argv: list[str] | None = None) -> int:
 
                 crops = run_error_analysis(
                     model,
-                    settings.data.subset_dir / "images" / args.split,
-                    settings.data.subset_dir / "labels" / args.split,
+                    settings.data.subset_dir / IMAGES_DIRNAME / args.split,
+                    settings.data.subset_dir / LABELS_DIRNAME / args.split,
                     model.names,
                     work_dir / "error_analysis",
                 )

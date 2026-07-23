@@ -1,6 +1,6 @@
 # Fixed, held-out VisDrone-VID test-dev clips for qualitative GT-vs-prediction demo videos
 # (the same clips every run, so experiments stay visually comparable).
-split: test-dev
+split: test
 fps: 30   # playback speed only: VisDrone-VID stores frames indexed by number, with no source video
 max_side: 1920   # downscale cap
 clips:

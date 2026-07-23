@@ -38,18 +38,18 @@ def test_draw_boxes_empty_leaves_image_blank() -> None:
 def test_load_demo_clips_parses_strings_and_mappings(tmp_path: Path) -> None:
     cfg_path = tmp_path / "demo.yaml"
     cfg_path.write_text(
-        "split: test-dev\nfps: 25\nmax_side: 960\n"
+        "split: val\nfps: 25\nmax_side: 960\n"
         "clips:\n  - seqA\n  - {sequence: seqB, start: 5, length: 10}\n",
         encoding="utf-8",
     )
     cfg = load_demo_clips(cfg_path)
-    assert (cfg.split, cfg.fps, cfg.max_side) == ("test-dev", 25, 960)
+    assert (cfg.split, cfg.fps, cfg.max_side) == ("val", 25, 960)
     assert cfg.clips == [ClipSpec("seqA", 1, None), ClipSpec("seqB", 5, 10)]
 
 
 def test_committed_demo_clips_config_is_full_length() -> None:
     cfg = load_demo_clips("configs/demo_clips.yaml")
-    assert cfg.split == "test-dev"
+    assert cfg.split == "test"
     assert [c.sequence for c in cfg.clips] == [
         "uav0000161_00000_v",
         "uav0000355_00001_v",

@@ -12,6 +12,7 @@ from pathlib import Path
 from PIL import Image, ImageFilter, ImageStat
 
 from mlops_cv.data.convert_visdrone_vid import YoloBox
+from mlops_cv.data.subset import MANIFEST_FILENAME
 from mlops_cv.pipelines import provenance
 
 PROFILE_DIRNAME = "profile"
@@ -95,5 +96,5 @@ def is_profile_current(subset_dir: str | Path) -> bool:
     """True iff the subset's profile stamp matches its manifest and the current parameters."""
     subset = Path(subset_dir)
     return provenance.is_current(
-        subset / "manifest.csv", subset / PROFILE_DIRNAME / STAMP_FILENAME, PROFILE_PARAMS
+        subset / MANIFEST_FILENAME, subset / PROFILE_DIRNAME / STAMP_FILENAME, PROFILE_PARAMS
     )

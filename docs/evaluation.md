@@ -52,7 +52,9 @@ Useful flags: `--split` (default `test`), gate floors `--min-map/--min-map50/--m
 `0.01`), `--promote`, and `--no-latency` / `--no-demos` / `--no-crops`. The process exits `0` on a
 gate pass and `1` on a fail; `--exit-zero` forces `0` so an orchestrator can treat a challenger
 loss as a branch, not a failure, and decide on the **verdict line** instead — the last stdout line
-is machine-readable JSON: `{"passed": …, "candidate_primary": …, "champion_primary": …}`.
+is machine-readable JSON: `{"passed": …, "candidate_primary": …, "champion_primary": …}`. The
+verdict schema (`GateVerdict`) and the container command line are owned by the shared contract
+module `mlops_cv.orchestration.handoff`, which both the emitter and the orchestrator import.
 
 ## What gets logged
 

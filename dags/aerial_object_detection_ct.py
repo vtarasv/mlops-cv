@@ -6,15 +6,15 @@ in ``DockerOperator`` containers on the shared platform network — GPU train/ev
 image, CPU data prep (Beam ingestion + dataset profiling) in the beam image. Fires weekly or on
 a ``new-training-data`` asset event (POSTed by an external producer, e.g. a drift monitor).
 
-Container contract: ``train`` prints ``{"version", "run_id"}`` as its last stdout line (XCom);
-``evaluate --run-id --exit-zero`` logs test metrics + report + visuals onto the same training run
-and prints the gate-verdict JSON the branch decides on. The challenger is promoted to the
-``champion`` registry alias only on a gate pass.
+Container contract (owned by ``mlops_cv.orchestration.handoff`` — both ends import it):
+the DAG builds each container's command there, ``train`` replies with a ``TrainHandoff``
+line (its last stdout line = XCom), and ``evaluate`` logs test metrics + report + visuals
+onto the same training run and replies with the ``GateVerdict`` line the branch decides
+on. The challenger is promoted to the ``champion`` registry alias only on a gate pass.
 """
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 from datetime import timedelta
@@ -30,7 +30,17 @@ from docker.types import DeviceRequest, Mount
 
 from mlops_cv.data.subset import demo_store_present
 from mlops_cv.data.validate import DatasetValidationError, validate_dataset
+from mlops_cv.orchestration.handoff import (
+    GateVerdict,
+    TrainHandoff,
+    evaluate_cmd,
+    ingest_cmd,
+    profile_cmd,
+    train_cmd,
+)
 from mlops_cv.pipelines.profiling import is_profile_current
+
+# pyright: reportUnusedExpression=false
 
 logger = logging.getLogger(__name__)
 
@@ -132,15 +142,7 @@ def aerial_object_detection_ct() -> None:
     # The Airflow->Beam handoff.
     build_subset = DockerOperator(
         task_id="build_subset",
-        command=[
-            "python",
-            "-m",
-            "mlops_cv.pipelines.ingest_pipeline",
-            "--runner",
-            "DirectRunner",
-            f"--raw-dir={HOST_RAW_DIR}",
-            f"--output-dir={SUBSET_DIR}",
-        ],
+        command=ingest_cmd(raw_dir=HOST_RAW_DIR, output_dir=SUBSET_DIR),
         **{**_CPU_DOCKER_COMMON, "mounts": _INGEST_MOUNTS},
     )
 
@@ -154,14 +156,7 @@ def aerial_object_detection_ct() -> None:
 
     profile = DockerOperator(
         task_id="profile",
-        command=[
-            "python",
-            "-m",
-            "mlops_cv.pipelines.profile_pipeline",
-            "--runner",
-            "DirectRunner",
-            f"--input-dir={SUBSET_DIR}",
-        ],
+        command=profile_cmd(input_dir=SUBSET_DIR),
         **_CPU_DOCKER_COMMON,
     )
 
@@ -174,45 +169,33 @@ def aerial_object_detection_ct() -> None:
 
     train = DockerOperator(
         task_id="train",
-        command=["python", "-m", "mlops_cv.training.train", "--epochs", "{{ params.epochs }}"],
+        command=train_cmd(epochs="{{ params.epochs }}"),
         **_GPU_DOCKER_COMMON,
     )
 
     @task
     def parse_train_output(raw: str) -> dict[str, str]:
         """Parse train's handoff line into the XCom dict downstream tasks template against."""
-        info = json.loads(raw)
-        return {"version": str(info["version"]), "run_id": str(info["run_id"])}
+        return TrainHandoff.parse(raw).model_dump()
 
     _run_id = "{{ ti.xcom_pull(task_ids='parse_train_output')['run_id'] }}"
     evaluate = DockerOperator(
         task_id="evaluate",
-        command=[
-            "python",
-            "-m",
-            "mlops_cv.eval.evaluate",
-            "--model",
-            f"runs:/{_run_id}/weights/best.pt",
-            "--run-id",
-            _run_id,  # consolidate test metrics + report + visuals on the training run
-            "--exit-zero",  # a challenger loss is a verdict for the branch, not a task failure
-            "--batch",
-            "8",
-        ],
+        command=evaluate_cmd(run_id=_run_id),
         **_GPU_DOCKER_COMMON,
     )
 
     @task.branch
     def gate(verdict_line: str) -> str:
-        """Champion/challenger decision on evaluate's verdict — pure JSON, no MLflow."""
-        verdict = json.loads(verdict_line)
+        """Champion/challenger decision on evaluate's verdict — pure parsing, no MLflow."""
+        verdict = GateVerdict.parse(verdict_line)
         logger.info(
             "gate: passed=%s candidate=%s champion=%s",
-            verdict["passed"],
-            verdict.get("candidate_primary"),
-            verdict.get("champion_primary"),
+            verdict.passed,
+            verdict.candidate_primary,
+            verdict.champion_primary,
         )
-        return "promote" if verdict["passed"] else "skip_promotion"
+        return "promote" if verdict.passed else "skip_promotion"
 
     @task
     def promote(train_info: dict[str, str]) -> None:

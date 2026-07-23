@@ -15,12 +15,13 @@ page here as it lands.
   latency stub.
 - [Orchestration](orchestration.md) — Airflow continuous-training DAG (LocalExecutor,
   DockerOperator GPU tasks, asset-event trigger).
+- [Batch data pipelines](batch-pipeline.md) — Apache Beam ingestion (raw → subset + demo store)
+  and dataset profiling / drift baseline.
 
 ## Planned
 
 | Doc | Topic |
 |-----|-------|
-| `batch-pipeline.md` | Apache Beam tiling pipeline |
 | `streaming.md` | Redpanda/Kafka streaming inference |
 | `optimization.md` | ONNX / TensorRT FP16 + INT8 (edge-sim) |
 | `containers.md`, `serving.md` | Compose parity, FastAPI/Triton serving |

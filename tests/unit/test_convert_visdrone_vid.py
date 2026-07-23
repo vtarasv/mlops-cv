@@ -11,6 +11,9 @@ from mlops_cv.data.convert_visdrone_vid import (
     YoloBox,
     convert_annotation_line,
     convert_sequence,
+    convert_sequence_text,
+    labels_from_text,
+    labels_to_text,
     read_yolo_labels,
     write_label_file,
 )
@@ -111,6 +114,18 @@ def test_convert_sequence_groups_by_frame_and_drops_all_skipped(tmp_path: Path) 
     assert [b.cls for b in by_frame[3]] == [2]
 
 
+def test_convert_sequence_text_matches_file_variant(tmp_path: Path) -> None:
+    lines = [
+        _line(frame=1, cat=1, left=10, top=10, w=20, h=20),
+        _line(frame=2, cat=4, left=30, top=30, w=20, h=20),
+    ]
+    text = "\n".join(lines) + "\n"
+    ann = tmp_path / "seq.txt"
+    ann.write_text(text, encoding="utf-8")
+    assert convert_sequence_text(text, (100, 100)) == convert_sequence(ann, (100, 100))
+    assert set(convert_sequence_text(text, (100, 100))) == {1, 2}
+
+
 def test_yolobox_to_line_format() -> None:
     assert YoloBox(2, 0.5, 0.25, 0.1, 0.2).to_line() == "2 0.500000 0.250000 0.100000 0.200000"
 
@@ -136,3 +151,22 @@ def test_read_yolo_labels_skips_blank_and_malformed(tmp_path: Path) -> None:
     out = read_yolo_labels(p)  # only the one well-formed line survives
     assert len(out) == 1
     assert out[0].cls == 0
+
+
+def test_labels_text_roundtrip() -> None:
+    boxes = [YoloBox(0, 0.5, 0.5, 0.2, 0.2), YoloBox(2, 0.1, 0.9, 0.05, 0.07)]
+    out = labels_from_text(labels_to_text(boxes))
+    assert len(out) == 2
+    for got, exp in zip(out, boxes, strict=True):
+        assert got.cls == exp.cls
+        assert (got.xc, got.yc, got.w, got.h) == pytest.approx((exp.xc, exp.yc, exp.w, exp.h))
+
+
+def test_labels_to_text_empty_list_is_empty_string() -> None:
+    assert labels_to_text([]) == ""
+
+
+def test_labels_from_text_skips_malformed_lines() -> None:
+    out = labels_from_text("\n1 0.5 0.5 0.2 0.2\n1 2 3\nx 0.1 0.1 0.1 0.1\n")
+    assert len(out) == 1
+    assert out[0].cls == 1

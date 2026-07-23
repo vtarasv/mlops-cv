@@ -33,8 +33,14 @@ airflow = [
     "apache-airflow-providers-docker==4.5.7",
 ]
 
+beam = [
+    "apache-beam==2.75.0",
+    "betterproto==2.0.0b6",
+    "imagehash==4.3.2",
+]
+
 [tool.uv]
-default-groups = ["dev", "gpu", "airflow"]
+default-groups = ["dev", "gpu", "airflow", "beam"]
 
 [tool.uv.sources]
 torch = [{ index = "pytorch-cu130", marker = "sys_platform == 'linux'" }]

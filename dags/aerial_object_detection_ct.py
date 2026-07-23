@@ -1,8 +1,10 @@
-"""Continuous-training DAG: validate data -> train -> evaluate -> gate -> promote/skip.
+"""Continuous-training DAG: ensure data -> profile -> validate -> train -> evaluate -> gate ->
+promote/skip.
 
-Thin orchestration over ``mlops_cv``: decisions run in-process (pure code), the GPU work runs in
-``DockerOperator`` containers on the shared platform network. Fires weekly or on a
-``new-training-data`` asset event (POSTed by an external producer, e.g. a drift monitor).
+Thin orchestration over ``mlops_cv``: decisions run in-process (pure code), the heavy work runs
+in ``DockerOperator`` containers on the shared platform network — GPU train/eval in the train
+image, CPU data prep (Beam ingestion + dataset profiling) in the beam image. Fires weekly or on
+a ``new-training-data`` asset event (POSTed by an external producer, e.g. a drift monitor).
 
 Container contract: ``train`` prints ``{"version", "run_id"}`` as its last stdout line (XCom);
 ``evaluate --run-id --exit-zero`` logs test metrics + report + visuals onto the same training run
@@ -26,15 +28,18 @@ from airflow.timetables.assets import AssetOrTimeSchedule
 from airflow.timetables.trigger import CronTriggerTimetable
 from docker.types import DeviceRequest, Mount
 
-from mlops_cv.data.validate import validate_dataset
+from mlops_cv.data.manifest import DEMO_DIRNAME
+from mlops_cv.data.validate import DatasetValidationError, validate_dataset
+from mlops_cv.pipelines.profiling import is_profile_current
 
 logger = logging.getLogger(__name__)
 
 # Orchestration wiring is injected by the Airflow stack (docker-compose/.env.airflow + Makefile).
-HOST_RAW_DIR = os.environ.get("HOST_RAW_DIR", "")  # optional: demo clips render from raw frames
+HOST_RAW_DIR = os.environ.get("HOST_RAW_DIR", "")  # optional: only the ingest task reads raw
 SUBSET_DIR = os.environ["HOST_SUBSET_DIR"]
 WEIGHTS = os.environ["HOST_WEIGHTS"]  # pretrained-weights cache: downloaded once, reused
 TRAIN_IMAGE = os.environ["TRAIN_IMAGE"]
+BEAM_IMAGE = os.environ["BEAM_IMAGE"]
 MLFLOW_URI = os.environ["MLFLOW__TRACKING_URI"]
 
 # Host paths are bind-mounted at identical container paths ("path parity") so the absolute
@@ -43,42 +48,60 @@ WEIGHTS_DIR = str(Path(WEIGHTS).parent)  # mount the dir: the file only exists a
 
 NEW_DATA_ASSET = Asset("new-training-data")
 
+# Joins after a branch: run when nothing failed and at least one upstream path was followed.
+JOIN_RULE = "none_failed_min_one_success"
+
 _TASK_ENV = {
     "MLFLOW__TRACKING_URI": MLFLOW_URI,
     "ENV": "{{ var.value.get('CONFIG_ENV', 'local') }}",
     "DATA__SUBSET_DIR": SUBSET_DIR,
     "TRAINING__WEIGHTS": WEIGHTS,
 }
-# rw: ultralytics `cache=disk` writes .npy files next to the images
-_MOUNTS = [Mount(source=SUBSET_DIR, target=SUBSET_DIR, type="bind")]
-# rw: the pre-trained weights land in WEIGHTS_DIR.
-_MOUNTS.append(Mount(source=WEIGHTS_DIR, target=WEIGHTS_DIR, type="bind"))
+# rw: the ingest/profile tasks write the dataset here; ultralytics `cache=disk` writes .npy files.
+_MOUNTS = [
+    Mount(source=SUBSET_DIR, target=SUBSET_DIR, type="bind"),
+    Mount(source=WEIGHTS_DIR, target=WEIGHTS_DIR, type="bind"),
+]
+# Raw data is needed ONLY by the ingest task (subset rebuild + demo store materialization).
+_INGEST_MOUNTS = _MOUNTS + (
+    [Mount(source=HOST_RAW_DIR, target=HOST_RAW_DIR, type="bind", read_only=True)]
+    if HOST_RAW_DIR
+    else []
+)
 
-if HOST_RAW_DIR:
-    _TASK_ENV["DATA__RAW_DIR"] = HOST_RAW_DIR
-    _MOUNTS.append(Mount(source=HOST_RAW_DIR, target=HOST_RAW_DIR, type="bind", read_only=True))
-
-_DOCKER_COMMON = {
-    "image": TRAIN_IMAGE,
+_DOCKER_BASE = {
     "docker_url": "unix://var/run/docker.sock",
     "network_mode": "mlops-cv-network",  # reach the MLflow server as http://mlflow:5000
-    "environment": _TASK_ENV,
     "mounts": _MOUNTS,
+    "auto_remove": "success",  # keep failed containers around for debugging
+    "mount_tmp_dir": False,  # the default host tmp mount breaks for socket-launched siblings
+}
+
+_GPU_DOCKER_COMMON = {
+    **_DOCKER_BASE,
+    "image": TRAIN_IMAGE,
+    "environment": _TASK_ENV,
     # The programmatic `--gpus all`.
     "device_requests": [DeviceRequest(count=-1, capabilities=[["gpu"]])],
     # Docker's default /dev/shm is 64 MB; torch DataLoader workers share tensors through it.
     "shm_size": 2 * 1024**3,
     # A hung GPU container would otherwise hold the single run slot (max_active_runs=1) forever.
     "execution_timeout": timedelta(hours=2),
-    "auto_remove": "success",  # keep failed containers around for debugging
-    "mount_tmp_dir": False,  # the default host tmp mount breaks for socket-launched siblings
     "do_xcom_push": True,  # XCom = the container's last stdout line
+}
+
+# CPU data-prep siblings (beam image): no GPU, no XCom, default /dev/shm.
+_CPU_DOCKER_COMMON = {
+    **_DOCKER_BASE,
+    "image": BEAM_IMAGE,
+    "execution_timeout": timedelta(hours=1),
+    "do_xcom_push": False,
 }
 
 
 @dag(
     dag_id="aerial_object_detection_ct",
-    description="Continuous training: validate data, train a challenger, evaluate, gate, promote.",
+    description="Continuous training: ensure data, profile, validate, train, evaluate, promote.",
     schedule=AssetOrTimeSchedule(
         timetable=CronTriggerTimetable("0 3 * * 1", timezone="UTC"),  # weekly, Monday 03:00 UTC
         assets=NEW_DATA_ASSET,  # type: ignore[arg-type]
@@ -90,7 +113,59 @@ _DOCKER_COMMON = {
     tags=["continuous-training", "yolo", "mlflow"],
 )
 def aerial_object_detection_ct() -> None:
-    @task
+    @task.branch
+    def check_subset() -> str:
+        """Self-heal the subset: rebuild (with its demo store) from raw when missing/invalid."""
+        try:
+            report = validate_dataset(SUBSET_DIR)
+        except (DatasetValidationError, FileNotFoundError) as exc:
+            logger.warning("subset missing/invalid (%s) -> rebuilding from raw", exc)
+            return "build_subset"
+        logger.info(report.summary())
+        if not any((Path(SUBSET_DIR) / DEMO_DIRNAME / "images").glob("*/*.jpg")):
+            if HOST_RAW_DIR:
+                logger.warning("demo store missing -> rebuilding the subset from raw")
+                return "build_subset"
+            logger.warning("demo store missing and no HOST_RAW_DIR; evaluate will skip demos")
+        return "check_profiled"
+
+    # The Airflow->Beam handoff.
+    build_subset = DockerOperator(
+        task_id="build_subset",
+        command=[
+            "python",
+            "-m",
+            "mlops_cv.pipelines.ingest_pipeline",
+            "--runner",
+            "DirectRunner",
+            f"--raw-dir={HOST_RAW_DIR}",
+            f"--output-dir={SUBSET_DIR}",
+        ],
+        **{**_CPU_DOCKER_COMMON, "mounts": _INGEST_MOUNTS},
+    )
+
+    @task.branch(trigger_rule=JOIN_RULE)
+    def check_profiled() -> str:
+        """Skip re-profiling when the profile is current (stamp = subset manifest + params)."""
+        if is_profile_current(SUBSET_DIR):
+            logger.info("dataset profile at %s is up to date; skipping profile", SUBSET_DIR)
+            return "validate_data"
+        return "profile"
+
+    profile = DockerOperator(
+        task_id="profile",
+        command=[
+            "python",
+            "-m",
+            "mlops_cv.pipelines.profile_pipeline",
+            "--runner",
+            "DirectRunner",
+            f"--input-dir={SUBSET_DIR}",
+        ],
+        **_CPU_DOCKER_COMMON,
+    )
+
+    @task(trigger_rule=JOIN_RULE)
     def validate_data() -> str:
         """Fail fast on schema/value skew before spending GPU time (raises on any error)."""
         report = validate_dataset(SUBSET_DIR)
@@ -100,7 +175,7 @@ def aerial_object_detection_ct() -> None:
     train = DockerOperator(
         task_id="train",
         command=["python", "-m", "mlops_cv.training.train", "--epochs", "{{ params.epochs }}"],
-        **_DOCKER_COMMON,
+        **_GPU_DOCKER_COMMON,
     )
 
     @task
@@ -124,7 +199,7 @@ def aerial_object_detection_ct() -> None:
             "--batch",
             "8",
         ],
-        **_DOCKER_COMMON,
+        **_GPU_DOCKER_COMMON,
     )
 
     @task.branch
@@ -152,12 +227,18 @@ def aerial_object_detection_ct() -> None:
         set_champion_alias(settings.mlflow.registered_model, train_info["version"], alias)
         logger.info("promoted v%s -> alias %r", train_info["version"], alias)
 
+    subset_choice = check_subset()
+    profiled_choice = check_profiled()
     validated = validate_data()
     info = parse_train_output(train.output)  # type: ignore[arg-type]
     verdict = gate(evaluate.output)  # type: ignore[arg-type]
     promoted = promote(info)  # type: ignore[arg-type]
     skipped = EmptyOperator(task_id="skip_promotion")
 
+    subset_choice >> [build_subset, profiled_choice]
+    build_subset >> profiled_choice
+    profiled_choice >> [profile, validated]
+    profile >> validated
     validated >> train
     info >> evaluate
     verdict >> [promoted, skipped]

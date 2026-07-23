@@ -41,7 +41,8 @@ x-airflow-common: &airflow-common
     HOST_RAW_DIR: ${HOST_RAW_DIR}
     HOST_SUBSET_DIR: ${HOST_SUBSET_DIR:?set DATA__SUBSET_DIR in the root .env (or export HOST_SUBSET_DIR)}
     HOST_WEIGHTS: ${HOST_WEIGHTS:?set TRAINING__WEIGHTS (absolute path) in the root .env (or export HOST_WEIGHTS)}
-    TRAIN_IMAGE: ${TRAIN_IMAGE}
+    TRAIN_IMAGE: ${TRAIN_IMAGE:?run via make airflow-up (or export TRAIN_IMAGE)}
+    BEAM_IMAGE: ${BEAM_IMAGE:?run via make airflow-up (or export BEAM_IMAGE)}
     MLFLOW__TRACKING_URI: http://mlflow:${MLFLOW_PORT}
   volumes:
     - ../dags:/opt/airflow/dags:ro
@@ -118,7 +119,7 @@ services:
       - ../dags:/opt/airflow/dags:ro
       - logs:/opt/airflow/logs
       - /var/run/docker.sock:/var/run/docker.sock
-      # The in-process validate_data task reads the subset at its host path (path parity).
+      # The in-process check/validate tasks read the subset.
       - ${HOST_SUBSET_DIR}:${HOST_SUBSET_DIR}:ro
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]

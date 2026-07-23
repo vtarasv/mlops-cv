@@ -28,6 +28,14 @@ jobs:
       - name: Sync dependencies (locked, CPU-only)
         run: uv sync --locked --no-group gpu
 
+      # The Beam pipeline tests launch the Prism runner, a Go binary apache-beam auto-downloads
+      # to ~/.apache_beam/cache on first use.
+      - name: Cache Beam Prism runner
+        uses: actions/cache@v6.1.0
+        with:
+          path: ~/.apache_beam/cache
+          key: prism-${{ hashFiles('uv.lock') }}
+
       - name: Ruff lint
         run: uv run --no-sync ruff check --output-format=github .
 

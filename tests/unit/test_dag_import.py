@@ -32,6 +32,7 @@ def dagbag():
         mp.setenv("HOST_SUBSET_DIR", str(repo / "data" / "subset"))
         mp.setenv("HOST_WEIGHTS", str(repo / "data" / "weights" / "yolo26s.pt"))
         mp.setenv("TRAIN_IMAGE", "mlops-cv-train:test")
+        mp.setenv("BEAM_IMAGE", "mlops-cv-beam:test")
         mp.setenv("MLFLOW__TRACKING_URI", "http://mlflow:5000")
         return DagBag(dag_folder=str(DAGS_DIR), include_examples=False)
 
@@ -44,6 +45,10 @@ def test_dags_import_cleanly(dagbag) -> None:
 def test_ct_dag_topology(dagbag) -> None:
     ct = dagbag.dags[CT_DAG]  # the parsed in-memory DAG
     assert {t.task_id for t in ct.tasks} == {
+        "check_subset",
+        "build_subset",
+        "check_profiled",
+        "profile",
         "validate_data",
         "train",
         "parse_train_output",
@@ -53,11 +58,22 @@ def test_ct_dag_topology(dagbag) -> None:
         "skip_promotion",
     }
     down = {t.task_id: set(t.downstream_task_ids) for t in ct.tasks}
+    assert down["check_subset"] == {"build_subset", "check_profiled"}  # self-heal branch
+    assert down["build_subset"] == {"check_profiled"}
+    assert down["check_profiled"] == {"profile", "validate_data"}  # skip-if-current branch
+    assert down["profile"] == {"validate_data"}
     assert down["validate_data"] == {"train"}
     assert down["train"] == {"parse_train_output"}
     assert down["parse_train_output"] == {"evaluate", "promote"}  # promote templates the version
     assert down["evaluate"] == {"gate"}
     assert down["gate"] == {"promote", "skip_promotion"}  # the champion/challenger branch
+
+
+def test_ct_dag_branch_joins_survive_skipped_paths(dagbag) -> None:
+    ct = dagbag.dags[CT_DAG]
+    rules = {t.task_id: t.trigger_rule for t in ct.tasks}  # str-enum: compares to its value
+    assert rules["check_profiled"] == "none_failed_min_one_success"
+    assert rules["validate_data"] == "none_failed_min_one_success"
 
 
 def test_ct_dag_run_policy(dagbag) -> None:

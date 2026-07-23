@@ -96,10 +96,13 @@ comparable, and were picked by per-class box counts so each clip stars a differe
 | `uav0000355_00001_v` | 1360×765 | vehicle |
 | `uav0000073_00600_v` | 1920×1080 | person (dense crowd) |
 
-Frames come from the raw VisDrone-VID download (`DATA__RAW_DIR`) — full-length sequences, not the
-strided subset — downscaled so the longest side is `≤ max_side` before inference. `fps` is
-playback speed only: VisDrone-VID stores frames indexed by number, with no source video,
-timestamps, or capture rate, so the true frame rate is not recoverable. Skip it with `--no-demos`.
+Frames and per-frame ground-truth labels come from the subset's **demo store**
+(`<subset>/demo/`, materialized at full frame rate by the ingest pipeline — see
+[batch-pipeline.md](batch-pipeline.md)), downscaled so the longest side is `≤ max_side` before
+inference. Evaluation never reads the raw dataset. `fps` is playback speed only: VisDrone-VID
+stores frames indexed by number, with no source video, timestamps, or capture rate, so the true
+frame rate is not recoverable. Skip it with `--no-demos`; if the demo store is absent (subset
+built without it), rendering warns and skips.
 
 ## Error-analysis crops
 

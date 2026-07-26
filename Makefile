@@ -1,8 +1,10 @@
 .PHONY: setup lint fmt test test-all ci clean gpu-smoke mlflow-up mlflow-down mlflow-logs \
-	train eval ingest profile train-image beam-image airflow-up airflow-down airflow-logs airflow-env
+	train eval ingest profile train-image beam-image airflow-up airflow-down airflow-logs airflow-env \
+	streaming-up streaming-down streaming-logs
 
 MLFLOW_COMPOSE := docker compose -f docker-compose/docker-compose.mlflow.yml --env-file docker-compose/.env.mlflow
 AIRFLOW_COMPOSE := docker compose -f docker-compose/docker-compose.airflow.yml --env-file docker-compose/.env.airflow
+STREAMING_COMPOSE := docker compose -f docker-compose/docker-compose.streaming.yml --env-file docker-compose/.env.streaming
 
 # Derived/exported wiring for the Airflow stack (fails loudly if any of these is missing):
 #   TRAIN_IMAGE/BEAM_IMAGE : image tags — used for both `docker build` and the DAG's operators
@@ -97,6 +99,16 @@ airflow-down:
 
 airflow-logs:
 	$(AIRFLOW_COMPOSE) logs -f
+
+# Streaming stack (Redpanda broker + Console + one-shot topic init).
+streaming-up: mlflow-up
+	$(STREAMING_COMPOSE) up -d --wait
+
+streaming-down:
+	$(STREAMING_COMPOSE) down
+
+streaming-logs:
+	$(STREAMING_COMPOSE) logs -f
 
 # What CI runs: lint + format-check + tests.
 ci:

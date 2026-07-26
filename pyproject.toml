@@ -39,8 +39,12 @@ beam = [
     "imagehash==4.3.2",
 ]
 
+streaming = [
+    "confluent-kafka==2.15.0",
+]
+
 [tool.uv]
-default-groups = ["dev", "gpu", "airflow", "beam"]
+default-groups = ["dev", "gpu", "airflow", "beam", "streaming"]
 
 [tool.uv.sources]
 torch = [{ index = "pytorch-cu130", marker = "sys_platform == 'linux'" }]

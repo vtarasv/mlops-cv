@@ -1,0 +1,89 @@
+# Local streaming stack: Redpanda broker + Console + one-shot topic init.
+# The producer/consumers run as host processes and dial the external listener
+# (localhost:${KAFKA_HOST_PORT}); in-network clients use redpanda:9092.
+#
+# Joins the shared platform network (external `mlops-cv-network`, created by the MLflow
+# stack — `make streaming-up` brings MLflow up first). Service names are unique on the
+# shared network.
+#
+#   docker compose -f docker-compose/docker-compose.streaming.yml \
+#     --env-file docker-compose/.env.streaming up -d --wait
+
+name: streaming
+
+volumes:
+  redpanda-data:
+
+networks:
+  default:
+    name: mlops-cv-network
+    external: true
+
+services:
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v26.1.13
+    container_name: redpanda
+    restart: always
+    command:
+      - redpanda
+      - start
+      - --mode=dev-container   # single-node dev profile (no production tuning checks)
+      - --smp=1
+      - --kafka-addr=internal://0.0.0.0:9092,external://0.0.0.0:${KAFKA_HOST_PORT}
+      # What clients are told to dial back: in-network clients the service name, host clients localhost.
+      - --advertise-kafka-addr=internal://redpanda:9092,external://localhost:${KAFKA_HOST_PORT}
+      - --default-log-level=warn
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    ports:
+      - "${KAFKA_HOST_PORT}:${KAFKA_HOST_PORT}"
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true'"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  # One-shot: create the three topics idempotently with explicit configs, then exit.
+  redpanda-init:
+    image: docker.redpanda.com/redpandadata/redpanda:v26.1.13
+    container_name: redpanda-init
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    # VOLUME /var/lib/redpanda/data so each `up` doesn't leak an empty anonymous volume.
+    tmpfs:
+      - /var/lib/redpanda/data
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        set -e
+        create() {  # create() <topic> <partitions> [extra rpk args]
+          topic=$$1; partitions=$$2; shift 2
+          if rpk topic describe "$$topic" -X brokers=redpanda:9092 >/dev/null 2>&1; then
+            echo "topic $$topic already exists"
+          else
+            rpk topic create "$$topic" -p "$$partitions" -X brokers=redpanda:9092 "$$@"
+          fi
+        }
+        create ${RAW_FRAMES_TOPIC} ${DATA_TOPIC_PARTITIONS} \
+          -c max.message.bytes=${FRAME_MAX_MESSAGE_BYTES} -c retention.ms=${FRAME_RETENTION_MS}
+        create ${DETECTIONS_TOPIC} ${DATA_TOPIC_PARTITIONS}
+        create ${ALERTS_TOPIC} 1
+        rpk topic list -X brokers=redpanda:9092
+    restart: "no"
+
+  redpanda-console:
+    image: docker.redpanda.com/redpandadata/console:v3.8.0
+    container_name: redpanda-console
+    restart: always
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      redpanda-init:
+        condition: service_completed_successfully
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+    ports:
+      - "${CONSOLE_HOST_PORT}:8080"

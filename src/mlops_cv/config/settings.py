@@ -33,6 +33,7 @@ class DataSettings(BaseModel):
 class MlflowSettings(BaseModel):
     """MLflow tracking + registry coordinates."""
 
+    # Port MUST match MLFLOW_PORT in docker-compose/.env.mlflow (server publishes there).
     tracking_uri: str = "http://localhost:5000"
     experiment: str = "aerial-object-detection"
     registered_model: str = "aerial-object-detector"
@@ -54,6 +55,24 @@ class TrainingSettings(BaseModel):
     device: str = "0"
 
 
+class StreamingSettings(BaseModel):
+    """Streaming-inference coordinates: broker, topics, consumer groups, pacing, anomaly rule."""
+
+    # Port MUST match KAFKA_HOST_PORT in docker-compose/.env.streaming (broker publishes there).
+    bootstrap_servers: str = "localhost:19092"
+    # Topics MUST match *_TOPIC in docker-compose/.env.streaming
+    raw_frames_topic: str = "raw-frames"
+    detections_topic: str = "detections"
+    alerts_topic: str = "alerts"
+    inference_group: str = "inference-consumer"
+    anomaly_group: str = "anomaly-consumer"
+    fps: float = 30.0  # producer pacing (frames/s); the CLI's --fps 0 floods instead
+    commit_interval_s: float = 5.0  # how often the inference consumer commits stored offsets
+    anomaly_class: str = "person"  # class the windowed count rule watches
+    anomaly_window_s: float = 5.0  # sliding window length (frame-timestamp time)
+    anomaly_threshold: float = 31.0  # windowed mean count that opens an alert episode
+
+
 class Settings(BaseSettings):
     """Process-wide configuration."""
 
@@ -71,6 +90,7 @@ class Settings(BaseSettings):
     data: DataSettings = DataSettings()
     mlflow: MlflowSettings = MlflowSettings()
     training: TrainingSettings = TrainingSettings()
+    streaming: StreamingSettings = StreamingSettings()
 
 
 def load_settings(base_dir: str | Path = ".") -> Settings:

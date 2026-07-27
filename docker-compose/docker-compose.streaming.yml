@@ -59,6 +59,7 @@ services:
       - -c
       - |
         set -e
+        rpk cluster config set auto_create_topics_enabled false -X admin.hosts=redpanda:9644
         create() {  # create() <topic> <partitions> [extra rpk args]
           topic=$$1; partitions=$$2; shift 2
           if rpk topic describe "$$topic" -X brokers=redpanda:9092 >/dev/null 2>&1; then

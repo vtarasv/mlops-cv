@@ -17,12 +17,13 @@ page here as it lands.
   DockerOperator GPU tasks, asset-event trigger).
 - [Batch data pipelines](batch-pipeline.md) — Apache Beam ingestion (raw → subset + demo store)
   and dataset profiling / drift baseline.
+- [Streaming inference](streaming.md) — Redpanda/Kafka: demo-store producer, GPU champion
+  consumer, anomaly alerts; delivery semantics + scaling paths.
 
 ## Planned
 
 | Doc | Topic |
 |-----|-------|
-| `streaming.md` | Redpanda/Kafka streaming inference |
 | `optimization.md` | ONNX / TensorRT FP16 + INT8 (edge-sim) |
 | `containers.md`, `serving.md` | Compose parity, FastAPI/Triton serving |
 | `monitoring.md` | Drift detection + drift-triggered continuous training |

@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import argparse
 import logging
-import re
 import tempfile
 import time
 from collections.abc import Sequence
@@ -32,9 +31,9 @@ from mlops_cv.eval.report import percentiles
 from mlops_cv.orchestration.handoff import GateVerdict
 from mlops_cv.tracking import client
 from mlops_cv.tracking.metric_keys import PRIMARY, headline_metrics, metric_key, per_class_metrics
+from mlops_cv.tracking.resolve import registered_version, resolve_model
 
 if TYPE_CHECKING:
-    from mlflow.entities.model_registry import ModelVersion
     from ultralytics import YOLO
 
 logger = logging.getLogger(__name__)
@@ -121,57 +120,6 @@ def benchmark_latency(
     }
 
 
-def _slug(text: str) -> str:
-    """A filesystem/run-name-safe slug for a model reference."""
-    return re.sub(r"[^A-Za-z0-9._-]+", "-", text).strip("-")
-
-
-def _resolve_model(model_ref: str) -> tuple[Path, str]:
-    """Download a model's ``best.pt`` from MLflow → ``(local path, run-name slug)``.
-
-    ``model_ref`` is an MLflow URI: a run URI ``runs:/<id>/<path>`` or a registry ref
-    ``models:/<name>@<alias>`` / ``models:/<name>/<version>``. A registry ref is redirected to its
-    version's ``source`` artifact URI and downloaded from there.
-    """
-    from mlflow.artifacts import download_artifacts
-
-    if model_ref.startswith("models:/"):
-        from mlflow import MlflowClient
-
-        spec = model_ref.removeprefix("models:/")
-        registry = MlflowClient()
-        version: ModelVersion = (
-            registry.get_model_version_by_alias(*spec.split("@", 1))
-            if "@" in spec
-            else registry.get_model_version(*spec.rsplit("/", 1))
-        )
-        model_ref, slug = version.source, _slug(spec)  # type: ignore[union-attr]
-    else:
-        slug = _slug(model_ref.split(":/", 1)[1])
-    return Path(download_artifacts(artifact_uri=model_ref)), slug
-
-
-def _promotion_version(model_ref: str, registered_model: str) -> str | None:
-    """The registered version to alias for ``--promote``: parsed from a ``models:/`` URI or found by
-    run id for a ``runs:/`` URI. A bare local path has no registered version -> ``None``."""
-    from mlflow import MlflowClient
-
-    registry = MlflowClient()
-    if model_ref.startswith("models:/"):
-        spec = model_ref.removeprefix("models:/")
-        if "@" in spec:
-            name, alias = spec.split("@", 1)
-            return registry.get_model_version_by_alias(name, alias).version
-        if "/" in spec:
-            return spec.rsplit("/", 1)[1]
-    if model_ref.startswith("runs:/"):
-        run_id = model_ref.removeprefix("runs:/").split("/", 1)[0]
-        found = registry.search_model_versions(f"run_id='{run_id}' and name='{registered_model}'")
-        if found:
-            return found[0].version
-    return None
-
-
 def main(argv: list[str] | None = None) -> int:
     settings = get_settings()
     logging.basicConfig(level=settings.log_level.upper(), format="%(message)s")
@@ -186,7 +134,7 @@ def main(argv: list[str] | None = None) -> int:
     mlflow.set_experiment(settings.mlflow.experiment)
 
     data_yaml = (args.data or settings.data.subset_dir / settings.data.dataset_yaml.name).resolve()
-    weights, model_ref = _resolve_model(args.model)
+    weights, model_ref = resolve_model(args.model)
     images_dir = settings.data.subset_dir / "images" / args.split
 
     logger.info("evaluating %s on %s[%s]", model_ref, data_yaml, args.split)
@@ -289,7 +237,7 @@ def main(argv: list[str] | None = None) -> int:
         mlflow.log_artifact(str(csv_path), artifact_path="eval")
 
         if args.promote and gate.passed:
-            version = _promotion_version(args.model, settings.mlflow.registered_model)
+            version = registered_version(args.model, settings.mlflow.registered_model)
             if version is None:
                 logger.warning("not promoting: %s has no registered model version", args.model)
             else:

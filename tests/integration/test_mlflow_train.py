@@ -1,6 +1,6 @@
 """Integration tests for train.py's MLflow glue (``_register_model``, ``_log_dataset``).
 
-Registration produces the file-source versions that ``_resolve_model`` consumes, so this exercises
+Registration produces the file-source versions that ``resolve_model`` consumes, so this exercises
 the full register → resolve round-trip — including that the weight bytes survive the object-store
 round-trip byte-for-byte — plus dataset-lineage logging. Requires the MLflow stack up and the
 ``gpu`` uv group.
@@ -13,7 +13,7 @@ import uuid
 
 import pytest
 
-from mlops_cv.eval.evaluate import _resolve_model
+from mlops_cv.tracking.resolve import resolve_model
 from mlops_cv.training.train import _log_dataset, _register_model
 
 mlflow = pytest.importorskip("mlflow")  # absent under CI's --no-group gpu -> skip the module
@@ -39,7 +39,7 @@ def test_register_model_registers_file_source_version_and_round_trips(registry, 
         assert latest.source.endswith("weights/best.pt")  # a bare-file source (our pattern)
         assert latest.run_id == run.info.run_id
         # register -> resolve round-trip: the version we just made downloads back to a .pt
-        path, _ = _resolve_model(f"models:/{name}/{latest.version}")
+        path, _ = resolve_model(f"models:/{name}/{latest.version}")
         assert path.is_file() and path.suffix == ".pt"
         assert path.read_bytes() == STUB_WEIGHTS  # bytes survive the object-store round-trip
     finally:

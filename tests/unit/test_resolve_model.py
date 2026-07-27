@@ -1,4 +1,4 @@
-"""Unit tests for ``evaluate._resolve_model`` URI/branch/slug logic, with mlflow faked (CI-safe)."""
+"""Unit tests for ``tracking.resolve.resolve_model`` URI/branch/slug logic, mlflow faked."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import types
 
 import pytest
 
-from mlops_cv.eval.evaluate import _resolve_model
+from mlops_cv.tracking.resolve import resolve_model
 
 
 class _FakeVersion:
@@ -44,7 +44,7 @@ def calls(monkeypatch: pytest.MonkeyPatch) -> dict:
 
 
 def test_alias_resolves_and_downloads_version_source(calls: dict) -> None:
-    path, slug = _resolve_model("models:/aerial-object-detector@champion")
+    path, slug = resolve_model("models:/aerial-object-detector@champion")
     assert calls["alias"] == ("aerial-object-detector", "champion")
     assert calls["download_uri"] == _FakeVersion.source  # the version's own source, not a run path
     assert slug == "aerial-object-detector-champion"
@@ -52,13 +52,13 @@ def test_alias_resolves_and_downloads_version_source(calls: dict) -> None:
 
 
 def test_version_resolves_and_downloads_version_source(calls: dict) -> None:
-    _resolve_model("models:/aerial-object-detector/7")
+    resolve_model("models:/aerial-object-detector/7")
     assert calls["version"] == ("aerial-object-detector", "7")
     assert calls["download_uri"] == _FakeVersion.source
 
 
 def test_run_uri_passes_through_without_registry_lookup(calls: dict) -> None:
-    _, slug = _resolve_model("runs:/abc123/weights/best.pt")
+    _, slug = resolve_model("runs:/abc123/weights/best.pt")
     assert calls["download_uri"] == "runs:/abc123/weights/best.pt"
     assert "alias" not in calls and "version" not in calls
     assert slug == "abc123-weights-best.pt"

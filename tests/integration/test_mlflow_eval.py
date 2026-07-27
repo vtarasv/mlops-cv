@@ -1,5 +1,5 @@
-"""Integration tests for the eval MLflow glue against the live stack: ``_resolve_model`` (download)
-and ``_promotion_version`` (which registered version ``--promote`` aliases).
+"""Integration tests for the eval MLflow glue against the live stack: ``resolve_model`` (download)
+and ``registered_version`` (which registered version ``--promote`` aliases).
 
 Requires the MLflow stack up and the ``gpu`` uv group.
 """
@@ -11,7 +11,7 @@ import uuid
 
 import pytest
 
-from mlops_cv.eval.evaluate import _promotion_version, _resolve_model
+from mlops_cv.tracking.resolve import registered_version, resolve_model
 
 mlflow = pytest.importorskip("mlflow")  # absent under CI's --no-group gpu -> skip the module
 
@@ -40,7 +40,7 @@ def file_source_model(registry, tmp_path_factory):
 
 
 def _assert_downloads_pt(ref: str) -> None:
-    path, slug = _resolve_model(ref)
+    path, slug = resolve_model(ref)
     assert path.is_file() and path.suffix == ".pt", f"{ref} -> {path}"
     assert slug
 
@@ -62,10 +62,10 @@ def test_resolve_by_run_uri(file_source_model) -> None:
 
 def test_promotion_version_by_alias(file_source_model) -> None:
     name, version, _ = file_source_model
-    assert _promotion_version(f"models:/{name}@champion", name) == version
+    assert registered_version(f"models:/{name}@champion", name) == version
 
 
 def test_promotion_version_by_run_uri(file_source_model) -> None:
     # The run-id search filter — the exact syntax a mock can't validate.
     name, version, run_id = file_source_model
-    assert _promotion_version(f"runs:/{run_id}/weights/best.pt", name) == version
+    assert registered_version(f"runs:/{run_id}/weights/best.pt", name) == version

@@ -128,7 +128,7 @@ def run_loop(
         topic, partition, offset = source.topic(), source.partition(), source.offset()
         if topic is None or partition is None or offset is None:
             # Only unset on producer-side Messages; a consumed frame always carries all three.
-            logger.warning("frame without an address (%s/%s@%s)", topic, partition, offset)
+            logger.warning(f"frame without an address ({topic}/{partition}@{offset})")
             return
         tp = (topic, partition)
         nxt = offset + 1
@@ -142,7 +142,7 @@ def run_loop(
             # Fail fast: with an idempotent producer a delivery failure is not a blip,
             # and continuing could let a later stored offset commit past this frame.
             counts["delivery_failures"] += 1
-            logger.error("event delivery failed for %s: %s", event_msg.key(), err)
+            logger.error(f"event delivery failed for {event_msg.key()}: {err}")
             return
         store_frame_offset(source)
 
@@ -156,7 +156,7 @@ def run_loop(
             if not paused and len(producer) >= PAUSE_AT_PENDING:
                 consumer.pause(consumer.assignment())
                 paused = True
-                logger.info("paused intake (%d events pending delivery)", len(producer))
+                logger.info(f"paused intake ({len(producer)} events pending delivery)")
             if paused and len(producer) <= RESUME_AT_PENDING:
                 consumer.resume(consumer.assignment())
                 paused = False
@@ -165,11 +165,11 @@ def run_loop(
             producer.poll(0)  # serve delivery callbacks (they store offsets)
             if msg is None:
                 if idle_timeout_s is not None and time.monotonic() - idle_since > idle_timeout_s:
-                    logger.info("idle for %.1fs; stopping", idle_timeout_s)
+                    logger.info(f"idle for {idle_timeout_s:.1f}s; stopping")
                     break
                 continue
             if msg.error():
-                logger.warning("consumer error: %s", msg.error())
+                logger.warning(f"consumer error: {msg.error()}")
                 continue
             idle_since = time.monotonic()
             counts["consumed"] += 1
@@ -185,7 +185,7 @@ def run_loop(
             except Exception as exc:
                 # Poison frame: record it, keep the partition moving (offset still stored).
                 counts["skipped"] += 1
-                logger.warning("skipping undecodable frame %s: %s", msg.key(), exc)
+                logger.warning(f"skipping undecodable frame {msg.key()}: {exc}")
                 store_frame_offset(msg)
                 continue
 
@@ -206,13 +206,13 @@ def run_loop(
             )
             counts["events"] += 1
             if counts["events"] % LOG_EVERY == 0:
-                logger.info("published %d detection events", counts["events"])
+                logger.info(f"published {counts['events']} detection events")
     except KeyboardInterrupt:
         logger.info("interrupted; flushing")
     finally:
         producer.flush(10)
         consumer.close()  # final auto-commit of stored offsets
-    logger.info("done: %s", counts)
+    logger.info(f"done: {counts}")
     return counts
 
 
@@ -260,7 +260,7 @@ def main(argv: list[str] | None = None) -> int:
         name=settings.mlflow.registered_model if is_registry_ref else slug,
         version=registered_version(args.model, settings.mlflow.registered_model) or "unregistered",
     )
-    logger.info("serving %s -> %s v%s", args.model, model.name, model.version)
+    logger.info(f"serving {args.model} -> {model.name} v{model.version}")
 
     run_loop(
         settings,

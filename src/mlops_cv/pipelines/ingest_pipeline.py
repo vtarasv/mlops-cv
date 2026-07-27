@@ -186,7 +186,7 @@ class ExpandDemoClipDoFn(beam.DoFn):
         base = FileSystems.join(self.raw_dir, raw_split_dir(self.split))
         frames = _match_frames(FileSystems.join(base, "sequences", clip.sequence))
         if not frames:
-            logger.warning("demo clip %s has no frames under %s", clip.sequence, base)
+            logger.warning(f"demo clip {clip.sequence} has no frames under {base}")
             return
         with FileSystems.open(frames[min(frames)]) as fh:
             width, height = _image_size_from_bytes(fh.read())
@@ -307,20 +307,14 @@ def run(options: IngestOptions) -> int:
             )
 
     counters = _query_counters(p.result)
-    if counters.get("frames_kept", 0) != counters.get("images_copied", 0):
-        logger.warning(
-            "frame count mismatch: %s converted vs %s copied",
-            counters.get("frames_kept", 0),
-            counters.get("images_copied", 0),
-        )
+    kept, copied = counters.get("frames_kept", 0), counters.get("images_copied", 0)
+    if kept != copied:
+        logger.warning(f"frame count mismatch: {kept} converted vs {copied} copied")
     yaml_path = stamp_dataset_yaml(Path(options.template_yaml), Path(output_dir))
     logger.info(
-        "ingested %s sequences -> %s frames | demo store: %s frames across %d clips | wrote %s",
-        counters.get("sequences_processed", 0),
-        counters.get("images_copied", 0),
-        counters.get("demo_frames_copied", 0),
-        len(demo_sequences),
-        yaml_path.name,
+        f"ingested {counters.get('sequences_processed', 0)} sequences -> {copied} frames "
+        f"| demo store: {counters.get('demo_frames_copied', 0)} frames "
+        f"across {len(demo_sequences)} clips | wrote {yaml_path.name}"
     )
     return 0
 

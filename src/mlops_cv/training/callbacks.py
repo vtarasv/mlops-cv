@@ -27,7 +27,7 @@ def make_per_class_callback() -> Callable[[BaseTrainer], None]:
             values = per_class_metrics(metrics.maps, metrics.ap_class_index, metrics.names)
             mlflow.log_metrics(values, step=int(trainer.epoch))
         except Exception as exc:
-            logger.warning("per-class metric logging failed: %s", exc)
+            logger.warning(f"per-class metric logging failed: {exc}")
 
     return _log_per_class
 
@@ -50,6 +50,6 @@ def make_batch_params_callback() -> Callable[[BaseTrainer], None]:
                 }
             )
         except Exception as exc:
-            logger.warning("batch-params logging failed: %s", exc)
+            logger.warning(f"batch-params logging failed: {exc}")
 
     return _log_batch_params

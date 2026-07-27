@@ -282,14 +282,12 @@ def run(options: ProfileOptions) -> int:
     counters = _query_counters(p.result)
     corrupt = counters.get("corrupt_images", 0)
     logger.info(
-        "profiled %s frames across %s splits | corrupt: %s",
-        counters.get("frames_profiled", 0),
-        len(SPLITS),
-        corrupt,
+        f"profiled {counters.get('frames_profiled', 0)} frames "
+        f"across {len(SPLITS)} splits | corrupt: {corrupt}"
     )
     if corrupt:
         # No stamp: the profile is not "current", so the next orchestrated run re-profiles.
-        logger.error("%d corrupt/unreadable images — see profile/quality_report.csv", corrupt)
+        logger.error(f"{corrupt} corrupt/unreadable images — see profile/quality_report.csv")
         return 1
     with FileSystems.create(FileSystems.join(profile_dir, profiling.STAMP_FILENAME)) as fh:
         fh.write(provenance.stamp_payload(manifest_sha, profiling.PROFILE_PARAMS).encode("utf-8"))

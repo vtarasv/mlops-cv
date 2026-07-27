@@ -129,7 +129,7 @@ def aerial_object_detection_ct() -> None:
         try:
             report = validate_dataset(SUBSET_DIR)
         except (DatasetValidationError, FileNotFoundError) as exc:
-            logger.warning("subset missing/invalid (%s) -> rebuilding from raw", exc)
+            logger.warning(f"subset missing/invalid ({exc}) -> rebuilding from raw")
             return "build_subset"
         logger.info(report.summary())
         if not demo_store_present(SUBSET_DIR):
@@ -150,7 +150,7 @@ def aerial_object_detection_ct() -> None:
     def check_profiled() -> str:
         """Skip re-profiling when the profile is current (stamp = subset manifest + params)."""
         if is_profile_current(SUBSET_DIR):
-            logger.info("dataset profile at %s is up to date; skipping profile", SUBSET_DIR)
+            logger.info(f"dataset profile at {SUBSET_DIR} is up to date; skipping profile")
             return "validate_data"
         return "profile"
 
@@ -190,10 +190,8 @@ def aerial_object_detection_ct() -> None:
         """Champion/challenger decision on evaluate's verdict — pure parsing, no MLflow."""
         verdict = GateVerdict.parse(verdict_line)
         logger.info(
-            "gate: passed=%s candidate=%s champion=%s",
-            verdict.passed,
-            verdict.candidate_primary,
-            verdict.champion_primary,
+            f"gate: passed={verdict.passed} candidate={verdict.candidate_primary} "
+            f"champion={verdict.champion_primary}"
         )
         return "promote" if verdict.passed else "skip_promotion"
 
@@ -208,7 +206,7 @@ def aerial_object_detection_ct() -> None:
         settings = get_settings()
         alias = settings.mlflow.champion_alias
         set_champion_alias(settings.mlflow.registered_model, train_info["version"], alias)
-        logger.info("promoted v%s -> alias %r", train_info["version"], alias)
+        logger.info(f"promoted v{train_info['version']} -> alias {alias!r}")
 
     subset_choice = check_subset()
     profiled_choice = check_profiled()

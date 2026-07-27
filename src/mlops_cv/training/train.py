@@ -97,7 +97,7 @@ def main(argv: list[str] | None = None) -> int:
     mlflow.set_experiment(settings.mlflow.experiment)
 
     run_name = f"{Path(t.weights).stem}-imgsz{args.imgsz}-e{args.epochs}"
-    logger.info("training %s on %s -> MLflow %s", t.weights, data_yaml, client.tracking_uri())
+    logger.info(f"training {t.weights} on {data_yaml} -> MLflow {client.tracking_uri()}")
 
     with mlflow.start_run(run_name=run_name) as run:
         model = YOLO(t.weights)

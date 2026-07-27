@@ -63,11 +63,8 @@ def run_loop(
     )
     consumer.subscribe([streaming.detections_topic])
     logger.info(
-        "watching %s: windowed mean %s-count > %s over %ss",
-        streaming.detections_topic,
-        rule.cls,
-        rule.threshold,
-        rule.window_s,
+        f"watching {streaming.detections_topic}: "
+        f"windowed mean {rule.cls}-count > {rule.threshold} over {rule.window_s}s"
     )
 
     counts = {"consumed": 0, "alerts": 0, "skipped": 0}
@@ -78,11 +75,11 @@ def run_loop(
             producer.poll(0)
             if msg is None:
                 if idle_timeout_s is not None and time.monotonic() - idle_since > idle_timeout_s:
-                    logger.info("idle for %.1fs; stopping", idle_timeout_s)
+                    logger.info(f"idle for {idle_timeout_s:.1f}s; stopping")
                     break
                 continue
             if msg.error():
-                logger.warning("consumer error: %s", msg.error())
+                logger.warning(f"consumer error: {msg.error()}")
                 continue
             idle_since = time.monotonic()
             counts["consumed"] += 1
@@ -94,20 +91,16 @@ def run_loop(
                 event = DetectionEvent.from_value(value)
             except Exception as exc:
                 counts["skipped"] += 1
-                logger.warning("skipping undecodable detection event: %s", exc)
+                logger.warning(f"skipping undecodable detection event: {exc}")
                 continue
 
             alert = rule.observe(event)
             if alert is not None:
                 counts["alerts"] += 1
                 logger.info(
-                    "ALERT: %s %s-count %.1f > %.1f at %s/%d",
-                    alert.rule,
-                    alert.cls,
-                    alert.observed,
-                    alert.threshold,
-                    alert.sequence,
-                    alert.frame_index,
+                    f"ALERT: {alert.rule} {alert.cls}-count "
+                    f"{alert.observed:.1f} > {alert.threshold:.1f} "
+                    f"at {alert.sequence}/{alert.frame_index}"
                 )
                 producer.produce(streaming.alerts_topic, alert.to_value(), key=alert.kafka_key())
     except KeyboardInterrupt:
@@ -115,7 +108,7 @@ def run_loop(
     finally:
         producer.flush(10)
         consumer.close()
-    logger.info("done: %s", counts)
+    logger.info(f"done: {counts}")
     return counts
 
 

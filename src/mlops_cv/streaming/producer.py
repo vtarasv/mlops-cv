@@ -77,12 +77,8 @@ def main(argv: list[str] | None = None) -> int:
     # Discover before touching the broker so a missing demo store fails fast and clear.
     clips = discover_sequences(args.subset_dir, args.sequences)
     total_frames = sum(len(frames) for frames in clips.values())
-    logger.info(
-        "publishing %d clips / %d frames at %s",
-        len(clips),
-        total_frames,
-        f"{args.fps} fps" if args.fps > 0 else "flood rate",
-    )
+    rate = f"{args.fps} fps" if args.fps > 0 else "flood rate"
+    logger.info(f"publishing {len(clips)} clips / {total_frames} frames at {rate}")
 
     from confluent_kafka import Producer
 
@@ -92,7 +88,7 @@ def main(argv: list[str] | None = None) -> int:
         nonlocal failures
         if err is not None:
             failures += 1
-            logger.error("delivery failed for %s: %s", msg.key(), err)
+            logger.error(f"delivery failed for {msg.key()}: {err}")
 
     producer = Producer(
         {
@@ -128,7 +124,7 @@ def main(argv: list[str] | None = None) -> int:
                     producer.poll(0)  # serve delivery callbacks
                     published += 1
                     if published % LOG_EVERY == 0:
-                        logger.info("published %d frames", published)
+                        logger.info(f"published {published} frames")
                     if interval:
                         next_due += interval
                         time.sleep(max(0.0, next_due - time.perf_counter()))
@@ -136,8 +132,8 @@ def main(argv: list[str] | None = None) -> int:
         logger.info("interrupted; flushing")
     if undelivered := producer.flush(10):
         failures += undelivered
-        logger.error("%d frames still undelivered after flush", undelivered)
-    logger.info("published %d frames (%d delivery failures)", published, failures)
+        logger.error(f"{undelivered} frames still undelivered after flush")
+    logger.info(f"published {published} frames ({failures} delivery failures)")
     return 1 if failures else 0
 
 

@@ -137,7 +137,7 @@ def main(argv: list[str] | None = None) -> int:
     weights, model_ref = resolve_model(args.model)
     images_dir = settings.data.subset_dir / "images" / args.split
 
-    logger.info("evaluating %s on %s[%s]", model_ref, data_yaml, args.split)
+    logger.info(f"evaluating {model_ref} on {data_yaml}[{args.split}]")
 
     run_kwargs = {"run_id": args.run_id} if args.run_id else {"run_name": f"eval-{model_ref}"}
     with mlflow.start_run(**run_kwargs):  # type: ignore[arg-type]
@@ -199,9 +199,9 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 for video in videos:
                     mlflow.log_artifact(str(video), artifact_path="demo")
-                logger.info("logged %d demo videos", len(videos))
+                logger.info(f"logged {len(videos)} demo videos")
             except Exception as exc:
-                logger.warning("demo rendering failed: %s", exc)
+                logger.warning(f"demo rendering failed: {exc}")
 
         if args.crops_enabled:
             try:
@@ -218,12 +218,11 @@ def main(argv: list[str] | None = None) -> int:
                     str(work_dir / "error_analysis"), artifact_path="error_analysis"
                 )
                 logger.info(
-                    "logged %d low-conf TP + %d high-conf FP crops",
-                    len(crops.low_conf_tp),
-                    len(crops.high_conf_fp),
+                    f"logged {len(crops.low_conf_tp)} low-conf TP + "
+                    f"{len(crops.high_conf_fp)} high-conf FP crops"
                 )
             except Exception as exc:
-                logger.warning("error analysis failed: %s", exc)
+                logger.warning(f"error analysis failed: {exc}")
 
         md, csv_path = report_mod.write_report(
             work_dir,
@@ -239,12 +238,12 @@ def main(argv: list[str] | None = None) -> int:
         if args.promote and gate.passed:
             version = registered_version(args.model, settings.mlflow.registered_model)
             if version is None:
-                logger.warning("not promoting: %s has no registered model version", args.model)
+                logger.warning(f"not promoting: {args.model} has no registered model version")
             else:
                 gate_mod.promote(
                     settings.mlflow.registered_model, version, settings.mlflow.champion_alias
                 )
-                logger.info("promoted v%s -> alias '%s'", version, settings.mlflow.champion_alias)
+                logger.info(f"promoted v{version} -> alias '{settings.mlflow.champion_alias}'")
         elif args.promote:
             logger.warning("not promoting: gate did not pass")
 

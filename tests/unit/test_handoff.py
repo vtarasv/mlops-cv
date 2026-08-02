@@ -18,6 +18,7 @@ from mlops_cv.orchestration.handoff import (
     best_weights_uri,
     evaluate_cmd,
     ingest_cmd,
+    optimize_cmd,
     profile_cmd,
     train_cmd,
 )
@@ -137,3 +138,32 @@ def test_profile_cmd_parses_with_real_options() -> None:
     options = ProfileOptions(cmd[3:])
     assert options.input_dir == "/data/subset"
     assert options.view_as(StandardOptions).runner == "DirectRunner"
+
+
+def test_optimize_cmd_parses_with_real_parser() -> None:
+    """optimize shares evaluate's addressing: one run_id keys the whole container chain."""
+    from mlops_cv.optimize.optimize import build_parser, model_uri
+
+    cmd = optimize_cmd(run_id="abc123")
+    assert cmd[:3] == ["python", "-m", "mlops_cv.optimize"]
+    settings = _settings()
+    args = build_parser(settings).parse_args(cmd[3:])
+    assert args.model == best_weights_uri("abc123")  # never the alias — no promotion race
+    assert args.run_id == "abc123"
+    assert model_uri(args, settings) == best_weights_uri("abc123")
+
+
+def test_optimize_cmd_renders_an_airflow_template() -> None:
+    template = "{{ ti.xcom_pull(task_ids='parse_train_output')['run_id'] }}"
+    cmd = optimize_cmd(run_id=template)
+    assert best_weights_uri(template) in cmd
+    assert template in cmd
+
+
+def test_optimize_defaults_to_the_champion_alias_without_addressing() -> None:
+    from mlops_cv.optimize.optimize import build_parser, model_uri
+
+    settings = _settings()
+    args = build_parser(settings).parse_args([])
+    expected = f"models:/{settings.mlflow.registered_model}@{settings.mlflow.champion_alias}"
+    assert model_uri(args, settings) == expected

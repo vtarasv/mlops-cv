@@ -41,8 +41,9 @@ x-airflow-common: &airflow-common
     HOST_RAW_DIR: ${HOST_RAW_DIR}
     HOST_SUBSET_DIR: ${HOST_SUBSET_DIR:?set DATA__SUBSET_DIR in the root .env (or export HOST_SUBSET_DIR)}
     HOST_WEIGHTS: ${HOST_WEIGHTS:?set TRAINING__WEIGHTS (absolute path) in the root .env (or export HOST_WEIGHTS)}
-    TRAIN_IMAGE: ${TRAIN_IMAGE:?run via make airflow-up (or export TRAIN_IMAGE)}
     BEAM_IMAGE: ${BEAM_IMAGE:?run via make airflow-up (or export BEAM_IMAGE)}
+    TRAIN_IMAGE: ${TRAIN_IMAGE:?run via make airflow-up (or export TRAIN_IMAGE)}
+    OPTIMIZE_IMAGE: ${OPTIMIZE_IMAGE:?run via make airflow-up (or export OPTIMIZE_IMAGE)}
     MLFLOW__TRACKING_URI: http://mlflow:${MLFLOW_PORT}
   volumes:
     - ../dags:/opt/airflow/dags:ro

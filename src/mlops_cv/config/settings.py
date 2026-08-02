@@ -73,6 +73,14 @@ class StreamingSettings(BaseModel):
     anomaly_threshold: float = 31.0  # windowed mean count that opens an alert episode
 
 
+class OptimizeSettings(BaseModel):
+    """Serving-variant production: the two deployment targets and the compiler's budget."""
+
+    server_imgsz: int = 640
+    edge_imgsz: int = 320  # the low-resolution rung of the edge (NCNN) ladder
+    workspace_gb: int = 4  # compiler workspace ceiling
+
+
 class Settings(BaseSettings):
     """Process-wide configuration."""
 
@@ -91,6 +99,7 @@ class Settings(BaseSettings):
     mlflow: MlflowSettings = MlflowSettings()
     training: TrainingSettings = TrainingSettings()
     streaming: StreamingSettings = StreamingSettings()
+    optimize: OptimizeSettings = OptimizeSettings()
 
 
 def load_settings(base_dir: str | Path = ".") -> Settings:

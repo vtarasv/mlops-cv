@@ -10,21 +10,6 @@ from mlops_cv.eval.gate import GateResult
 from mlops_cv.tracking.metric_keys import HEADLINE_ATTRS, PRIMARY, metric_key
 
 
-def percentiles(samples: Sequence[float], ps: Sequence[float] = (50.0, 95.0)) -> dict[float, float]:
-    """Linear-interpolation percentiles of ``samples`` (numpy's default method). Empty -> zeros."""
-    if not samples:
-        return {float(p): 0.0 for p in ps}
-    ordered = sorted(float(s) for s in samples)
-    n = len(ordered)
-    out: dict[float, float] = {}
-    for p in ps:
-        rank = (p / 100.0) * (n - 1)
-        lo = int(rank)
-        hi = min(lo + 1, n - 1)
-        out[float(p)] = ordered[lo] + (rank - lo) * (ordered[hi] - ordered[lo])
-    return out
-
-
 def _fmt(value: float | None) -> str:
     return "—" if value is None else f"{value:.4f}"
 

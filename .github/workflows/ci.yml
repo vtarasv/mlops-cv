@@ -26,7 +26,7 @@ jobs:
           enable-cache: true
 
       - name: Sync dependencies (locked, CPU-only)
-        run: uv sync --locked --no-group gpu
+        run: uv sync --locked --no-group gpu --no-group optimize
 
       # The Beam pipeline tests launch the Prism runner, a Go binary apache-beam auto-downloads
       # to ~/.apache_beam/cache on first use.

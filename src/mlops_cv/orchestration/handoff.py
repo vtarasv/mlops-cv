@@ -88,6 +88,19 @@ def evaluate_cmd(run_id: str, batch: int | str = 8) -> list[str]:
     ]
 
 
+def optimize_cmd(run_id: str) -> list[str]:
+    """Optimize-container argv: build + benchmark a promoted model's serving variants. No reply."""
+    return [
+        "python",
+        "-m",
+        "mlops_cv.optimize",
+        "--model",
+        best_weights_uri(run_id),
+        "--run-id",
+        run_id,
+    ]
+
+
 def ingest_cmd(raw_dir: str, output_dir: str) -> list[str]:
     """Ingest-container argv (Beam DirectRunner): raw -> subset + demo store. No reply."""
     return [

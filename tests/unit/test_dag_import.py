@@ -33,6 +33,7 @@ def dagbag():
         mp.setenv("HOST_WEIGHTS", str(repo / "data" / "weights" / "yolo26s.pt"))
         mp.setenv("TRAIN_IMAGE", "mlops-cv-train:test")
         mp.setenv("BEAM_IMAGE", "mlops-cv-beam:test")
+        mp.setenv("OPTIMIZE_IMAGE", "mlops-cv-optimize:test")
         mp.setenv("MLFLOW__TRACKING_URI", "http://mlflow:5000")
         return DagBag(dag_folder=str(DAGS_DIR), include_examples=False)
 
@@ -56,6 +57,7 @@ def test_ct_dag_topology(dagbag) -> None:
         "gate",
         "promote",
         "skip_promotion",
+        "optimize",
     }
     down = {t.task_id: set(t.downstream_task_ids) for t in ct.tasks}
     assert down["check_subset"] == {"build_subset", "check_profiled"}  # self-heal branch
@@ -81,3 +83,23 @@ def test_ct_dag_run_policy(dagbag) -> None:
     assert ct.catchup is False  # a missed week must not queue a backfill of GPU trainings
     assert ct.max_active_runs == 1  # one CT cycle at a time
     assert ct.params["epochs"] == 3
+
+
+def test_optimization_runs_only_after_a_promotion(dagbag) -> None:
+    """Only a promoted model is ever served, so only a promoted model earns the GPU minutes."""
+    ct = dagbag.dags[CT_DAG]
+    assert ct.get_task("optimize").upstream_task_ids == {"promote"}
+    assert "optimize" not in ct.get_task("skip_promotion").downstream_task_ids
+
+
+def test_optimize_task_replies_with_nothing(dagbag) -> None:
+    """Data-prep precedent: no consumer reads a reply, so no reply contract is maintained."""
+    assert dagbag.dags[CT_DAG].get_task("optimize").do_xcom_push is False
+
+
+def test_optimize_task_needs_no_host_store(dagbag) -> None:
+    """Everything the optimize container produces is published to MLflow — an extra host mount
+    would mean an artifact silently escaping the registry (and root-owned files on the host)."""
+    train_task = dagbag.dags[CT_DAG].get_task("train")
+    optimize_task = dagbag.dags[CT_DAG].get_task("optimize")
+    assert optimize_task.mounts == train_task.mounts

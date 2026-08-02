@@ -29,10 +29,33 @@ PRIMARY = "mAP50-95"
 # The prefix ultralytics' MLflow callback logs per-epoch val metrics under.
 TRAIN_PREFIX = "metrics"
 
+OPTIMIZE_PREFIX = "optimize"
+
 
 def metric_key(prefix: str, name: str) -> str:
     """The tracking-run key for one reading: ``{prefix}/{name}``."""
     return f"{prefix}/{name}"
+
+
+def variant_prefix(variant: str) -> str:
+    """The reserved namespace for one Serving variant's readings: ``optimize/<variant>``."""
+    return metric_key(OPTIMIZE_PREFIX, variant)
+
+
+def variant_latency_prefix(variant: str) -> str:
+    """Where a variant's latency readings live: ``optimize/<variant>/latency``."""
+    return metric_key(variant_prefix(variant), "latency")
+
+
+def variant_device_latency_prefix(variant: str, device_label: str) -> str:
+    """Where an on-device harness's latency readings live:
+    ``optimize/<variant>/latency/<label>``."""
+    return metric_key(variant_latency_prefix(variant), device_label)
+
+
+def variant_speed_prefix(variant: str) -> str:
+    """Where a variant's per-stage breakdown lives: ``optimize/<variant>/speed``."""
+    return metric_key(variant_prefix(variant), "speed")
 
 
 def headline_metrics(box: Any, prefix: str = "test") -> dict[str, float]:

@@ -4,9 +4,10 @@ An Airflow **3.2.2** stack (LocalExecutor, Docker Compose) runs the continuous-t
 DAG: ensure the dataset exists and is valid (rebuilding it from raw via the Beam **ingestion**
 pipeline if not), **profile** it (quality report + drift baseline, skipped when already up to
 date — see [batch-pipeline.md](batch-pipeline.md)), validate what training will consume, train a
-challenger, evaluate it against the champion, and promote it to the `champion` registry alias
-**only on a champion/challenger win**. The DAG fires weekly **or** on an external *new data*
-asset event — the hook a drift monitor POSTs to close the monitor → trigger → retrain loop.
+challenger, evaluate it against the champion, promote it to the `champion` registry alias
+**only on a champion/challenger win**, and — only then — build and benchmark its serving variants.
+The DAG fires weekly **or** on an external *new data* asset event — the hook a drift monitor
+POSTs to close the monitor → trigger → retrain loop.
 
 ```mermaid
 flowchart LR
@@ -24,10 +25,12 @@ flowchart LR
     e --> g{"gate"}
     g -->|passed| pr["promote"]
     g -->|lost| sk["skip_promotion"]
+    pr --> op["optimize (GPU container)"]
   end
   t -->|"run + registered version"| mlflow[("MLflow")]
   e -->|"test metrics · report · visuals<br/>onto the same run"| mlflow
   pr -->|champion alias| mlflow
+  op -->|"serving variants + report<br/>onto a child of the training run"| mlflow
 ```
 
 ## Run it
@@ -110,6 +113,12 @@ Every task is a thin wrapper over `mlops_cv` code — the DAG contains orchestra
    data, not an error. Its last stdout line is the `GateVerdict` JSON.
 9. **`gate`** (branch, in-process) — pure verdict-line check: `promote` or `skip_promotion`.
 10. **`promote`** (in-process) — points the `champion` registry alias at the challenger version.
+11. **`optimize`** (`DockerOperator`, GPU) — `python -m mlops_cv.optimize --model
+    runs:/<train run>/weights/best.pt --run-id <train run>` in the `mlops-cv-optimize` image:
+    builds and benchmarks the serving variants and publishes every artifact, recording them on a
+    **child** of the training run (see [optimization.md](optimization.md)). Runs **only after a
+    promotion** — the champion is the only model that gets served, so it is the only model that
+    earns the GPU minutes.
 
 ### The container contract
 

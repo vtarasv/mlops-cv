@@ -13,7 +13,6 @@ from __future__ import annotations
 import argparse
 import logging
 import tempfile
-import time
 from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -27,7 +26,7 @@ from mlops_cv.data.subset import (
 )
 from mlops_cv.eval import gate as gate_mod
 from mlops_cv.eval import report as report_mod
-from mlops_cv.eval.report import percentiles
+from mlops_cv.optimize import benchmark as benchmark_mod
 from mlops_cv.orchestration.handoff import GateVerdict
 from mlops_cv.tracking import client
 from mlops_cv.tracking.metric_keys import PRIMARY, headline_metrics, metric_key, per_class_metrics
@@ -93,31 +92,15 @@ def benchmark_latency(
     """Time single-image ``model.predict`` calls; return P50/P95/mean latency (ms) + count.
 
     A **stub** (batch 1, includes pre/post-processing) for a quick number in the eval run — the
-    rigorous engine/VRAM/P99 benchmark is a later optimisation step. Warmup calls are discarded.
+    rigorous multi-variant benchmark is the optimisation harness's job.
     """
-    if not images:
-        return {
-            "latency/p50_ms": 0.0,
-            "latency/p95_ms": 0.0,
-            "latency/mean_ms": 0.0,
-            "latency/n": 0.0,
-        }
-    paths = [str(p) for p in images]
-    timings: list[float] = []
-    for i in range(warmup + runs):
-        src = paths[i % len(paths)]
-        start = time.perf_counter()
-        model.predict(src, verbose=False)
-        if i >= warmup:
-            timings.append((time.perf_counter() - start) * 1000.0)
-    pct = percentiles(timings, (50.0, 95.0))
-    mean = sum(timings) / len(timings) if timings else 0.0
-    return {
-        "latency/p50_ms": pct[50.0],
-        "latency/p95_ms": pct[95.0],
-        "latency/mean_ms": mean,
-        "latency/n": float(len(timings)),
-    }
+    timings = benchmark_mod.time_calls(
+        lambda src: model.predict(src, verbose=False),
+        [str(p) for p in images],
+        warmup=warmup,
+        iterations=runs,
+    )
+    return benchmark_mod.latency_metrics(timings, ps=(50.0, 95.0))
 
 
 def main(argv: list[str] | None = None) -> int:

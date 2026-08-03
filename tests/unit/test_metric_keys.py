@@ -6,11 +6,15 @@ from types import SimpleNamespace
 
 from mlops_cv.tracking.metric_keys import (
     HEADLINE_ATTRS,
+    OPTIMIZE_PREFIX,
     PRIMARY,
     TRAIN_PREFIX,
     headline_metrics,
     metric_key,
     per_class_metrics,
+    variant_device_latency_prefix,
+    variant_latency_prefix,
+    variant_prefix,
 )
 
 NAMES = {0: "person", 1: "vehicle", 2: "two-three-wheeler"}
@@ -67,3 +71,44 @@ def test_per_class_values_coerced_to_float() -> None:
     out = per_class_metrics([1, 0, 0], [0], NAMES)  # int in -> float out
     assert out == {"metrics/mAP50-95/person": 1.0}
     assert isinstance(out["metrics/mAP50-95/person"], float)
+
+
+def test_variant_namespace_golden_spellings() -> None:
+    assert OPTIMIZE_PREFIX == "optimize"
+    assert variant_prefix("trt-fp16-640") == "optimize/trt-fp16-640"
+    assert variant_latency_prefix("trt-fp16-640") == "optimize/trt-fp16-640/latency"
+    assert (
+        variant_device_latency_prefix("ncnn-fp16-320", "pi5")
+        == "optimize/ncnn-fp16-320/latency/pi5"
+    )
+
+
+def test_device_latency_keys_never_collide_with_the_desktops() -> None:
+    plain = metric_key(variant_latency_prefix("ncnn-fp16-320"), "p50_ms")
+    device = metric_key(variant_device_latency_prefix("ncnn-fp16-320", "pi5"), "p50_ms")
+    assert plain != device
+    assert device.startswith(variant_latency_prefix("ncnn-fp16-320") + "/")
+
+
+def test_variant_keys_can_never_collide_with_headline_keys() -> None:
+    headline = {
+        metric_key(split, name) for split in ("train", "val", "test") for name in HEADLINE_ATTRS
+    }
+    variant_keys = {
+        metric_key(variant_prefix(variant), name)
+        for variant in ("torch-fp32-640", "onnx-ort-fp32-640", "trt-fp16-640", "trt-int8-320")
+        for name in HEADLINE_ATTRS
+    }
+    assert not (headline & variant_keys)
+
+
+def test_optimize_prefix_is_not_a_split_name() -> None:
+    """If a split were ever named 'optimize', the namespaces would overlap."""
+    assert OPTIMIZE_PREFIX not in {"train", "val", "test"}
+
+
+def test_variant_headline_metrics_are_namespaced() -> None:
+    box = _box(0.8, 0.7, 0.6, 0.4)
+    out = headline_metrics(box, prefix=variant_prefix("trt-int8-320"))
+    assert out["optimize/trt-int8-320/mAP50-95"] == 0.4
+    assert not any(k.startswith(("test/", "val/", "train/")) for k in out)

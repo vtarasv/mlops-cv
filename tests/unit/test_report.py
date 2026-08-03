@@ -6,12 +6,9 @@ import csv
 from pathlib import Path
 from types import SimpleNamespace
 
-import pytest
-
 from mlops_cv.eval.report import (
     comparison_table_md,
     metrics_csv_rows,
-    percentiles,
     write_report,
 )
 
@@ -23,20 +20,6 @@ def _metrics(p: float, r: float, m50: float, m: float, prefix: str = "test") -> 
         f"{prefix}/mAP50": m50,
         f"{prefix}/mAP50-95": m,
     }
-
-
-def test_percentiles_median() -> None:
-    assert percentiles([10, 20, 30, 40, 50], (50,))[50.0] == pytest.approx(30.0)
-
-
-def test_percentiles_linear_interpolation() -> None:
-    out = percentiles(list(range(1, 101)), (50, 95))
-    assert out[50.0] == pytest.approx(50.5)
-    assert out[95.0] == pytest.approx(95.05)
-
-
-def test_percentiles_empty_returns_zeros() -> None:
-    assert percentiles([], (50, 95)) == {50.0: 0.0, 95.0: 0.0}
 
 
 def test_comparison_table_no_champion_is_two_columns() -> None:

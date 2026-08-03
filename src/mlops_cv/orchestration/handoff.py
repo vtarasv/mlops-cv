@@ -18,7 +18,7 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict
 
-#: Where ultralytics leaves the val-selected checkpoint, relative to a run's artifact root.
+# Where ultralytics leaves the val-selected checkpoint, relative to a run's artifact root.
 BEST_WEIGHTS_RELPATH = "weights/best.pt"
 
 
@@ -85,6 +85,19 @@ def evaluate_cmd(run_id: str, batch: int | str = 8) -> list[str]:
         "--exit-zero",
         "--batch",
         str(batch),
+    ]
+
+
+def optimize_cmd(run_id: str) -> list[str]:
+    """Optimize-container argv: build + benchmark a promoted model's serving variants. No reply."""
+    return [
+        "python",
+        "-m",
+        "mlops_cv.optimize",
+        "--model",
+        best_weights_uri(run_id),
+        "--run-id",
+        run_id,
     ]
 
 

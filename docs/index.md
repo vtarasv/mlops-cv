@@ -19,12 +19,14 @@ page here as it lands.
   and dataset profiling / drift baseline.
 - [Streaming inference](streaming.md) — Redpanda/Kafka: demo-store producer, GPU champion
   consumer, anomaly alerts; delivery semantics + scaling paths.
+- [Model optimization](optimization.md) — serving variants for two targets (GPU server: portable
+  runtime + compiled FP16 engine; Raspberry Pi 5 edge: NCNN), every artifact published, the
+  accuracy-vs-latency record + on-device benchmark harness.
 
 ## Planned
 
 | Doc | Topic |
 |-----|-------|
-| `optimization.md` | ONNX / TensorRT FP16 + INT8 (edge-sim) |
 | `containers.md`, `serving.md` | Compose parity, FastAPI/Triton serving |
 | `monitoring.md` | Drift detection + drift-triggered continuous training |
 | `iac.md` | Terraform + GCP managed mirrors |

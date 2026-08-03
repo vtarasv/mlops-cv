@@ -43,8 +43,18 @@ streaming = [
     "confluent-kafka==2.15.0",
 ]
 
+optimize = [
+    "nvidia-ml-py==13.610.43",
+    "ncnn==1.0.20260526",
+    "pnnx==20260526",
+    "onnx==1.22.0",
+    "onnxruntime-gpu==1.27.0",
+    "onnxslim==0.1.94",
+    "tensorrt-cu13==10.16.1.11",
+]
+
 [tool.uv]
-default-groups = ["dev", "gpu", "airflow", "beam", "streaming"]
+default-groups = ["dev", "gpu", "airflow", "beam", "streaming", "optimize"]
 
 [tool.uv.sources]
 torch = [{ index = "pytorch-cu130", marker = "sys_platform == 'linux'" }]

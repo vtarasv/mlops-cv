@@ -104,7 +104,8 @@ services:
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
       AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
       MLFLOW_S3_IGNORE_TLS: "true"
-      MLFLOW_SERVER_ALLOWED_HOSTS: "localhost:${MLFLOW_PORT},127.0.0.1:${MLFLOW_PORT},mlflow:${MLFLOW_PORT}"
+      # 192.168.*,10.* - LAN clients (the edge device's benchmark harness).
+      MLFLOW_SERVER_ALLOWED_HOSTS: "localhost:${MLFLOW_PORT},127.0.0.1:${MLFLOW_PORT},mlflow:${MLFLOW_PORT},192.168.*,10.*"
     command:
       - mlflow
       - server

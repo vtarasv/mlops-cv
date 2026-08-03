@@ -10,7 +10,9 @@ Container contract (owned by ``mlops_cv.orchestration.handoff`` — both ends im
 the DAG builds each container's command there, ``train`` replies with a ``TrainHandoff``
 line (its last stdout line = XCom), and ``evaluate`` logs test metrics + report + visuals
 onto the same training run and replies with the ``GateVerdict`` line the branch decides
-on. The challenger is promoted to the ``champion`` registry alias only on a gate pass.
+on. The challenger is promoted to the ``champion`` registry alias only on a gate pass, and the
+new champion's serving variants are built and benchmarked (``optimize``) — only champions are
+served.
 """
 
 from __future__ import annotations
@@ -35,6 +37,7 @@ from mlops_cv.orchestration.handoff import (
     TrainHandoff,
     evaluate_cmd,
     ingest_cmd,
+    optimize_cmd,
     profile_cmd,
     train_cmd,
 )
@@ -48,8 +51,9 @@ logger = logging.getLogger(__name__)
 HOST_RAW_DIR = os.environ.get("HOST_RAW_DIR", "")  # optional: only the ingest task reads raw
 SUBSET_DIR = os.environ["HOST_SUBSET_DIR"]
 WEIGHTS = os.environ["HOST_WEIGHTS"]  # pretrained-weights cache: downloaded once, reused
-TRAIN_IMAGE = os.environ["TRAIN_IMAGE"]
 BEAM_IMAGE = os.environ["BEAM_IMAGE"]
+TRAIN_IMAGE = os.environ["TRAIN_IMAGE"]
+OPTIMIZE_IMAGE = os.environ["OPTIMIZE_IMAGE"]
 MLFLOW_URI = os.environ["MLFLOW__TRACKING_URI"]
 
 # Host paths are bind-mounted at identical container paths ("path parity") so the absolute
@@ -98,6 +102,12 @@ _GPU_DOCKER_COMMON = {
     # A hung GPU container would otherwise hold the single run slot (max_active_runs=1) forever.
     "execution_timeout": timedelta(hours=2),
     "do_xcom_push": True,  # XCom = the container's last stdout line
+}
+
+_OPTIMIZE_DOCKER = {
+    **_GPU_DOCKER_COMMON,
+    "image": OPTIMIZE_IMAGE,
+    "do_xcom_push": False,
 }
 
 # CPU data-prep siblings (beam image): no GPU, no XCom, default /dev/shm.
@@ -195,6 +205,12 @@ def aerial_object_detection_ct() -> None:
         )
         return "promote" if verdict.passed else "skip_promotion"
 
+    optimize = DockerOperator(
+        task_id="optimize",
+        command=optimize_cmd(run_id=_run_id),
+        **_OPTIMIZE_DOCKER,
+    )
+
     @task
     def promote(train_info: dict[str, str]) -> None:
         """Point the champion alias at the challenger version (the gate already passed)."""
@@ -223,6 +239,7 @@ def aerial_object_detection_ct() -> None:
     validated >> train
     info >> evaluate
     verdict >> [promoted, skipped]
+    promoted >> optimize
 
 
 aerial_object_detection_ct()

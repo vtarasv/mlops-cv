@@ -18,7 +18,7 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict
 
-#: Where ultralytics leaves the val-selected checkpoint, relative to a run's artifact root.
+# Where ultralytics leaves the val-selected checkpoint, relative to a run's artifact root.
 BEST_WEIGHTS_RELPATH = "weights/best.pt"
 
 

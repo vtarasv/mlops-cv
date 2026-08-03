@@ -25,7 +25,7 @@ flowchart LR
     engines["TRT engine<br/>+ fingerprint"]
     ncnn["NCNN models<br/>fp32 · fp16 · fp16-320"]
     measure["measure each variant<br/>val() + latency (+ memory on GPU)"]
-    portable --> engines
+    portable -.->|"equivalent graph,<br/>re-exported by the compiler"| engines
     portable --> measure
     engines --> measure
     ncnn --> measure
@@ -39,6 +39,7 @@ flowchart LR
   record[("optimize child run<br/>optimize/* + artifacts")]
 
   model --> portable
+  model --> engines
   model --> ncnn
   model --> measure
   train -.->|"parent of"| record

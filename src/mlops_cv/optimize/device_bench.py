@@ -14,16 +14,14 @@ import logging
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 
+from mlops_cv import benchmark as benchmark_mod
 from mlops_cv.config import Settings, get_settings
-from mlops_cv.optimize import benchmark as benchmark_mod
-from mlops_cv.optimize.variants import NCNN
+from mlops_cv.optimize.variants import NCNN, Variant, parse_artifact_tag
 from mlops_cv.tracking import client
 from mlops_cv.tracking.metric_keys import OPTIMIZE_PREFIX, variant_device_latency_prefix
+from mlops_cv.tracking.resolve import model_version, run_id_from_uri
 
 logger = logging.getLogger(__name__)
-
-# Model-version tag prefix that advertises an NCNN artifact (``optimize.ncnn_fp16_320`` ...).
-NCNN_TAG_PREFIX = f"{OPTIMIZE_PREFIX}.{NCNN}_"
 
 
 def build_parser(settings: Settings) -> argparse.ArgumentParser:
@@ -59,9 +57,9 @@ def build_parser(settings: Settings) -> argparse.ArgumentParser:
 def ncnn_artifacts(tags: Mapping[str, str], names: Iterable[str] | None) -> dict[str, str]:
     """Which published NCNN artifacts to measure: ``{variant name: artifact URI}``."""
     published = {
-        key.removeprefix(f"{OPTIMIZE_PREFIX}.").replace("_", "-"): uri
+        variant.name: uri
         for key, uri in tags.items()
-        if key.startswith(NCNN_TAG_PREFIX)
+        if (variant := parse_artifact_tag(key)) is not None and variant.runtime == NCNN
     }
     if names is None:
         return published
@@ -74,11 +72,6 @@ def ncnn_artifacts(tags: Mapping[str, str], names: Iterable[str] | None) -> dict
     return {name: uri for name, uri in published.items() if name in wanted}
 
 
-def variant_imgsz(variant_name: str) -> int:
-    """The input resolution a variant slug encodes (its final ``-<imgsz>`` segment)."""
-    return int(variant_name.rsplit("-", 1)[1])
-
-
 def record_run_id(artifact_uris: Iterable[str]) -> str:
     """The run holding the published artifacts, read out of the URIs the version tags carry.
 
@@ -86,11 +79,7 @@ def record_run_id(artifact_uris: Iterable[str]) -> str:
     following the artifact URI is what puts this device's latency on the same run as the
     accuracy it belongs beside.
     """
-    run_ids = {
-        uri.removeprefix("runs:/").split("/", 1)[0]
-        for uri in artifact_uris
-        if uri.startswith("runs:/")
-    }
+    run_ids = {run_id for uri in artifact_uris if (run_id := run_id_from_uri(uri))}
     if len(run_ids) != 1:
         raise ValueError(
             f"expected one record run across the published artifacts, found {sorted(run_ids)} — "
@@ -109,20 +98,18 @@ def main(argv: list[str] | None = None) -> int:
         logger.error(f"no .jpg frames in {args.images} — copy a few once, any frames work")
         return 2
 
-    client.configure()  # export MLFLOW_TRACKING_URI before importing mlflow
+    mlflow = client.connect(settings, experiment=False)
 
-    import mlflow
-    from mlflow import MlflowClient
     from ultralytics import YOLO
 
-    mlflow.set_tracking_uri(client.tracking_uri())
-    registry = MlflowClient()
     name = settings.mlflow.registered_model
-    version = (
-        registry.get_model_version(name, args.model_version)
+    ref = (
+        f"models:/{name}/{args.model_version}"
         if args.model_version
-        else registry.get_model_version_by_alias(name, settings.mlflow.champion_alias)
+        else client.champion_uri(settings)
     )
+    version = model_version(ref, name)
+    assert version is not None
     selected = ncnn_artifacts(version.tags, args.variants.split(",") if args.variants else None)
     if not selected:
         logger.error(f"version {version.version} advertises no NCNN artifacts — run optimize first")
@@ -140,13 +127,14 @@ def main(argv: list[str] | None = None) -> int:
         for variant_name, uri in selected.items():
             local = Path(download_artifacts(artifact_uri=uri))
             model = YOLO(str(local), task="detect")
-            imgsz = variant_imgsz(variant_name)
-            timings = benchmark_mod.time_calls(
-                lambda src, m=model, s=imgsz: m.predict(src, imgsz=s, device="cpu", verbose=False),
-                images,
-            )
             prefix = variant_device_latency_prefix(variant_name, args.device_label)
-            metrics = benchmark_mod.latency_metrics(timings, prefix=prefix)
+            metrics = benchmark_mod.benchmark_model(
+                model,
+                images,
+                imgsz=Variant.parse(variant_name).imgsz,
+                device="cpu",
+                prefix=prefix,
+            )
             mlflow.log_metrics(metrics)
             logger.info(
                 f"{variant_name}: p50={metrics[f'{prefix}/p50_ms']:.1f}ms on {args.device_label}"

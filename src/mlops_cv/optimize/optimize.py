@@ -18,9 +18,9 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from mlops_cv import benchmark as benchmark_mod
 from mlops_cv.config import Settings, get_settings
 from mlops_cv.optimize import artifacts
-from mlops_cv.optimize import benchmark as benchmark_mod
 from mlops_cv.optimize import report as report_mod
 from mlops_cv.optimize.report import VariantMeasurement
 from mlops_cv.optimize.variants import (
@@ -29,6 +29,9 @@ from mlops_cv.optimize.variants import (
     TORCH,
     TRT,
     Variant,
+    artifact_tag,
+    fingerprint_tag,
+    graph_tag,
     ladder,
     select,
 )
@@ -39,7 +42,7 @@ from mlops_cv.tracking.metric_keys import (
     variant_prefix,
     variant_speed_prefix,
 )
-from mlops_cv.tracking.resolve import registered_version, resolve_model
+from mlops_cv.tracking.resolve import model_version, resolve_model
 
 if TYPE_CHECKING:
     from ultralytics import YOLO
@@ -90,14 +93,7 @@ def build_parser(settings: Settings) -> argparse.ArgumentParser:
 
 def model_uri(args: argparse.Namespace, settings: Settings) -> str:
     """Which model to optimize: an explicit URI, else the champion."""
-    if args.model:
-        return str(args.model)
-    return f"models:/{settings.mlflow.registered_model}@{settings.mlflow.champion_alias}"
-
-
-def artifact_tag(variant_name: str) -> str:
-    """The model-version tag key addressing one published variant artifact."""
-    return "optimize." + variant_name.replace("-", "_")
+    return str(args.model) if args.model else client.champion_uri(settings)
 
 
 def record_tags(
@@ -147,11 +143,13 @@ def _measure_variant(
         for stage in SPEED_STAGES
         if stage in speed
     }
-    timings = benchmark_mod.time_calls(
-        lambda src: model.predict(src, imgsz=variant.imgsz, device=device, verbose=False),
+    metrics |= benchmark_mod.benchmark_model(
+        model,
         images,
+        imgsz=variant.imgsz,
+        device=device,
+        prefix=variant_latency_prefix(variant.name),
     )
-    metrics |= benchmark_mod.latency_metrics(timings, prefix=variant_latency_prefix(variant.name))
     return metrics
 
 
@@ -160,9 +158,8 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=settings.log_level.upper(), format="%(message)s")
     args = build_parser(settings).parse_args(argv)
 
-    client.configure()  # export MLFLOW_TRACKING_URI before importing mlflow
+    mlflow = client.connect(settings)
 
-    import mlflow
     import torch
     from mlflow import MlflowClient
     from mlflow.exceptions import MlflowException
@@ -173,9 +170,6 @@ def main(argv: list[str] | None = None) -> int:
         # as a compute process, so the memory probe would fall back to a device-wide figure and
         # the first variant's delta would be measured against a different quantity than the rest.
         torch.zeros(1, device="cuda")
-
-    mlflow.set_tracking_uri(client.tracking_uri())
-    mlflow.set_experiment(settings.mlflow.experiment)
 
     opt = settings.optimize
     data_yaml = (args.data or settings.data.subset_dir / settings.data.dataset_yaml.name).resolve()
@@ -198,12 +192,9 @@ def main(argv: list[str] | None = None) -> int:
             )
         return 2
 
-    version = registered_version(uri, settings.mlflow.registered_model)
-    source_run = (
-        MlflowClient().get_model_version(settings.mlflow.registered_model, version).run_id
-        if version
-        else None
-    )
+    registered = model_version(uri, settings.mlflow.registered_model)
+    version = registered.version if registered else None
+    source_run = registered.run_id if registered else None
     if version is None:
         logger.warning(
             f"{uri} maps to no registered '{settings.mlflow.registered_model}' version — "
@@ -288,7 +279,7 @@ def main(argv: list[str] | None = None) -> int:
                 # a load fails.
                 sidecar = loadable.with_suffix(".fingerprint.json")
                 sidecar.write_text(json.dumps(fingerprint, indent=2), encoding="utf-8")
-                publish(sidecar, "engines", artifact_tag(variant.name) + "_fingerprint")
+                publish(sidecar, "engines", fingerprint_tag(variant.name))
                 publish(loadable, "engines", artifact_tag(variant.name))
             elif variant.runtime == NCNN:
                 loadable, build_s = artifacts.export_ncnn(weights, variant, work_dir / "ncnn")
@@ -333,7 +324,7 @@ def main(argv: list[str] | None = None) -> int:
             logger.info(f"{variant.name}: mAP50-95={primary} p50={p50} ({device})")
 
         for imgsz, graph in sorted(graphs.items()):
-            publish(graph, "onnx", f"optimize.onnx_{imgsz}")
+            publish(graph, "onnx", graph_tag(imgsz))
 
         md_path, csv_path = report_mod.write_report(work_dir, measurements, model_ref=model_ref)
         mlflow.log_artifact(str(md_path))

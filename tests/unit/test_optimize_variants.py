@@ -13,10 +13,14 @@ from mlops_cv.optimize.variants import (
     TORCH,
     TRT,
     Variant,
+    artifact_tag,
     engine_export_kwargs,
+    fingerprint_tag,
     graph_export_kwargs,
+    graph_tag,
     ladder,
     ncnn_export_kwargs,
+    parse_artifact_tag,
     select,
 )
 
@@ -87,6 +91,51 @@ def test_ncnn_variants_measure_on_the_cpu() -> None:
     assert rungs["ncnn-fp16-320"].measure_device("0") == "cpu"
     assert rungs["trt-fp16-640"].measure_device("0") == "0"
     assert rungs["torch-fp32-640"].measure_device("cuda:1") == "cuda:1"
+
+
+def test_parse_inverts_of_for_every_ladder_rung() -> None:
+    for variant in ladder(640, 320):
+        assert Variant.parse(variant.name) == variant
+
+
+def test_parse_splits_hyphenated_runtimes_off_the_right() -> None:
+    parsed = Variant.parse("onnx-ort-fp32-640")
+    assert (parsed.runtime, parsed.precision, parsed.imgsz) == (ONNX_ORT, FP32, 640)
+
+
+def test_parse_rejects_what_is_not_a_slug() -> None:
+    for junk in ("model", "onnx-640", "trt-fp16-640-fingerprint", "ncnn-fp16-", ""):
+        with pytest.raises(ValueError, match="not a variant slug"):
+            Variant.parse(junk)
+
+
+def test_artifact_tag_is_the_variant_slug_in_tag_grammar() -> None:
+    assert artifact_tag("ncnn-fp16-320") == "optimize.ncnn_fp16_320"
+    assert artifact_tag("trt-fp16-640") == "optimize.trt_fp16_640"
+
+
+def test_artifact_tag_round_trips_for_every_ladder_rung() -> None:
+    """The cross-machine contract: the desktop encodes, the edge device decodes, one owner."""
+    for variant in ladder(640, 320):
+        assert parse_artifact_tag(artifact_tag(variant.name)) == variant
+
+
+def test_parse_artifact_tag_ignores_every_non_variant_tag() -> None:
+    """A version's tags mix variant artifacts with graphs, sidecars, and provenance."""
+    for key in (
+        graph_tag(640),  # "optimize.onnx_640"
+        fingerprint_tag("trt-fp16-640"),  # "optimize.trt_fp16_640_fingerprint"
+        "optimize.model",
+        "optimize.source_run",
+        "eval.split",
+        "optimize.",
+    ):
+        assert parse_artifact_tag(key) is None
+
+
+def test_sidecar_and_graph_tags_are_golden() -> None:
+    assert fingerprint_tag("trt-fp16-640") == "optimize.trt_fp16_640_fingerprint"
+    assert graph_tag(320) == "optimize.onnx_320"
 
 
 def test_graph_export_kwargs_are_static_single_image() -> None:

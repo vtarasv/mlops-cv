@@ -123,14 +123,15 @@ def fetch_champion_metrics(model_name: str, alias: str = "champion") -> dict[str
     from mlflow import MlflowClient
     from mlflow.exceptions import MlflowException
 
-    client = MlflowClient()
+    from mlops_cv.tracking.resolve import model_version
+
     try:
-        version: ModelVersion = client.get_model_version_by_alias(model_name, alias)
+        version: ModelVersion | None = model_version(f"models:/{model_name}@{alias}", model_name)
     except MlflowException:
         return None
     if version is None or version.run_id is None:
         return None
-    return dict(client.get_run(version.run_id).data.metrics)
+    return dict(MlflowClient().get_run(version.run_id).data.metrics)
 
 
 def promote(model_name: str, version: str | int, alias: str = "champion") -> None:

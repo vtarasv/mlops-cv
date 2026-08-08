@@ -32,8 +32,9 @@ setup:
 lint:
 	uv run ruff check .
 
-# Auto-format with ruff.
+# Auto-fix lint findings, then format.
 fmt:
+	uv run ruff check --fix .
 	uv run ruff format .
 
 # Run the unit test suite (CPU-only; gpu/docker-marked tests skipped).

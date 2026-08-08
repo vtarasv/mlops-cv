@@ -45,22 +45,48 @@ def resolve_model(model_ref: str) -> tuple[Path, str]:
     return Path(download_artifacts(artifact_uri=model_ref)), ref_slug
 
 
-def registered_version(model_ref: str, registered_model: str) -> str | None:
-    """The registered version a model URI refers to: parsed from a ``models:/`` URI or found by
-    run id for a ``runs:/`` URI. A bare local path has no registered version -> ``None``."""
+def run_id_from_uri(uri: str) -> str | None:
+    """The run id a ``runs:/`` URI addresses; ``None`` for any other reference."""
+    if not uri.startswith("runs:/"):
+        return None
+    return uri.removeprefix("runs:/").split("/", 1)[0]
+
+
+def model_version(model_ref: str, registered_model: str) -> ModelVersion | None:
+    """The registered ``ModelVersion`` a model URI refers to; ``None`` when it maps to none.
+
+    The full entity, not just its number: a version's tags carry the published-artifact
+    addresses, its ``run_id`` names the training run, and refetching those one field at a time
+    is how callers grow their own registry clients. ``models:/`` refs resolve directly (a
+    missing alias/version raises, as it would on use); ``runs:/`` refs are searched by run id;
+    anything else (a bare local path) is ``None``.
+    """
     from mlflow import MlflowClient
 
-    registry = MlflowClient()
     if model_ref.startswith("models:/"):
         spec = model_ref.removeprefix("models:/")
         if "@" in spec:
-            name, alias = spec.split("@", 1)
-            return registry.get_model_version_by_alias(name, alias).version
+            return MlflowClient().get_model_version_by_alias(*spec.split("@", 1))
         if "/" in spec:
-            return spec.rsplit("/", 1)[1]
-    if model_ref.startswith("runs:/"):
-        run_id = model_ref.removeprefix("runs:/").split("/", 1)[0]
-        found = registry.search_model_versions(f"run_id='{run_id}' and name='{registered_model}'")
-        if found:
-            return found[0].version
+            return MlflowClient().get_model_version(*spec.rsplit("/", 1))
+        return None
+    if run_id := run_id_from_uri(model_ref):
+        found = MlflowClient().search_model_versions(
+            f"run_id='{run_id}' and name='{registered_model}'"
+        )
+        return found[0] if found else None
     return None
+
+
+def registered_version(model_ref: str, registered_model: str) -> str | None:
+    """The registered version *number* a model URI refers to; ``None`` for a bare local path.
+
+    A ``models:/<name>/<version>`` ref already carries the number, so it stays a pure string
+    parse (no registry query); everything else goes through :func:`model_version`.
+    """
+    if model_ref.startswith("models:/"):
+        spec = model_ref.removeprefix("models:/")
+        if "@" not in spec and "/" in spec:
+            return spec.rsplit("/", 1)[1]
+    version = model_version(model_ref, registered_model)
+    return version.version if version is not None else None

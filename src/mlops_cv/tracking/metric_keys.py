@@ -31,6 +31,9 @@ TRAIN_PREFIX = "metrics"
 
 OPTIMIZE_PREFIX = "optimize"
 
+# The eval harness's single-configuration latency namespace (``latency/p50_ms`` ...).
+LATENCY_PREFIX = "latency"
+
 
 def metric_key(prefix: str, name: str) -> str:
     """The tracking-run key for one reading: ``{prefix}/{name}``."""

@@ -129,6 +129,7 @@ never AP math (metrics come exclusively from `model.val()`).
 ## Latency
 
 `latency/*` is a **stub**: it times single-image `model.predict()` calls (batch 1, including pre/
-post-processing) and reports P50/P95/mean in milliseconds, discarding warm-up calls. It is a quick
-sanity number, not a rigorous serving benchmark (engine size, VRAM peak, P99, batched throughput
-come later, with the optimized engines).
+post-processing) at the evaluated `--imgsz`/`--device` — so the number is comparable to the
+accuracy it sits beside — and reports P50/P95/mean in milliseconds, discarding warm-up calls. It
+is a quick sanity number, not a rigorous serving benchmark (engine size, VRAM peak, P99, batched
+throughput come later, with the optimized engines).

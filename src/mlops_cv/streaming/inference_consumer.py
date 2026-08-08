@@ -28,6 +28,7 @@ from mlops_cv.streaming.messages import (
     ModelInfo,
     parse_frame,
 )
+from mlops_cv.tracking.client import champion_uri
 
 if TYPE_CHECKING:
     from confluent_kafka import Message
@@ -49,7 +50,7 @@ def build_parser(settings: Settings) -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Run streaming inference on Frame messages.")
     p.add_argument(
         "--model",
-        default=f"models:/{settings.mlflow.registered_model}@{settings.mlflow.champion_alias}",
+        default=champion_uri(settings),
         help="MLflow model URI or local weights path (default: the champion alias)",
     )
     p.add_argument(

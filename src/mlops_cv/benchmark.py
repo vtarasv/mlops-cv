@@ -1,8 +1,4 @@
-"""The one latency/memory measurement implementation: timing loop, statistics, GPU memory.
-
-Import rules: the timing loop and the statistics are pure stdlib, so this module stays importable
-in CI and in the train image, neither of which carries the optimization dependency group.
-"""
+"""The one latency/memory measurement implementation: predict timing, statistics, GPU memory."""
 
 from __future__ import annotations
 
@@ -12,6 +8,8 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
+
+from mlops_cv.tracking.metric_keys import LATENCY_PREFIX
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +72,7 @@ def time_calls(
 def latency_metrics(
     timings: Sequence[float],
     *,
-    prefix: str = "latency",
+    prefix: str = LATENCY_PREFIX,
     ps: Sequence[float] = DEFAULT_PERCENTILES,
 ) -> dict[str, float]:
     """Summarise timings (ms) as ``{prefix}/p<N>_ms`` + ``mean_ms`` + ``n``; empty -> zeros."""
@@ -83,6 +81,33 @@ def latency_metrics(
     out[f"{prefix}/mean_ms"] = sum(timings) / len(timings) if timings else 0.0
     out[f"{prefix}/n"] = float(len(timings))
     return out
+
+
+def benchmark_model(
+    model: Any,
+    images: Sequence[str],
+    *,
+    imgsz: int,
+    device: str,
+    prefix: str = LATENCY_PREFIX,
+    warmup: int = DEFAULT_WARMUP,
+    iterations: int = DEFAULT_ITERATIONS,
+    ps: Sequence[float] = DEFAULT_PERCENTILES,
+) -> dict[str, float]:
+    """Time single-image ``model.predict`` calls at one pinned configuration -> latency metrics.
+
+    ``model`` is duck-typed (anything exposing ``predict``). The measurement configuration
+    (``imgsz``, ``device``) is part of the interface on purpose: a latency read at the predict
+    call's own defaults is not comparable to the accuracy it is reported beside. End-to-end
+    timings — batch 1, pre/post-processing included.
+    """
+    timings = time_calls(
+        lambda src: model.predict(src, imgsz=imgsz, device=device, verbose=False),
+        list(images),
+        warmup=warmup,
+        iterations=iterations,
+    )
+    return latency_metrics(timings, prefix=prefix, ps=ps)
 
 
 def select_used_mb(

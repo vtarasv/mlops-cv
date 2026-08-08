@@ -1,13 +1,15 @@
-"""Benchmark statistics seam: percentile/mean summarisation, the timing loop's contract, and
-the per-process-vs-device memory-scope choice. Pure — no device, no wall-clock assertions."""
+"""Benchmark seam: percentile/mean summarisation, the timing loop's contract, the model
+benchmark's pinned measurement configuration, and the per-process-vs-device memory-scope
+choice. Pure — no device, no wall-clock assertions."""
 
 from __future__ import annotations
 
 import pytest
 
-from mlops_cv.optimize.benchmark import (
+from mlops_cv.benchmark import (
     DEFAULT_PERCENTILES,
     GpuMemory,
+    benchmark_model,
     latency_metrics,
     memory_delta,
     percentiles,
@@ -122,28 +124,49 @@ def test_select_used_mb_falls_back_when_no_processes_are_reported() -> None:
     assert select_used_mb({}, pid=42, device_used_mb=2048.0).scope == "device"
 
 
-def test_evaluation_harness_latency_keys_are_unchanged() -> None:
-    """Pins the prefactor: the eval harness's latency stub still emits exactly its four keys."""
-    from mlops_cv.eval.evaluate import benchmark_latency
+class _StubModel:
+    """Records every predict call's configuration."""
 
-    class _StubModel:
-        def predict(self, src: str, verbose: bool = True) -> None:
-            return None
+    def __init__(self) -> None:
+        self.calls: list[tuple] = []
 
-    out = benchmark_latency(_StubModel(), ["a.jpg", "b.jpg"], warmup=1, runs=3)  # type: ignore[arg-type]
-    assert set(out) == {
-        "latency/p50_ms",
-        "latency/p95_ms",
-        "latency/mean_ms",
-        "latency/n",
-    }
+    def predict(self, src: str, *, imgsz: int, device: str, verbose: bool) -> None:
+        self.calls.append((src, imgsz, device, verbose))
+
+
+def test_benchmark_model_pins_the_measurement_configuration() -> None:
+    """Every timed call runs at the caller's imgsz/device — never the predict call's own
+    defaults, which would make the latency incomparable to the accuracy beside it."""
+    model = _StubModel()
+    out = benchmark_model(
+        model, ["a.jpg", "b.jpg"], imgsz=320, device="cpu", warmup=1, iterations=3
+    )
+    assert len(model.calls) == 4  # warmup runs too, untimed
+    assert all(call[1:] == (320, "cpu", False) for call in model.calls)
     assert out["latency/n"] == 3.0
 
 
-def test_evaluation_harness_latency_without_images_is_zeros() -> None:
-    from mlops_cv.eval.evaluate import benchmark_latency
+def test_benchmark_model_emits_the_requested_percentiles_under_the_prefix() -> None:
+    out = benchmark_model(
+        _StubModel(),
+        ["a.jpg"],
+        imgsz=640,
+        device="0",
+        prefix="optimize/ncnn-fp16-320/latency/pi5",
+        warmup=0,
+        iterations=2,
+        ps=(50.0, 95.0),
+    )
+    assert set(out) == {
+        "optimize/ncnn-fp16-320/latency/pi5/p50_ms",
+        "optimize/ncnn-fp16-320/latency/pi5/p95_ms",
+        "optimize/ncnn-fp16-320/latency/pi5/mean_ms",
+        "optimize/ncnn-fp16-320/latency/pi5/n",
+    }
 
-    out = benchmark_latency(object(), [], runs=5)  # type: ignore[arg-type]
+
+def test_benchmark_model_without_images_is_zeros() -> None:
+    out = benchmark_model(object(), [], imgsz=640, device="cpu", ps=(50.0, 95.0))
     assert out == {
         "latency/p50_ms": 0.0,
         "latency/p95_ms": 0.0,

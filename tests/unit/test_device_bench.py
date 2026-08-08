@@ -9,8 +9,8 @@ from mlops_cv.optimize.device_bench import (
     build_parser,
     ncnn_artifacts,
     record_run_id,
-    variant_imgsz,
 )
+from mlops_cv.optimize.variants import Variant, artifact_tag
 
 # A model version's tags as the optimize driver writes them.
 TAGS = {
@@ -32,8 +32,8 @@ def test_selects_only_ncnn_artifacts_by_default() -> None:
 
 
 def test_tag_keys_round_trip_to_variant_slugs() -> None:
-    """The driver writes underscores (tag grammar); the harness recovers the dashed slug."""
-    assert "ncnn-fp16-320" in ncnn_artifacts({"optimize.ncnn_fp16_320": "u"}, None)
+    """The harness recovers exactly the slug the driver's tag encoder started from."""
+    assert "ncnn-fp16-320" in ncnn_artifacts({artifact_tag("ncnn-fp16-320"): "u"}, None)
 
 
 def test_names_filter_selects_a_subset() -> None:
@@ -51,9 +51,11 @@ def test_no_published_artifacts_selects_nothing() -> None:
     assert ncnn_artifacts({"optimize.onnx_640": "u"}, None) == {}
 
 
-def test_variant_imgsz_reads_the_slug_suffix() -> None:
-    assert variant_imgsz("ncnn-fp16-320") == 320
-    assert variant_imgsz("ncnn-fp32-640") == 640
+def test_selected_slugs_parse_back_to_variants_with_their_resolution() -> None:
+    """The predict loop reads imgsz from the parsed Variant, not from a suffix re-parse."""
+    for name in ncnn_artifacts(TAGS, None):
+        assert Variant.parse(name).name == name
+    assert Variant.parse("ncnn-fp16-320").imgsz == 320
 
 
 def test_record_run_is_followed_from_the_artifact_uri() -> None:

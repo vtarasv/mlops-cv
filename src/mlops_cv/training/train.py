@@ -82,9 +82,8 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=settings.log_level.upper(), format="%(message)s")
     args = build_parser(settings).parse_args(argv)
 
-    client.configure()  # export MLFLOW_TRACKING_URI so the ultralytics callback hits our server
+    mlflow = client.connect(settings)
 
-    import mlflow
     from ultralytics import YOLO
     from ultralytics import settings as yolo_settings
 
@@ -93,8 +92,6 @@ def main(argv: list[str] | None = None) -> int:
 
     yolo_settings.update({"mlflow": True})  # enable the built-in MLflow callback
     os.environ["MLFLOW_EXPERIMENT_NAME"] = settings.mlflow.experiment
-    mlflow.set_tracking_uri(client.tracking_uri())
-    mlflow.set_experiment(settings.mlflow.experiment)
 
     run_name = f"{Path(t.weights).stem}-imgsz{args.imgsz}-e{args.epochs}"
     logger.info(f"training {t.weights} on {data_yaml} -> MLflow {client.tracking_uri()}")

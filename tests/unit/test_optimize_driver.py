@@ -6,7 +6,6 @@ from types import SimpleNamespace
 
 from mlops_cv.optimize.optimize import (
     RECORD_TAG,
-    artifact_tag,
     existing_record_run,
     record_tags,
 )
@@ -28,11 +27,6 @@ class _Client:
         self.experiment_ids = experiment_ids
         self.filter_string = filter_string
         return self.children
-
-
-def test_artifact_tag_is_the_variant_slug_in_tag_grammar() -> None:
-    assert artifact_tag("ncnn-fp16-320") == "optimize.ncnn_fp16_320"
-    assert artifact_tag("trt-fp16-640") == "optimize.trt_fp16_640"
 
 
 def test_reuses_an_earlier_record_instead_of_adding_a_sibling() -> None:

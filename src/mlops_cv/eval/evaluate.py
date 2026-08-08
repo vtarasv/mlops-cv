@@ -13,10 +13,9 @@ from __future__ import annotations
 import argparse
 import logging
 import tempfile
-from collections.abc import Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING
 
+from mlops_cv import benchmark as benchmark_mod
 from mlops_cv.config import Settings, get_settings
 from mlops_cv.data.subset import (
     DEMO_DIRNAME,
@@ -26,14 +25,16 @@ from mlops_cv.data.subset import (
 )
 from mlops_cv.eval import gate as gate_mod
 from mlops_cv.eval import report as report_mod
-from mlops_cv.optimize import benchmark as benchmark_mod
 from mlops_cv.orchestration.handoff import GateVerdict
 from mlops_cv.tracking import client
-from mlops_cv.tracking.metric_keys import PRIMARY, headline_metrics, metric_key, per_class_metrics
+from mlops_cv.tracking.metric_keys import (
+    LATENCY_PREFIX,
+    PRIMARY,
+    headline_metrics,
+    metric_key,
+    per_class_metrics,
+)
 from mlops_cv.tracking.resolve import registered_version, resolve_model
-
-if TYPE_CHECKING:
-    from ultralytics import YOLO
 
 logger = logging.getLogger(__name__)
 
@@ -82,43 +83,18 @@ def build_parser(settings: Settings) -> argparse.ArgumentParser:
     return p
 
 
-def benchmark_latency(
-    model: YOLO,
-    images: Sequence[str | Path],
-    *,
-    warmup: int = 3,
-    runs: int = 50,
-) -> dict[str, float]:
-    """Time single-image ``model.predict`` calls; return P50/P95/mean latency (ms) + count.
-
-    A **stub** (batch 1, includes pre/post-processing) for a quick number in the eval run — the
-    rigorous multi-variant benchmark is the optimisation harness's job.
-    """
-    timings = benchmark_mod.time_calls(
-        lambda src: model.predict(src, verbose=False),
-        [str(p) for p in images],
-        warmup=warmup,
-        iterations=runs,
-    )
-    return benchmark_mod.latency_metrics(timings, ps=(50.0, 95.0))
-
-
 def main(argv: list[str] | None = None) -> int:
     settings = get_settings()
     logging.basicConfig(level=settings.log_level.upper(), format="%(message)s")
     args = build_parser(settings).parse_args(argv)
 
-    client.configure()  # export MLFLOW_TRACKING_URI before importing mlflow
+    mlflow = client.connect(settings)
 
-    import mlflow
     from ultralytics import YOLO
-
-    mlflow.set_tracking_uri(client.tracking_uri())
-    mlflow.set_experiment(settings.mlflow.experiment)
 
     data_yaml = (args.data or settings.data.subset_dir / settings.data.dataset_yaml.name).resolve()
     weights, model_ref = resolve_model(args.model)
-    images_dir = settings.data.subset_dir / "images" / args.split
+    images_dir = settings.data.subset_dir / IMAGES_DIRNAME / args.split
 
     logger.info(f"evaluating {model_ref} on {data_yaml}[{args.split}]")
 
@@ -160,8 +136,18 @@ def main(argv: list[str] | None = None) -> int:
 
         latency = None
         if args.latency_enabled:
-            latency = benchmark_latency(
-                model, sorted(images_dir.glob("*.jpg")), runs=args.latency_runs
+            # A quick single-configuration number beside the accuracy (batch 1, pre/post
+            # included), measured at the evaluated imgsz/device — the rigorous multi-variant
+            # benchmark is the optimization harness's job.
+            latency = benchmark_mod.benchmark_model(
+                model,
+                [str(p) for p in sorted(images_dir.glob("*.jpg"))],
+                imgsz=args.imgsz,
+                device=args.device,
+                prefix=LATENCY_PREFIX,
+                warmup=3,
+                iterations=args.latency_runs,
+                ps=(50.0, 95.0),
             )
             mlflow.log_metrics(latency)
 

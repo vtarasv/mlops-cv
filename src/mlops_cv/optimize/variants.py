@@ -1,12 +1,12 @@
-"""The Serving-variant registry: the single author of variant identity and export arguments.
-
-Pure stdlib: imported by CI and by the orchestrator's DAG parse.
-"""
+"""The Serving-variant registry: the single author of variant identity, the model-version tag
+grammar that addresses published variant artifacts, and export arguments."""
 
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+
+from mlops_cv.tracking.metric_keys import OPTIMIZE_PREFIX
 
 TORCH = "torch"
 ONNX_ORT = "onnx-ort"
@@ -39,6 +39,19 @@ class Variant:
             name=f"{runtime}-{precision}-{imgsz}", runtime=runtime, precision=precision, imgsz=imgsz
         )
 
+    @classmethod
+    def parse(cls, name: str) -> Variant:
+        """Recover a Variant from its slug (the inverse of :meth:`of`).
+
+        The slug is mechanical — ``<runtime>-<precision>-<imgsz>`` where only the runtime may
+        itself contain hyphens — so the two fixed-format fields split off the right.
+        """
+        parts = name.rsplit("-", 2)
+        if len(parts) != 3 or not all(parts) or not parts[2].isdigit():
+            raise ValueError(f"not a variant slug: {name!r}")
+        runtime, precision, imgsz = parts
+        return cls.of(runtime, precision, int(imgsz))
+
     @property
     def is_baseline(self) -> bool:
         return self.runtime == TORCH and self.precision == FP32
@@ -67,6 +80,35 @@ def ladder(server_imgsz: int, edge_imgsz: int) -> tuple[Variant, ...]:
         Variant.of(NCNN, FP16, server_imgsz),
         Variant.of(NCNN, FP16, edge_imgsz),
     )
+
+
+ARTIFACT_TAG_PREFIX = f"{OPTIMIZE_PREFIX}."
+
+
+def artifact_tag(variant_name: str) -> str:
+    """The model-version tag key addressing one published variant artifact."""
+    return ARTIFACT_TAG_PREFIX + variant_name.replace("-", "_")
+
+
+def parse_artifact_tag(key: str) -> Variant | None:
+    """The Variant a model-version tag key addresses, or ``None`` for any other tag."""
+    if not key.startswith(ARTIFACT_TAG_PREFIX):
+        return None
+    name = key.removeprefix(ARTIFACT_TAG_PREFIX).replace("_", "-")
+    try:
+        return Variant.parse(name)
+    except ValueError:
+        return None
+
+
+def fingerprint_tag(variant_name: str) -> str:
+    """The tag key addressing a compiled engine's fingerprint sidecar."""
+    return artifact_tag(variant_name) + "_fingerprint"
+
+
+def graph_tag(imgsz: int) -> str:
+    """The tag key addressing the portable ONNX graph at one resolution."""
+    return f"{ARTIFACT_TAG_PREFIX}onnx_{imgsz}"
 
 
 def select(variants: Sequence[Variant], names: Iterable[str] | None) -> tuple[Variant, ...]:

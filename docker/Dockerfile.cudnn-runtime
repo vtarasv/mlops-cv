@@ -1,0 +1,71 @@
+# The two ORT inference images, one file, two targets (`docker build --target serve|stream`):
+#
+#   serve  — the HTTP detection service: the champion's published ONNX graph on
+#            onnxruntime's CUDA provider (serving group only).
+#   stream — the streaming consumers: the same serving detector behind the Kafka loop
+#            (serving + streaming groups). One image for all consumers (command overrides); some need no GPU reservation.
+#
+# Multi-stage on purpose — the final stages get the venv and nothing that built it (no uv).
+
+FROM nvidia/cuda:13.2.0-cudnn-runtime-ubuntu24.04 AS builder
+
+COPY --from=ghcr.io/astral-sh/uv:0.11.26 /uv /uvx /bin/
+
+ENV UV_LINK_MODE=copy \
+    UV_COMPILE_BYTECODE=1 \
+    UV_PYTHON_INSTALL_DIR=/opt/python
+
+WORKDIR /app
+
+# The shared floor: the serving group.
+COPY .python-version pyproject.toml uv.lock ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked --no-default-groups --group serving --no-install-project
+
+
+FROM builder AS serve-build
+
+COPY README.md ./
+COPY src/ src/
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked --no-default-groups --group serving
+
+
+FROM builder AS stream-build
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked --no-default-groups --group serving --group streaming --no-install-project
+
+COPY README.md ./
+COPY src/ src/
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked --no-default-groups --group serving --group streaming
+
+
+FROM nvidia/cuda:13.2.0-cudnn-runtime-ubuntu24.04 AS serve
+
+COPY --from=serve-build /opt/python /opt/python
+COPY --from=serve-build /app /app
+
+ENV PATH="/app/.venv/bin:$PATH"
+WORKDIR /app
+
+ENV HOME=/home/ubuntu
+USER ubuntu
+
+EXPOSE 8000
+CMD ["python", "-m", "mlops_cv.serving"]
+
+
+FROM nvidia/cuda:13.2.0-cudnn-runtime-ubuntu24.04 AS stream
+
+COPY --from=stream-build /opt/python /opt/python
+COPY --from=stream-build /app /app
+
+ENV PATH="/app/.venv/bin:$PATH"
+WORKDIR /app
+
+ENV HOME=/home/ubuntu
+USER ubuntu
+
+CMD ["python", "-m", "mlops_cv.streaming.inference_consumer"]

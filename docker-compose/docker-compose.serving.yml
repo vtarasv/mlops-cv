@@ -1,0 +1,75 @@
+# Local serving stack: the HTTP detection service + the containerized streaming consumers,
+# all answering with the champion's published ONNX graph.
+#
+# The two GPU tenants (the service, the inference consumer) are ORT sessions over the same
+# small graph. The anomaly consumer is pure CPU.
+#
+# Joins the shared platform network (external `mlops-cv-network`, created by the MLflow
+# stack); the broker at redpanda:9092 (the streaming stack's internal listener — `make serving-up` brings that stack up first).
+#
+#   docker compose -f docker-compose/docker-compose.serving.yml \
+#     --env-file docker-compose/.env.serving up -d --wait
+
+name: serving
+
+networks:
+  default:
+    name: mlops-cv-network
+    external: true
+
+services:
+  serving:
+    image: ${SERVE_IMAGE:?run via make serving-up (or export SERVE_IMAGE)}
+    container_name: serving
+    environment:
+      # The only credential the client needs — artifacts are proxied by the tracking server.
+      MLFLOW__TRACKING_URI: http://mlflow:${MLFLOW_PORT}
+      # The app binds what it is told, so the port below is one value, not a convention.
+      SERVING__PORT: ${SERVING_PORT}
+    ports:
+      - "${SERVING_HOST_PORT}:${SERVING_PORT}"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: on-failure:5
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://localhost:${SERVING_PORT}/health')
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  # GPU inference on the bus: frames in, detection events out — the serving detector over
+  # the same published graph the service answers with.
+  inference-consumer:
+    image: ${STREAM_IMAGE:?run via make serving-up (or export STREAM_IMAGE)}
+    container_name: inference-consumer
+    environment:
+      MLFLOW__TRACKING_URI: http://mlflow:${MLFLOW_PORT}
+      STREAMING__BOOTSTRAP_SERVERS: redpanda:9092
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: on-failure:5
+
+  # The windowed-count rule over detection events: pure CPU, no registry, same image bytes
+  # as the inference consumer with a different command and no device reservation.
+  anomaly-consumer:
+    image: ${STREAM_IMAGE:?run via make serving-up (or export STREAM_IMAGE)}
+    container_name: anomaly-consumer
+    command: ["python", "-m", "mlops_cv.streaming.anomaly_consumer"]
+    environment:
+      STREAMING__BOOTSTRAP_SERVERS: redpanda:9092
+    restart: on-failure:5

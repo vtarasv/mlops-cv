@@ -5,6 +5,7 @@ description = "MLOps level-2 pipeline for aerial object detection from video"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "numpy>=2.4.6",
     "pillow>=12.2.0",
     "pydantic>=2.13.4",
     "pydantic-settings>=2.14.2",
@@ -43,6 +44,16 @@ streaming = [
     "confluent-kafka==2.15.0",
 ]
 
+serving = [
+    "opencv-python-headless==4.13.0.92",
+    "fastapi==0.141.1",
+    "uvicorn==0.52.1",
+    "python-multipart==0.0.32",
+    "prometheus-fastapi-instrumentator==8.1.0",
+    "mlflow-skinny==3.14.0",
+    "onnxruntime-gpu==1.27.0",
+]
+
 optimize = [
     "nvidia-ml-py==13.610.43",
     "ncnn==1.0.20260526",
@@ -54,7 +65,7 @@ optimize = [
 ]
 
 [tool.uv]
-default-groups = ["dev", "gpu", "airflow", "beam", "streaming", "optimize"]
+default-groups = ["dev", "gpu", "airflow", "beam", "streaming", "optimize", "serving"]
 
 [tool.uv.sources]
 torch = [{ index = "pytorch-cu130", marker = "sys_platform == 'linux'" }]

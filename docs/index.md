@@ -22,11 +22,14 @@ page here as it lands.
 - [Model optimization](optimization.md) — serving variants for two targets (GPU server: portable
   runtime + compiled FP16 engine; Raspberry Pi 5 edge: NCNN), every artifact published, the
   accuracy-vs-latency record + on-device benchmark harness.
+- [Containers & Compose stacks](containers.md) — image inventory, the group-opt-in build
+  pattern, stack topology, GPU policy.
+- [Serving](serving.md) — the HTTP detection service: champion's published ONNX graph on
+  onnxruntime CUDA, pre/post contract, API, observability.
 
 ## Planned
 
 | Doc | Topic |
 |-----|-------|
-| `containers.md`, `serving.md` | Compose parity, FastAPI/Triton serving |
 | `monitoring.md` | Drift detection + drift-triggered continuous training |
 | `iac.md` | Terraform + GCP managed mirrors |

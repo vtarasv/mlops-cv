@@ -81,6 +81,14 @@ class OptimizeSettings(BaseModel):
     workspace_gb: int = 4  # compiler workspace ceiling
 
 
+class ServingSettings(BaseModel):
+    """The HTTP detection service: where it listens and how it answers by default."""
+
+    host: str = "0.0.0.0"
+    port: int = 8000
+    conf_threshold: float = 0.25  # default detection confidence floor
+
+
 class Settings(BaseSettings):
     """Process-wide configuration."""
 
@@ -100,6 +108,7 @@ class Settings(BaseSettings):
     training: TrainingSettings = TrainingSettings()
     streaming: StreamingSettings = StreamingSettings()
     optimize: OptimizeSettings = OptimizeSettings()
+    serving: ServingSettings = ServingSettings()
 
 
 def load_settings(base_dir: str | Path = ".") -> Settings:

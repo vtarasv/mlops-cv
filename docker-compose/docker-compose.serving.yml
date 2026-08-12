@@ -1,5 +1,7 @@
 # Local serving stack: the HTTP detection service + the containerized streaming consumers,
-# all answering with the champion's published ONNX graph.
+# all answering with the champion's published ONNX graph — plus the observability half:
+# Prometheus scraping exactly three targets (the service, Redpanda, a DCGM exporter) and
+# Grafana provisioned entirely from the committed `observability/` directory.
 #
 # The two GPU tenants (the service, the inference consumer) are ORT sessions over the same
 # small graph. The anomaly consumer is pure CPU.
@@ -11,6 +13,10 @@
 #     --env-file docker-compose/.env.serving up -d --wait
 
 name: serving
+
+volumes:
+  prometheus-data:
+  grafana-data:
 
 networks:
   default:
@@ -73,3 +79,48 @@ services:
     environment:
       STREAMING__BOOTSTRAP_SERVERS: redpanda:9092
     restart: on-failure:5
+
+  # --- Observability ---
+
+  prometheus:
+    image: prom/prometheus:v3.13.2
+    container_name: prometheus
+    volumes:
+      - ../observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro,z
+      - prometheus-data:/prometheus
+    ports:
+      - "${PROMETHEUS_HOST_PORT}:9090"
+    restart: always
+
+  grafana:
+    image: grafana/grafana:13.1.3
+    container_name: grafana
+    depends_on:
+      - prometheus
+    environment:
+      # Zero-click local dashboards: anonymous viewer, no login form.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+    volumes:
+      - ../observability/grafana/provisioning:/etc/grafana/provisioning:ro,z
+      - ../observability/grafana/dashboards:/var/lib/grafana/dashboards:ro,z
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "${GRAFANA_HOST_PORT}:3000"
+    restart: always
+
+  # GPU utilization / VRAM / temperature for the dashboards; scraped in-network only, so no published port.
+  dcgm-exporter:
+    image: nvidia/dcgm-exporter:4.6.0-4.8.3-distroless
+    container_name: dcgm-exporter
+    environment:
+      DCGM_EXPORTER_INTERVAL: "5000" # ms; match Prometheus's scrape cadence
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: always

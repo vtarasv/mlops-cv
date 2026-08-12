@@ -159,7 +159,7 @@ serve-image:
 stream-image:
 	docker build -f docker/Dockerfile.cudnn-runtime --target stream -t $(STREAM_IMAGE) .
 
-# Serving stack: the detection service + both streaming consumers.
+# Serving stack: the detection service + both streaming consumers + observability (Prometheus + Grafana).
 serving-up: streaming-up serve-image stream-image
 	$(SERVING_COMPOSE) up -d --wait
 

@@ -46,7 +46,7 @@ x-airflow-common: &airflow-common
     OPTIMIZE_IMAGE: ${OPTIMIZE_IMAGE:?run via make airflow-up (or export OPTIMIZE_IMAGE)}
     MLFLOW__TRACKING_URI: http://mlflow:${MLFLOW_PORT}
   volumes:
-    - ../dags:/opt/airflow/dags:ro
+    - ../dags:/opt/airflow/dags:ro,z
     - logs:/opt/airflow/logs
   user: "${AIRFLOW_UID}:0"
   depends_on: &airflow-common-depends-on
@@ -117,11 +117,11 @@ services:
     group_add:
       - "${DOCKER_GID:?run via make airflow-up, or export DOCKER_GID (getent group docker | cut -d: -f3)}"
     volumes:
-      - ../dags:/opt/airflow/dags:ro
+      - ../dags:/opt/airflow/dags:ro,z
       - logs:/opt/airflow/logs
       - /var/run/docker.sock:/var/run/docker.sock
       # The in-process check/validate tasks read the subset.
-      - ${HOST_SUBSET_DIR}:${HOST_SUBSET_DIR}:ro
+      - ${HOST_SUBSET_DIR}:${HOST_SUBSET_DIR}:ro,z
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
       interval: 30s

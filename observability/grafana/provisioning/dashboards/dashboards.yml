@@ -1,0 +1,15 @@
+# Provisioned dashboard provider: every JSON in the mounted dashboards directory.
+# The committed files are the source of truth — UI edits neither persist nor propagate
+# (allowUiUpdates: false), so a dashboard change is a file change.
+
+apiVersion: 1
+
+providers:
+  - name: mlops-cv
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    options:
+      # MUST match the dashboards mount in docker-compose/docker-compose.serving.yml.
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

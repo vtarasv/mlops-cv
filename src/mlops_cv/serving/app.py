@@ -26,7 +26,9 @@ def create_app(detector: Detector, settings: Settings) -> FastAPI:
         description="Detections from the champion model's published graph.",
         version=detector.model.version,
     )
-    Instrumentator().instrument(app).expose(app)
+    Instrumentator().instrument(
+        app, latency_lowr_buckets=(0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 1.0, 2.5)
+    ).expose(app)
 
     @app.get("/health")
     def health() -> Health:

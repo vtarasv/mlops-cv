@@ -70,7 +70,7 @@ class StreamingSettings(BaseModel):
     commit_interval_s: float = 5.0  # how often the inference consumer commits stored offsets
     anomaly_class: str = "person"  # class the windowed count rule watches
     anomaly_window_s: float = 5.0  # sliding window length (frame-timestamp time)
-    anomaly_threshold: float = 31.0  # windowed mean count that opens an alert episode
+    anomaly_threshold: float = 30.0  # windowed mean count that opens an alert episode
 
 
 class OptimizeSettings(BaseModel):

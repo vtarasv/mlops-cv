@@ -1,0 +1,22 @@
+# Prometheus scrape config for the serving stack.
+
+global:
+  scrape_interval: 5s # DCGM exporter collects at the same cadence
+
+scrape_configs:
+  # The detection service's /metrics (prometheus-fastapi-instrumentator).
+  - job_name: serving
+    static_configs:
+      # Port MUST match SERVING_PORT in docker-compose/.env.serving.
+      - targets: ["serving:8000"]
+
+  # Redpanda's built-in metrics on the admin API port: broker health + consumer-group lag.
+  - job_name: redpanda
+    metrics_path: /public_metrics
+    static_configs:
+      - targets: ["redpanda:9644"]
+
+  # GPU utilization / VRAM / temperature via the NVIDIA DCGM exporter.
+  - job_name: dcgm
+    static_configs:
+      - targets: ["dcgm-exporter:9400"]  # DCGM exporter's built-in default listen port

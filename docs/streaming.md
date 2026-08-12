@@ -1,17 +1,22 @@
 # Streaming inference (Redpanda + Kafka)
 
 Real-time video inference over Kafka-compatible broker: a **producer** replays the
-subset's demo store as a live-like camera feed, a **GPU inference consumer** serves the
-champion model and publishes one detection event per frame, and an **anomaly consumer**
-watches those events through a windowed count rule and raises alerts. Everything is
-observable end-to-end in Redpanda Console.
+subset's demo store as a live-like camera feed, a **GPU inference consumer** runs the
+champion's published ONNX graph and publishes one detection event per frame, and an
+**anomaly consumer** watches those events through a windowed count rule and raises
+alerts. Everything is observable end-to-end in Redpanda Console.
+
+The inference consumer answers with **the same inference path as the HTTP detection
+service**: the serving detector over the champion's published ONNX graph (onnxruntime
+CUDA), with class names read from the graph's own embedded metadata and the same default
+confidence floor. One model artifact, one pre/post implementation .
 
 ```mermaid
 flowchart LR
     demo["subset demo store\n(full-rate JPEG clips + GT)"] --> prod[producer]
     prod -- "frame messages\n(JPEG bytes, key=sequence)" --> rf[(raw-frames)]
-    rf --> inf["inference consumer\n(YOLO26s champion, GPU)"]
-    reg[(MLflow registry)] -- "champion alias\n(resolved at startup)" --> inf
+    rf --> inf["inference consumer\n(serving detector: published\nONNX graph, GPU)"]
+    reg[(MLflow registry)] -- "champion's published graph\n(resolved at startup)" --> inf
     inf -- "detection events (JSON)" --> det[(detections)]
     det --> anom["anomaly consumer\n(windowed count rule)"]
     anom -- "alerts (JSON)" --> al[(alerts)]
@@ -21,6 +26,11 @@ flowchart LR
 ```
 
 ## Quick start
+
+### Option A: consumers as host CLI
+
+To run a consumer on the host, put the venv's CUDA libraries on the
+loader path the way `make serve` does (onnxruntime resolves CUDA through the system loader)
 
 ```bash
 # MLflow stack + Redpanda + Console + topic init
@@ -32,15 +42,31 @@ make streaming-up
 uv run python -m mlops_cv.streaming.anomaly_consumer
 
 # Terminal 2 — GPU inference on the champion (start consumers BEFORE producing):
-uv run python -m mlops_cv.streaming.inference_consumer
+LD_LIBRARY_PATH="$(echo .venv/lib/python*/site-packages/nvidia/*/lib | tr ' ' ':')" \
+  uv run python -m mlops_cv.streaming.inference_consumer
 
 # Terminal 3 — replay the demo clips as a 30 fps camera:
 uv run python -m mlops_cv.streaming.producer --loops 1
 ```
 
+### Option B: consumers from serving stack
+
+Both consumers run as containers (they ship in one streaming image — the serving detector
+plus the Kafka loop; no torch, no ultralytics). The producer stays a host CLI: it reads
+the demo store from host disk.
+
+```bash
+# Broker + Console + topics + both consumers + the detection service:
+make serving-up
+# teardown: make serving-down / streaming-down; logs: make serving-logs
+
+uv run python -m mlops_cv.streaming.producer --loops 1
+```
+
 The producer needs the subset's demo store (`make ingest` builds it); it fails with that
-hint if the store is absent. The inference consumer needs the MLflow stack (champion
-resolution) and the GPU.
+hint if the store is absent. The inference consumer needs the MLflow stack (it resolves
+the champion's published graph at startup) and the GPU; a registry with no champion, or a
+champion whose version carries no published-graph tag — the consumer exits.
 
 ## Topics & message contracts
 
@@ -125,11 +151,11 @@ Rule parameters live in settings (`STREAMING__ANOMALY_CLASS`, `…_WINDOW_S`,
 
 ## Champion rollout
 
-The inference consumer resolves `models:/<name>@champion` **once at startup** (or any
-URI/weights via `--model`) and self-identifies in every event. A promotion therefore
-changes what a *restarted* consumer serves, and the changeover is visible in the stream
-as the events' `model.version` flips. Hot-reload (poll the registry, swap weights
-without dropping the consumer group) is a step-up for long-lived services.
+The inference consumer resolves the champion's published graph **once at startup**.
+A promotion therefore changes what a *restarted*
+consumer serves, and the changeover is visible in the stream as the events'
+`model.version` flips. Hot-reload (poll the registry, swap weights without dropping the
+consumer group) is a step-up for long-lived services.
 
 ## Scaling up
 

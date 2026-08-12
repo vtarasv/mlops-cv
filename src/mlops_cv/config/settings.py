@@ -70,7 +70,7 @@ class StreamingSettings(BaseModel):
     commit_interval_s: float = 5.0  # how often the inference consumer commits stored offsets
     anomaly_class: str = "person"  # class the windowed count rule watches
     anomaly_window_s: float = 5.0  # sliding window length (frame-timestamp time)
-    anomaly_threshold: float = 31.0  # windowed mean count that opens an alert episode
+    anomaly_threshold: float = 30.0  # windowed mean count that opens an alert episode
 
 
 class OptimizeSettings(BaseModel):
@@ -79,6 +79,14 @@ class OptimizeSettings(BaseModel):
     server_imgsz: int = 640
     edge_imgsz: int = 320  # the low-resolution rung of the edge (NCNN) ladder
     workspace_gb: int = 4  # compiler workspace ceiling
+
+
+class ServingSettings(BaseModel):
+    """The HTTP detection service: where it listens and how it answers by default."""
+
+    host: str = "0.0.0.0"
+    port: int = 8000
+    conf_threshold: float = 0.25  # default detection confidence floor
 
 
 class Settings(BaseSettings):
@@ -100,6 +108,7 @@ class Settings(BaseSettings):
     training: TrainingSettings = TrainingSettings()
     streaming: StreamingSettings = StreamingSettings()
     optimize: OptimizeSettings = OptimizeSettings()
+    serving: ServingSettings = ServingSettings()
 
 
 def load_settings(base_dir: str | Path = ".") -> Settings:

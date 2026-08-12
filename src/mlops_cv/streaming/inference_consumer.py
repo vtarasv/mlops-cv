@@ -1,8 +1,12 @@
 """GPU inference consumer: Frame messages in, Detection events out.
 
-Serves the champion-aliased registered model resolved once at startup (restart to pick up
-a promotion; every event self-identifies its model, so a changeover is visible in the
-stream). The Kafka loop is factored around an injectable ``infer`` callable.
+Serves the champion's **published ONNX graph** through the serving detector — the same
+artifact, pre/post math, and class names (read from the graph's own metadata) that answer
+``/predict``, so the bus and HTTP cannot drift apart. Resolution happens once at startup
+(restart to pick up a promotion; every event self-identifies its model, so a changeover is
+visible in the stream), and both empty-registry states exit 2 with the command that fixes
+them, exactly like the service. The Kafka loop is factored around an injectable ``infer``
+callable.
 
 Delivery is **at-least-once**: offsets are *stored* only in the delivery callback of the
 corresponding Detection event (i.e. after the broker confirmed the produce) and committed
@@ -17,7 +21,6 @@ import argparse
 import logging
 import time
 from collections.abc import Callable
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from mlops_cv.config import Settings, get_settings
@@ -28,10 +31,11 @@ from mlops_cv.streaming.messages import (
     ModelInfo,
     parse_frame,
 )
-from mlops_cv.tracking.client import champion_uri
 
 if TYPE_CHECKING:
     from confluent_kafka import Message
+
+    from mlops_cv.serving.runtime import Detector
 
 logger = logging.getLogger(__name__)
 
@@ -46,13 +50,8 @@ RESUME_AT_PENDING = 8
 LOG_EVERY = 100
 
 
-def build_parser(settings: Settings) -> argparse.ArgumentParser:
+def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Run streaming inference on Frame messages.")
-    p.add_argument(
-        "--model",
-        default=champion_uri(settings),
-        help="MLflow model URI or local weights path (default: the champion alias)",
-    )
     p.add_argument(
         "--offset-reset",
         choices=("latest", "earliest"),
@@ -217,31 +216,11 @@ def run_loop(
     return counts
 
 
-def _yolo_inference(weights: Path, device: str) -> InferenceFn:
-    """Production wiring of the injectable seam: YOLO on decoded JPEG bytes."""
-    import io
-
-    from PIL import Image
-    from ultralytics import YOLO
-    from ultralytics.engine.results import Boxes
-
-    yolo = YOLO(str(weights))
-    names = yolo.names
+def detector_inference(detector: Detector, conf_threshold: float) -> InferenceFn:
+    """Production wiring of the injectable seam: the serving detector on JPEG bytes."""
 
     def infer(jpeg: bytes) -> list[Box]:
-        with Image.open(io.BytesIO(jpeg)) as im:
-            result = yolo.predict(im, device=device, verbose=False)[0]
-        boxes: Boxes | None = result.boxes
-        if boxes is None:  # Optional for non-detect tasks; the detect head always sets it
-            return []
-        return [
-            Box(
-                cls=names[int(cls_id)],
-                conf=float(conf),
-                xywhn=tuple(xywhn.tolist()),
-            )
-            for cls_id, conf, xywhn in zip(boxes.cls, boxes.conf, boxes.xywhn, strict=True)
-        ]
+        return detector.detect(jpeg, conf_threshold)
 
     return infer
 
@@ -249,24 +228,23 @@ def _yolo_inference(weights: Path, device: str) -> InferenceFn:
 def main(argv: list[str] | None = None) -> int:
     settings = get_settings()
     logging.basicConfig(level=settings.log_level.upper(), format="%(message)s")
-    args = build_parser(settings).parse_args(argv)
+    args = build_parser().parse_args(argv)
 
+    from mlops_cv.serving.errors import StartupError
+    from mlops_cv.serving.resolve import champion_detector
     from mlops_cv.tracking import client
-    from mlops_cv.tracking.resolve import registered_version, resolve_model
 
-    client.configure()
-    weights, slug = resolve_model(args.model)
-    is_registry_ref = args.model.startswith(("models:/", "runs:/"))
-    model = ModelInfo(
-        name=settings.mlflow.registered_model if is_registry_ref else slug,
-        version=registered_version(args.model, settings.mlflow.registered_model) or "unregistered",
-    )
-    logger.info(f"serving {args.model} -> {model.name} v{model.version}")
+    client.configure(settings)
+    try:
+        detector = champion_detector(settings)
+    except StartupError as exc:
+        logger.error(str(exc))
+        return 2
 
     run_loop(
         settings,
-        _yolo_inference(weights, settings.training.device),
-        model,
+        detector_inference(detector, settings.serving.conf_threshold),
+        detector.model,
         offset_reset=args.offset_reset,
         max_messages=args.max_messages,
         idle_timeout_s=args.idle_timeout_s,

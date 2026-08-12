@@ -1,5 +1,8 @@
-# GPU serving-variant image: graph export, ahead-of-time compilation, benchmarking.
-FROM nvidia/cuda:13.2.0-cudnn-devel-ubuntu24.04
+# The two GPU work images, one file, two targets (`docker build --target train|optimize`):
+#   train    — train/eval for the CT DAG's DockerOperator tasks (gpu group)
+#   optimize — graph export, ahead-of-time compilation, benchmarking (gpu + optimize groups)
+
+FROM nvidia/cuda:13.2.0-cudnn-devel-ubuntu24.04 AS gpu-base
 
 COPY --from=ghcr.io/astral-sh/uv:0.11.26 /uv /uvx /bin/
 
@@ -15,6 +18,24 @@ ENV UV_LINK_MODE=copy \
 WORKDIR /app
 
 COPY .python-version pyproject.toml uv.lock ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked --no-default-groups --group gpu --no-install-project
+
+
+FROM gpu-base AS train
+
+COPY README.md ./
+COPY src/ src/
+COPY configs/ configs/
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked --no-default-groups --group gpu
+
+ENV PATH="/app/.venv/bin:$PATH"
+
+
+FROM gpu-base AS optimize
+
+# The export toolchain on top of the shared gpu venv.
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-default-groups --group gpu --group optimize --no-install-project
 

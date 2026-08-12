@@ -4,6 +4,7 @@
 !docker-compose/.env.mlflow
 !docker-compose/.env.airflow
 !docker-compose/.env.streaming
+!docker-compose/.env.serving
 
 # Local-only agent workspace: specs, tickets, agent-skill config
 .scratch/

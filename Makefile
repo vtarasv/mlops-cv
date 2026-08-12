@@ -1,17 +1,19 @@
 .PHONY: setup lint fmt test test-all ci clean gpu-smoke \
-	train eval ingest profile optimize \
-	beam-image train-image optimize-image \
+	train eval ingest profile optimize serve \
+	beam-image train-image optimize-image serve-image stream-image \
     mlflow-up mlflow-down mlflow-logs \
 	airflow-up airflow-down airflow-logs airflow-env \
 	streaming-up streaming-down streaming-logs \
+	serving-up serving-down serving-logs \
 	stack-up stack-down
 
 MLFLOW_COMPOSE := docker compose -f docker-compose/docker-compose.mlflow.yml --env-file docker-compose/.env.mlflow
 AIRFLOW_COMPOSE := docker compose -f docker-compose/docker-compose.airflow.yml --env-file docker-compose/.env.airflow
 STREAMING_COMPOSE := docker compose -f docker-compose/docker-compose.streaming.yml --env-file docker-compose/.env.streaming
+SERVING_COMPOSE := docker compose -f docker-compose/docker-compose.serving.yml --env-file docker-compose/.env.serving
 
-# Derived/exported wiring for the Airflow stack (fails loudly if any of these is missing):
-#   *_IMAGE           : image tags — used for both `docker build` and the DAG's operators
+# Derived/exported wiring for the Airflow + serving stacks (fails loudly if any is missing):
+#   *_IMAGE           : image tags — used for `docker build`, the DAG's operators, and compose
 #   HOST_RAW_DIR      : reuses DATA__RAW_DIR from the root .env (raw VisDrone-VID for the ingest task)
 #   HOST_SUBSET_DIR   : reuses DATA__SUBSET_DIR from the root .env (the training subset the DAG mounts)
 #   HOST_WEIGHTS      : reuses TRAINING__WEIGHTS from the root .env (pretrained-weights cache)
@@ -19,6 +21,8 @@ STREAMING_COMPOSE := docker compose -f docker-compose/docker-compose.streaming.y
 export BEAM_IMAGE := mlops-cv-beam:0.1.0
 export TRAIN_IMAGE := mlops-cv-train:0.1.0
 export OPTIMIZE_IMAGE := mlops-cv-optimize:0.1.0
+export STREAM_IMAGE := mlops-cv-stream:0.1.0
+export SERVE_IMAGE := mlops-cv-serve:0.1.0
 export HOST_RAW_DIR := $(shell sed -n 's/^DATA__RAW_DIR=//p' .env 2>/dev/null)
 export HOST_SUBSET_DIR := $(shell sed -n 's/^DATA__SUBSET_DIR=//p' .env 2>/dev/null)
 export HOST_WEIGHTS := $(shell sed -n 's/^TRAINING__WEIGHTS=//p' .env 2>/dev/null)
@@ -44,6 +48,15 @@ test:
 # Run all tests, including GPU and docker-marked ones.
 test-all:
 	uv run pytest
+
+# What CI runs: lint + format-check + tests.
+ci:
+	uv run ruff check .
+	uv run ruff format --check .
+	uv run pytest -m "not gpu and not docker"
+
+clean:
+	rm -rf .pytest_cache .ruff_cache **/__pycache__
 
 # Real-hardware GPU check. Not run in CI.
 gpu-smoke:
@@ -76,6 +89,16 @@ optimize: mlflow-up
 	uv run python -m mlops_cv.optimize $(if $(MODEL),--model "$(MODEL)") \
 		$(if $(RUN_ID),--run-id "$(RUN_ID)") $(if $(VARIANTS),--variants "$(VARIANTS)")
 
+# onnxruntime-gpu finds the CUDA runtime through the system loader; in the serving container
+# that is the CUDA base image, on the host it is the venv's nvidia wheels (torch's).
+VENV_CUDA_LIBS := $(shell echo .venv/lib/python*/site-packages/nvidia/*/lib | tr ' ' ':')
+
+# Serve the champion's published ONNX graph over HTTP (GPU; POST an image to /predict).
+# Pass PORT=<n> to listen elsewhere. Needs a champion whose version carries the graph tag.
+serve: mlflow-up
+	LD_LIBRARY_PATH="$(VENV_CUDA_LIBS):$$LD_LIBRARY_PATH" \
+		uv run python -m mlops_cv.serving $(if $(PORT),--port "$(PORT)")
+
 # Build/refresh the training subset + demo store from raw dataset.
 # Reads DATA__RAW_DIR, writes DATA__SUBSET_DIR (both from the root .env).
 ingest:
@@ -91,12 +114,11 @@ beam-image:
 
 # Build the GPU train/eval image the CT DAG's DockerOperator tasks run.
 train-image:
-	docker build -f docker/Dockerfile.train -t $(TRAIN_IMAGE) .
-
+	docker build -f docker/Dockerfile.cudnn-devel --target train -t $(TRAIN_IMAGE) .
 
 # Build the GPU serving-variant image the CT DAG's optimize task runs.
 optimize-image:
-	docker build -f docker/Dockerfile.optimize -t $(OPTIMIZE_IMAGE) .
+	docker build -f docker/Dockerfile.cudnn-devel --target optimize -t $(OPTIMIZE_IMAGE) .
 
 # Print the derived host wiring the Airflow stack resolves ([brackets] surface stray whitespace).
 airflow-env:
@@ -129,20 +151,30 @@ streaming-down:
 streaming-logs:
 	$(STREAMING_COMPOSE) logs -f
 
-# Everything at once: MLflow + CT images + Airflow + streaming.
-stack-up: airflow-up streaming-up
+# Build the GPU serving image the serving stack runs.
+serve-image:
+	docker build -f docker/Dockerfile.cudnn-runtime --target serve -t $(SERVE_IMAGE) .
+
+# Build the streaming-consumers image (all consumers run it).
+stream-image:
+	docker build -f docker/Dockerfile.cudnn-runtime --target stream -t $(STREAM_IMAGE) .
+
+# Serving stack: the detection service + both streaming consumers + observability (Prometheus + Grafana).
+serving-up: streaming-up serve-image stream-image
+	$(SERVING_COMPOSE) up -d --wait
+
+serving-down:
+	$(SERVING_COMPOSE) down
+
+serving-logs:
+	$(SERVING_COMPOSE) logs -f
+
+# Everything at once: MLflow + CT images + Airflow + streaming + serving.
+stack-up: airflow-up streaming-up serving-up
 
 # Tear the whole stack down.
 stack-down:
+	-$(SERVING_COMPOSE) down
 	-$(STREAMING_COMPOSE) down
 	-$(AIRFLOW_COMPOSE) down
 	$(MLFLOW_COMPOSE) down
-
-# What CI runs: lint + format-check + tests.
-ci:
-	uv run ruff check .
-	uv run ruff format --check .
-	uv run pytest -m "not gpu and not docker"
-
-clean:
-	rm -rf .pytest_cache .ruff_cache **/__pycache__

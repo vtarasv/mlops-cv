@@ -1,17 +1,25 @@
 """Beam pipeline: profile a YOLO dataset — per-frame quality metrics + drift baseline.
 
 Maps the pure metrics from :mod:`mlops_cv.pipelines.profiling` over every manifest frame, then
-aggregates dataset-level statistics (``CombinePerKey`` per split and per class,
-``GroupByKey`` duplicate clustering on perceptual hashes) into two artifacts under
-``<subset>/profile/``:
+aggregates dataset-level statistics (``CombinePerKey`` per split, per class and per training
+sequence, ``GroupByKey`` duplicate clustering on perceptual hashes) into ``<subset>/profile/``:
 
-- ``profile.json`` — the dataset profile / **drift baseline** a monitoring component compares
-  future data windows against;
+- ``profile.json`` — the dataset profile: fixed-size sections only (per-split, per-class, counts,
+  provenance), so its size is independent of the dataset's;
+- ``drift_baseline.csv`` — the **drift baseline** a monitoring component compares future data
+  windows against: one row per *training* sequence holding that scene's mean
+  brightness/contrast/blur, so a live window (which is one scene) is judged against the spread of
+  training scenes rather than a pooled dataset-wide distribution;
 - ``quality_report.csv`` — one row per flagged frame (corrupt / dark / bright / low_contrast /
-  blurry) for human review.
+  blurry) for human review; ``duplicates.csv`` — one row per near-duplicate frame.
 
-Flag thresholds are informational; the run **fails only when corrupt/unreadable images exist**
-(exit 1, and the provenance stamp is withheld so the next orchestrated run re-profiles).
+The directory is then published to tracking as a **data version** (see
+:mod:`mlops_cv.tracking.data_version`), which is what lets a training run name the data it learned
+from and a monitor read that data's baseline back.
+
+Flag thresholds are informational; the run **fails only when corrupt/unreadable images exist or
+publishing fails** (exit 1, and the provenance stamp is withheld so the next orchestrated run
+re-profiles).
 
 Run locally:
     uv run python -m mlops_cv.pipelines.profile_pipeline --runner DirectRunner
@@ -24,7 +32,8 @@ import io
 import json
 import logging
 import math
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from functools import partial
 from pathlib import Path
 
 import apache_beam as beam
@@ -38,8 +47,12 @@ from mlops_cv.config import get_settings
 from mlops_cv.data.convert_visdrone_vid import YOLO_NAMES, labels_from_text
 from mlops_cv.data.subset import MANIFEST_FILENAME, SPLITS, manifest_rows
 from mlops_cv.pipelines import profiling, provenance
+from mlops_cv.tracking import data_version
 
 logger = logging.getLogger(__name__)
+
+# Publishes a profile directory under its provenance stamp; returns the data version's run id.
+Publisher = Callable[[Path, str], str]
 
 COUNTER_NAMESPACE = "profile"
 REPORT_FIELDS = ["split", "sequence", "frame_index", "image_relpath", "flag", "detail"]
@@ -135,13 +148,24 @@ class StatsCombineFn(beam.CombineFn):
         return out
 
 
+def _n_frames(stats: dict) -> int:
+    """Frames behind one ``StatsCombineFn`` output — every frame contributes every metric."""
+    return stats["brightness"]["count"]
+
+
+def _drift_metrics(record: dict) -> dict[str, float]:
+    return {name: record[name] for name in profiling.DRIFT_METRICS}
+
+
 def _split_metrics(record: dict) -> tuple[str, dict[str, float]]:
     return record["split"], {
-        "brightness": record["brightness"],
-        "contrast": record["contrast"],
-        "blur": record["blur"],
+        **_drift_metrics(record),
         "boxes_per_frame": float(record["n_boxes"]),
     }
+
+
+def _sequence_metrics(record: dict) -> tuple[str, dict[str, float]]:
+    return record["sequence"], _drift_metrics(record)
 
 
 def _flag_rows(record: dict) -> Iterator[dict]:
@@ -157,22 +181,36 @@ def _flag_rows(record: dict) -> Iterator[dict]:
 
 
 def _duplicate_clusters(element: tuple[str, list[str]]) -> Iterator[dict]:
+    """One row per frame of a near-duplicate cluster; singletons are not duplicates."""
     dhash, relpaths = element
     if len(relpaths) > 1:
-        yield {"dhash": dhash, "frames": sorted(relpaths)}
+        for relpath in sorted(relpaths):
+            yield {"dhash": dhash, "image_relpath": relpath}
 
 
-def _report_csv_line(row: dict) -> str:
+def _csv_line(row: dict, fields: list[str]) -> str:
     buf = io.StringIO()
-    csv.writer(buf).writerow([row[field] for field in REPORT_FIELDS])
+    csv.writer(buf).writerow([row[field] for field in fields])
     return buf.getvalue().rstrip("\r\n")
+
+
+def _baseline_csv_line(element: tuple[str, dict]) -> str:
+    """One aggregated training sequence as a drift-baseline CSV line."""
+    sequence, stats = element
+    scene = profiling.BaselineScene(
+        sequence=sequence,
+        n_frames=_n_frames(stats),
+        means={name: stats[name]["mean"] for name in profiling.DRIFT_METRICS},
+    )
+    return profiling.baseline_csv_line(scene)
 
 
 def _build_profile(
     _,  # noqa: ANN001 - the single trigger element
     split_stats: dict,
     class_stats: list,
-    duplicates: list,
+    n_baseline_scenes: int,
+    n_duplicate_clusters: int,
     report_rows: list,
     manifest_sha: str,
     output_path: str,
@@ -188,25 +226,47 @@ def _build_profile(
             "box_aspect": stats["aspect"],
         }
     splits = {
-        split: {"n_frames": stats["brightness"]["count"], **stats}
-        for split, stats in split_stats.items()
+        split: {"n_frames": _n_frames(stats), **stats} for split, stats in split_stats.items()
     }
     profile = {
-        "schema_version": 1,
+        "schema_version": 2,
         "source_manifest_sha256": manifest_sha,
         "params": profiling.PROFILE_PARAMS,
         "dataset": {
             "n_frames": sum(s["n_frames"] for s in splits.values()),
             "n_boxes": n_boxes,
-            "n_duplicate_clusters": len(duplicates),
+            "n_duplicate_clusters": n_duplicate_clusters,
             "n_flagged": len(report_rows),
         },
         "splits": splits,
         "classes": classes,
-        "duplicates": sorted(duplicates, key=lambda d: d["dhash"]),
+        "baseline": {"split": profiling.BASELINE_SPLIT, "n_sequences": n_baseline_scenes},
     }
     with FileSystems.create(output_path) as fh:
         fh.write(json.dumps(profile, indent=2, sort_keys=True).encode("utf-8"))
+
+
+def _write_csv[Row](
+    rows: pvalue.PCollection[Row],
+    label: str,
+    line: Callable[[Row], str],
+    header: str,
+    profile_dir: str,
+    filename: str,
+) -> None:
+    """Stream a PCollection to one headed CSV file under the profile dir, one row per element."""
+    stem, suffix = filename.rsplit(".", 1)
+    _ = (
+        rows
+        | f"To{label}" >> beam.Map(line)
+        | f"Write{label}"
+        >> WriteToText(
+            FileSystems.join(profile_dir, stem),
+            file_name_suffix=f".{suffix}",
+            shard_name_template="",
+            header=header,
+        )
+    )
 
 
 def _read_manifest(input_dir: str) -> list[dict[str, str]]:
@@ -219,7 +279,7 @@ def _query_counters(result) -> dict[str, int]:  # noqa: ANN001 - Beam PipelineRe
     return {m.key.metric.name: m.result for m in metrics["counters"]}
 
 
-def run(options: ProfileOptions) -> int:
+def run(options: ProfileOptions, publish: Publisher = data_version.publish_profile) -> int:
     """Execute the profiling pipeline; assumes all options are fully resolved (see ``main``)."""
     input_dir = options.input_dir
     profile_dir = FileSystems.join(input_dir, profiling.PROFILE_DIRNAME)
@@ -245,7 +305,13 @@ def run(options: ProfileOptions) -> int:
             | "CombinePerSplit" >> beam.CombinePerKey(StatsCombineFn())
         )
         class_stats = outputs.boxes | "CombinePerClass" >> beam.CombinePerKey(StatsCombineFn())
-        duplicates = (
+        sequence_stats = (
+            outputs.records
+            | "BaselineSplit" >> beam.Filter(lambda r: r["split"] == profiling.BASELINE_SPLIT)
+            | "ToSequenceMetrics" >> beam.Map(_sequence_metrics)
+            | "CombinePerSequence" >> beam.CombinePerKey(StatsCombineFn())
+        )
+        duplicate_rows = (
             outputs.records
             | "ToHashKeys" >> beam.Map(lambda r: (r["dhash"], r["image_relpath"]))
             | "GroupByHash" >> beam.GroupByKey()
@@ -253,16 +319,29 @@ def run(options: ProfileOptions) -> int:
         )
         flagged = outputs.records | "FlagFrames" >> beam.FlatMap(_flag_rows)
         report_rows = (flagged, outputs.corrupt) | "MergeReport" >> beam.Flatten()
-        _ = (
-            report_rows
-            | "ToReportCsv" >> beam.Map(_report_csv_line)
-            | "WriteReport"
-            >> WriteToText(
-                FileSystems.join(profile_dir, "quality_report"),
-                file_name_suffix=".csv",
-                shard_name_template="",
-                header=",".join(REPORT_FIELDS),
-            )
+        _write_csv(
+            report_rows,
+            "Report",
+            partial(_csv_line, fields=REPORT_FIELDS),
+            ",".join(REPORT_FIELDS),
+            profile_dir,
+            profiling.QUALITY_REPORT,
+        )
+        _write_csv(
+            sequence_stats,
+            "Baseline",
+            _baseline_csv_line,
+            profiling.baseline_header(),
+            profile_dir,
+            profiling.DRIFT_BASELINE_CSV,
+        )
+        _write_csv(
+            duplicate_rows,
+            "Duplicates",
+            partial(_csv_line, fields=profiling.DUPLICATES_FIELDS),
+            ",".join(profiling.DUPLICATES_FIELDS),
+            profile_dir,
+            profiling.DUPLICATES_CSV,
         )
         _ = (
             p
@@ -272,7 +351,15 @@ def run(options: ProfileOptions) -> int:
                 _build_profile,
                 split_stats=pvalue.AsDict(split_stats),
                 class_stats=pvalue.AsList(class_stats),
-                duplicates=pvalue.AsList(duplicates),
+                n_baseline_scenes=pvalue.AsSingleton(
+                    sequence_stats | "CountScenes" >> beam.combiners.Count.Globally()
+                ),
+                n_duplicate_clusters=pvalue.AsSingleton(
+                    duplicate_rows
+                    | "ClusterHashes" >> beam.Map(lambda r: r["dhash"])
+                    | "DistinctClusters" >> beam.Distinct()
+                    | "CountClusters" >> beam.combiners.Count.Globally()
+                ),
                 report_rows=pvalue.AsList(report_rows),
                 manifest_sha=manifest_sha,
                 output_path=FileSystems.join(profile_dir, profiling.PROFILE_JSON),
@@ -289,18 +376,28 @@ def run(options: ProfileOptions) -> int:
         # No stamp: the profile is not "current", so the next orchestrated run re-profiles.
         logger.error(f"{corrupt} corrupt/unreadable images — see profile/quality_report.csv")
         return 1
+
+    # Publish BEFORE stamping: the stamp means "profiled and published".
+    stamp = provenance.stamp_payload(manifest_sha, profiling.PROFILE_PARAMS)
+    try:
+        run_id = publish(Path(profile_dir), stamp)
+    except Exception as exc:  # any publishing failure: report it and leave the profile stale
+        logger.error(f"publishing the profile failed ({exc}) — stamp withheld, so this reruns")
+        return 1
+    logger.info(f"published the profile as data version {run_id}")
+
     with FileSystems.create(FileSystems.join(profile_dir, profiling.STAMP_FILENAME)) as fh:
-        fh.write(provenance.stamp_payload(manifest_sha, profiling.PROFILE_PARAMS).encode("utf-8"))
+        fh.write(stamp.encode("utf-8"))
     return 0
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None, publish: Publisher = data_version.publish_profile) -> int:
     settings = get_settings()
     logging.basicConfig(level=settings.log_level.upper(), format="%(message)s")
     options = ProfileOptions(argv)
     # Settings-backed default, resolved at run time (never at class definition).
     options.input_dir = options.input_dir or str(settings.data.subset_dir)
-    return run(options)
+    return run(options, publish)
 
 
 if __name__ == "__main__":

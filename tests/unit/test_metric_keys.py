@@ -5,10 +5,12 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from mlops_cv.tracking.metric_keys import (
+    DATA_PREFIX,
     HEADLINE_ATTRS,
     OPTIMIZE_PREFIX,
     PRIMARY,
     TRAIN_PREFIX,
+    data_metrics,
     headline_metrics,
     metric_key,
     per_class_metrics,
@@ -105,6 +107,25 @@ def test_variant_keys_can_never_collide_with_headline_keys() -> None:
 def test_optimize_prefix_is_not_a_split_name() -> None:
     """If a split were ever named 'optimize', the namespaces would overlap."""
     assert OPTIMIZE_PREFIX not in {"train", "val", "test"}
+
+
+def test_data_version_count_golden_spellings() -> None:
+    """A data version is read back by these keys, exactly as a model version is by its own."""
+    assert DATA_PREFIX == "data"
+    assert data_metrics({"n_frames": 1238, "n_baseline_sequences": 56}) == {
+        "data/n_frames": 1238.0,
+        "data/n_baseline_sequences": 56.0,
+    }
+
+
+def test_data_counts_are_floats_and_never_collide_with_detection_keys() -> None:
+    out = data_metrics({"n_boxes": 12})
+    assert isinstance(out["data/n_boxes"], float)
+    headline = {
+        metric_key(split, name) for split in ("train", "val", "test") for name in HEADLINE_ATTRS
+    }
+    assert not (headline & set(out))
+    assert DATA_PREFIX not in {"train", "val", "test", OPTIMIZE_PREFIX}
 
 
 def test_variant_headline_metrics_are_namespaced() -> None:

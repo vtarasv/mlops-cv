@@ -1755,6 +1755,7 @@ beam = [
     { name = "apache-beam" },
     { name = "betterproto" },
     { name = "imagehash" },
+    { name = "mlflow-skinny" },
 ]
 dev = [
     { name = "httpx2" },
@@ -1813,6 +1814,7 @@ beam = [
     { name = "apache-beam", specifier = "==2.75.0" },
     { name = "betterproto", specifier = "==2.0.0b6" },
     { name = "imagehash", specifier = "==4.3.2" },
+    { name = "mlflow-skinny", specifier = "==3.14.0" },
 ]
 dev = [
     { name = "httpx2", specifier = "==2.10.0" },

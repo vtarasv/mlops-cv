@@ -114,6 +114,7 @@ _OPTIMIZE_DOCKER = {
 _CPU_DOCKER_COMMON = {
     **_DOCKER_BASE,
     "image": BEAM_IMAGE,
+    "environment": _TASK_ENV,
     "execution_timeout": timedelta(hours=1),
     "do_xcom_push": False,
 }

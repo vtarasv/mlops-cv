@@ -39,6 +39,7 @@ beam = [
     "apache-beam==2.75.0",
     "betterproto==2.0.0b6",
     "imagehash==4.3.2",
+    "mlflow-skinny==3.14.0",
 ]
 
 streaming = [

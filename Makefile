@@ -104,8 +104,8 @@ serve: mlflow-up
 ingest:
 	uv run python -m mlops_cv.pipelines.ingest_pipeline --runner DirectRunner
 
-# Profile the subset: per-frame quality metrics + drift baseline -> <subset>/profile/.
-profile:
+# Profile the subset: per-frame quality metrics + drift baseline -> <subset>/profile/, published to MLflow.
+profile: mlflow-up
 	uv run python -m mlops_cv.pipelines.profile_pipeline --runner DirectRunner
 
 # Build the CPU Beam/data-prep image the CT DAG's build_subset + profile tasks run.

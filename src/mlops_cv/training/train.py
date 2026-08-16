@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING
 
 from mlops_cv.config import Settings, get_settings
 from mlops_cv.orchestration.handoff import BEST_WEIGHTS_RELPATH, TrainHandoff
-from mlops_cv.tracking import client
+from mlops_cv.tracking import client, data_version
 from mlops_cv.training.callbacks import make_batch_params_callback, make_per_class_callback
 
 if TYPE_CHECKING:
@@ -58,6 +58,23 @@ def _log_dataset(mlflow: ModuleType, manifest: Path) -> None:
         )
         mlflow.log_input(dataset, context="training")
     mlflow.set_tag("dataset_sha", sha)
+
+
+def _log_data_version(mlflow: ModuleType, settings: Settings) -> None:
+    """Link the run to the data version describing what it is training on."""
+    try:
+        run_id = data_version.published_run(settings.data.subset_dir, settings, mlflow=mlflow)
+    except Exception as exc:  # any lookup failure: the model still gets produced and registered
+        logger.warning(f"data-version lookup failed ({exc}) — training continues without the link")
+        return
+    if run_id is None:
+        logger.warning(
+            f"no published data version describes {settings.data.subset_dir} — run "
+            "`make profile` to publish one; training continues without a data-version link"
+        )
+        return
+    mlflow.set_tag(data_version.RUN_TAG, run_id)
+    logger.info(f"training data version: {run_id}")
 
 
 def _register_model(run: ActiveRun, name: str) -> str:
@@ -114,6 +131,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         mlflow.autolog(disable=True)  # the built-in callback enabled autolog
         _log_dataset(mlflow, settings.data.subset_dir / "manifest.csv")
+        _log_data_version(mlflow, settings)
         version = _register_model(run, settings.mlflow.registered_model)
         run_id = run.info.run_id
 

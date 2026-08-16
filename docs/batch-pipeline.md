@@ -50,11 +50,15 @@ flowchart LR
   pf -->|corrupt| rep["quality_report.csv"]
   pf -->|records| agg["CombinePerKey per split<br/>(StatsCombineFn)"]
   pf -->|boxes| cagg["CombinePerKey per (split, class)"]
+  pf -->|train records| bagg["CombinePerKey per sequence<br/>(drift baseline)"]
   pf -->|records| dup["GroupByKey dhash<br/>duplicate clusters"]
   pf -->|flags| rep
   agg --> pj["profile.json<br/>(side-input assembly)"]
   cagg --> pj
-  dup --> pj
+  bagg --> bcsv["drift_baseline.csv"]
+  dup --> dcsv["duplicates.csv"]
+  bagg -->|count| pj
+  dup -->|count| pj
 ```
 
 Per frame: grayscale **brightness/contrast** and a **blur score** (variance of the edge-filtered
@@ -65,29 +69,65 @@ on hashes for duplicate clusters, assembled into one JSON via side inputs.
 
 Outputs under `<subset>/profile/`:
 
-- **`profile.json`** — the dataset profile / **drift baseline**: per-split distributions of
-  brightness/contrast/blur/boxes-per-frame, per-class box-area/aspect distributions, duplicate
-  clusters, source-manifest hash. A monitoring component compares future data windows against
-  this file before firing the retrain asset event.
+- **`profile.json`** — the dataset profile: per-split distributions of
+  brightness/contrast/blur/boxes-per-frame, per-class box-area/aspect distributions,
+  source-manifest hash, and dataset-level counts. **Only fixed-size sections live here** — a
+  section that grows a row per sequence or per frame is written beside it as CSV, so the profile
+  stays a small, readable, diffable document whatever the dataset's size.
+- **`drift_baseline.csv`** — one row per *training* sequence: `sequence,n_frames` plus that
+  scene's mean brightness/contrast/blur. The baseline is scene-level on purpose: a live window of
+  frames is one scene, so it is judged against the spread of training scene means rather than
+  against one pooled dataset-wide distribution. Val and test scenes are excluded — they do not
+  describe "normal". `profile.json`'s `baseline` block keeps only the shape (split, scene count).
+- **`duplicates.csv`** — one row per frame belonging to a near-duplicate cluster
+  (`dhash,image_relpath`); the cluster count stays in `profile.json`.
 - **`quality_report.csv`** — one row per flagged frame: `corrupt`, `dark`, `bright`,
   `low_contrast`, or `blurry` with the offending value. The thresholds are **informational**;
   duplicate clusters among strided frames of near-static scenes are expected.
 
-The run **fails only when corrupt/unreadable images exist** — in that case the provenance stamp
-is withheld, so the next orchestrated run re-profiles after the data is fixed.
+The run **fails when corrupt/unreadable images exist, or when publishing the profile fails** — in
+either case the provenance stamp is withheld, so the next orchestrated run re-profiles after the
+problem is fixed.
+
+## The profile as a data version
+
+The profile directory is not only a local artifact: the pipeline publishes it to MLflow as a
+**data version** — a run of its own carrying the whole directory as an artifact.
+
+Its identity is the **provenance stamp** — the same source-manifest hash plus profiling parameters
+the profile is stamped with — so the run is *found-or-created* on it: profiling unchanged data
+again reuses its data version instead of littering the experiment, while a re-ingested manifest or
+a changed profiling parameter is a new one.
+
+A training run then tags itself with the data version it learned from, which turns "what did this
+model consider normal?" into a walk of links:
+
+```mermaid
+flowchart LR
+  alias["champion alias"] --> mv["model version"]
+  mv --> tr["training run<br/>tag: data.version"]
+  tr --> dv["data version run"]
+  dv --> art["profile/ artifact<br/>→ drift_baseline.csv"]
+```
+
+A subset with **no** published profile stays legal: training warns
+and carries on, and its model version simply names no data version.
 
 ## Provenance stamps (skip-if-current)
 
 A completed profile writes `.profile-stamp.json`: the SHA-256 of the subset manifest plus the
 profile parameters. The orchestration DAG checks it (`is_profile_current`) and **skips** the
 profile task when nothing changed; any re-ingest rewrites the manifest and correctly invalidates
-the stamp. The stamp is written last, so an interrupted run is never considered current.
+the stamp. The stamp is written last - *after* publishing, so it means "profiled **and**
+published": a tracking outage leaves the profile stale and the next run retries it instead of
+skipping past a gap in the data history.
 
 ## Run it
 
 ```bash
 make ingest    # DATA__RAW_DIR -> DATA__SUBSET_DIR (+ demo store); Beam DirectRunner
-make profile   # DATA__SUBSET_DIR -> <subset>/profile/{profile.json,quality_report.csv}
+make profile   # DATA__SUBSET_DIR -> <subset>/profile/ + a data version in MLflow
+               # (brings the MLflow stack up idempotently)
 # explicit forms:
 uv run python -m mlops_cv.pipelines.ingest_pipeline --runner DirectRunner \
   --raw-dir /data/VisDrone-VID --output-dir /data/subsets/visdrone-vid-small --frame-stride 20

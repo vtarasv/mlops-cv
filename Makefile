@@ -1,6 +1,6 @@
 .PHONY: setup lint fmt test test-all ci clean gpu-smoke \
 	train eval ingest profile optimize serve \
-	beam-image train-image optimize-image serve-image stream-image \
+	beam-image train-image optimize-image serve-image stream-image monitor-image \
     mlflow-up mlflow-down mlflow-logs \
 	airflow-up airflow-down airflow-logs airflow-env \
 	streaming-up streaming-down streaming-logs \
@@ -23,6 +23,7 @@ export TRAIN_IMAGE := mlops-cv-train:0.1.0
 export OPTIMIZE_IMAGE := mlops-cv-optimize:0.1.0
 export STREAM_IMAGE := mlops-cv-stream:0.1.0
 export SERVE_IMAGE := mlops-cv-serve:0.1.0
+export MONITOR_IMAGE := mlops-cv-monitor:0.1.0
 export HOST_RAW_DIR := $(shell sed -n 's/^DATA__RAW_DIR=//p' .env 2>/dev/null)
 export HOST_SUBSET_DIR := $(shell sed -n 's/^DATA__SUBSET_DIR=//p' .env 2>/dev/null)
 export HOST_WEIGHTS := $(shell sed -n 's/^TRAINING__WEIGHTS=//p' .env 2>/dev/null)
@@ -159,8 +160,13 @@ serve-image:
 stream-image:
 	docker build -f docker/Dockerfile.cudnn-runtime --target stream -t $(STREAM_IMAGE) .
 
-# Serving stack: the detection service + both streaming consumers + observability (Prometheus + Grafana).
-serving-up: streaming-up serve-image stream-image
+# Build the slim CPU drift-monitor image the serving stack runs.
+monitor-image:
+	docker build -f docker/Dockerfile.monitor -t $(MONITOR_IMAGE) .
+
+# Serving stack: the detection service + both streaming consumers + the drift monitor
+# + observability (Prometheus + Grafana).
+serving-up: streaming-up serve-image stream-image monitor-image
 	$(SERVING_COMPOSE) up -d --wait
 
 serving-down:

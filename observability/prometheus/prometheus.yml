@@ -10,6 +10,12 @@ scrape_configs:
       # Port MUST match SERVING_PORT in docker-compose/.env.serving.
       - targets: ["serving:8000"]
 
+  # The drift monitor's readings: per-statistic score and bar, window age, episodes.
+  - job_name: drift
+    static_configs:
+      # Port MUST match MONITOR_METRICS_PORT in docker-compose/.env.serving.
+      - targets: ["drift-monitor:9101"]
+
   # Redpanda's built-in metrics on the admin API port: broker health + consumer-group lag.
   - job_name: redpanda
     metrics_path: /public_metrics

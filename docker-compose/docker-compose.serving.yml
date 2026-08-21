@@ -1,7 +1,8 @@
 # Local serving stack: the HTTP detection service + the containerized streaming consumers,
-# all answering with the champion's published ONNX graph — plus the observability half:
-# Prometheus scraping exactly three targets (the service, Redpanda, a DCGM exporter) and
-# Grafana provisioned entirely from the committed `observability/` directory.
+# all answering with the champion's published ONNX graph — plus the drift monitor and the
+# observability half: Prometheus scraping exactly four targets (the service, the monitor,
+# Redpanda, a DCGM exporter) and Grafana provisioned entirely from the committed
+# `observability/` directory.
 #
 # The two GPU tenants (the service, the inference consumer) are ORT sessions over the same
 # small graph. The anomaly consumer is pure CPU.
@@ -78,6 +79,17 @@ services:
     command: ["python", "-m", "mlops_cv.streaming.anomaly_consumer"]
     environment:
       STREAMING__BOOTSTRAP_SERVERS: redpanda:9092
+    restart: on-failure:5
+
+  # Input-side monitoring: every k-th frame profiled with the measurement that produced the
+  # champion's drift baseline, each window scored against it.
+  drift-monitor:
+    image: ${MONITOR_IMAGE:?run via make serving-up (or export MONITOR_IMAGE)}
+    container_name: drift-monitor
+    environment:
+      MLFLOW__TRACKING_URI: http://mlflow:${MLFLOW_PORT}
+      STREAMING__BOOTSTRAP_SERVERS: redpanda:9092
+      MONITORING__METRICS_PORT: ${MONITOR_METRICS_PORT}
     restart: on-failure:5
 
   # --- Observability ---

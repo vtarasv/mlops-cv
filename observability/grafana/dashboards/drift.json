@@ -1,0 +1,330 @@
+{
+  "uid": "drift",
+  "title": "Drift — input shift and prediction health",
+  "description": "Is the live video still like the video the champion was trained on? Top row: is the monitor alive. Middle rows: the drift alarm. Bottom row: what the model is producing, for context. Only the middle rows can raise an alarm.",
+  "tags": ["mlops-cv"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "refresh": "5s",
+  "time": { "from": "now-15m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Monitor up",
+      "description": "Is the drift monitor running? If this reads DOWN, every number on this dashboard is stale - restart the drift-monitor container.",
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": { "text": "DOWN", "color": "red" },
+                "1": { "text": "UP", "color": "green" }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "targets": [{ "refId": "A", "expr": "up{job=\"drift\"}", "legendFormat": "monitor" }]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Time since last drift window",
+      "description": "How long since the monitor last scored a batch of frames. Stays under a minute or so while video is flowing. A number that keeps climbing means frames stopped arriving - the charts below are frozen, not calm.",
+      "gridPos": { "h": 5, "w": 5, "x": 4, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 60 },
+              { "color": "red", "value": 180 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        { "refId": "A", "expr": "drift_window_age_seconds", "legendFormat": "since last window" }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "stat",
+      "title": "Time since last detection window",
+      "description": "How long since the monitor last saw detection results. A climbing number means the inference consumer stopped, even though the bottom row still shows its last values.",
+      "gridPos": { "h": 5, "w": 5, "x": 9, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 60 },
+              { "color": "red", "value": 180 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "prediction_window_age_seconds",
+          "legendFormat": "since last window"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Closest approach to a bar",
+      "description": "How close the video is to the drift limit, as a percentage of it. Below 100% is normal; at or above 100% the last batch of frames counts as drifted. Watch this to see a shift building before it triggers anything.",
+      "gridPos": { "h": 5, "w": 5, "x": 14, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.8 },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(drift_score / drift_threshold) or vector(0)",
+          "legendFormat": "closest"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Episodes opened",
+      "description": "How many drift alerts have been raised since the monitor started. One alert per shift, not one per batch: it goes quiet after firing and only re-arms once a batch comes back normal. Each alert is also saved to the model's record in MLflow.",
+      "gridPos": { "h": 5, "w": 5, "x": 19, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(drift_episodes_total) or vector(0)",
+          "legendFormat": "episodes"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Brightness — score vs its bar",
+      "description": "How far the video's brightness is from the training data (green), and the limit it has to pass to count as drift (red dashed). Green above red = drifted. The limit comes from the training data itself, so the most unusual training scene still reads as normal.",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "none", "decimals": 2, "min": 0 },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "bar" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } },
+              { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [10, 10] } }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "drift_score{statistic=\"brightness\"}",
+          "legendFormat": "score"
+        },
+        {
+          "refId": "B",
+          "expr": "drift_threshold{statistic=\"brightness\"}",
+          "legendFormat": "bar"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Contrast — score vs its bar",
+      "description": "How far the video's contrast is from the training data (green), against its own limit (red dashed). Each statistic has a different limit, which is why they get separate charts instead of one shared line.",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "none", "decimals": 2, "min": 0 },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "bar" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } },
+              { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [10, 10] } }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        { "refId": "A", "expr": "drift_score{statistic=\"contrast\"}", "legendFormat": "score" },
+        { "refId": "B", "expr": "drift_threshold{statistic=\"contrast\"}", "legendFormat": "bar" }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Blur — score vs its bar (log space)",
+      "description": "How far the video's sharpness is from the training data (green), against its own limit (red dashed). Blurrier or sharper video pushes the green line up. Measured on a log scale, so this limit is higher than the other two - they are not comparable numbers.",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "none", "decimals": 2, "min": 0 },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "bar" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } },
+              { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [10, 10] } }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        { "refId": "A", "expr": "drift_score{statistic=\"blur\"}", "legendFormat": "score" },
+        { "refId": "B", "expr": "drift_threshold{statistic=\"blur\"}", "legendFormat": "bar" }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Windows judged",
+      "description": "Batches of frames scored per minute, split by result. Zero on both lines means no video is arriving. Drifted rising means the alarm conditions are being met.",
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 13 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "cpm", "min": 0 }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (verdict) (rate(drift_windows_total[5m])) * 60",
+          "legendFormat": "{{verdict}}"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Episodes opened over time",
+      "description": "Drift alerts raised per minute. Always far lower than the drifted-batch rate above: one alert covers an entire shift, however long it lasts.",
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 13 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "cpm", "min": 0 }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(drift_episodes_total[5m]) * 60",
+          "legendFormat": "episodes"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "What the monitor lost",
+      "description": "Frames the monitor could not read, and alerts it could not save to MLflow. Should sit flat at zero. Anything else means the monitor is still running but quietly missing things - check its logs.",
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 13 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "cpm", "min": 0 }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(drift_frames_skipped_total[5m]) * 60",
+          "legendFormat": "frames skipped"
+        },
+        {
+          "refId": "B",
+          "expr": "rate(drift_episodes_unrecorded_total[5m]) * 60",
+          "legendFormat": "episodes unrecorded"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Detections per frame",
+      "description": "How many objects the model finds per frame. Charted, never judged - it raises no alarm by itself, because a busy clip moves it as much as real drift does. Read it against the drift charts above: alarm with this steady = the camera changed and the model is coping; alarm with this collapsing = the model has gone blind.",
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 20 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "none", "decimals": 1, "min": 0 }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "prediction_detections_per_frame",
+          "legendFormat": "detections/frame"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Mean detection confidence",
+      "description": "How sure the model is about the objects it reports. Charted, never judged - context for the drift charts above, not an alarm. It cannot fall very far: weak detections drop out of the count entirely rather than showing up as low confidence.",
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 20 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "none", "decimals": 2, "min": 0, "max": 1 },
+        "overrides": []
+      },
+      "targets": [
+        { "refId": "A", "expr": "prediction_mean_confidence", "legendFormat": "mean confidence" }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Detection class shares",
+      "description": "Which classes the model is detecting, as a share of all detections. Charted, never judged - the mix follows whatever is on camera, and a road clip differs from a crowd clip far more than any drift does. A class that stops appearing drops to zero rather than holding its last value.",
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 20 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "percentunit", "decimals": 0, "min": 0, "max": 1 },
+        "overrides": []
+      },
+      "targets": [
+        { "refId": "A", "expr": "prediction_class_share", "legendFormat": "{{cls}}" }
+      ]
+    }
+  ]
+}

@@ -95,14 +95,16 @@ vocabulary.
 The serving stack ships a provisioned observability trio (see
 [containers.md](containers.md) for the stack layout):
 
-- **Prometheus** (`:9090`) scrapes three targets: the service's `/metrics`,
-  Redpanda's `/public_metrics` (broker health + consumer-group lag — the lag gauges are
-  opt-in cluster config, enabled by the streaming stack's init), and a DCGM exporter
-  (GPU utilization / VRAM / temperature).
+- **Prometheus** (`:9090`) scrapes four targets: the service's `/metrics`,
+  the drift monitor's readings (per-statistic score and bar, window age, episodes),
+  Redpanda's `/public_metrics` (broker health +
+  consumer-group lag — the lag gauges are opt-in cluster config, enabled by the streaming
+  stack's init), and a DCGM exporter (GPU utilization / VRAM / temperature).
 - **Grafana** (`:3000`) is provisioned entirely from the committed `observability/` directory: the datasource
-  and three dashboards — serving (rate, latency quantiles, errors), GPU, streaming
-  (throughput, consumer lag). UI edits don't persist by design; the files are the
-  source of truth.
+  and four dashboards — serving (rate, latency quantiles, errors), GPU, streaming
+  (throughput, consumer lag), and drift (each statistic's score against its own derived
+  bar, episodes, window age, and prediction health).
+  UI edits don't persist by design; the files are the source of truth.
 
 ## Step-up: Triton Inference Server
 

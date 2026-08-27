@@ -16,15 +16,17 @@ committed `uv.lock`:
 | `mlops-cv-serve` | `Dockerfile.cudnn-runtime` (`serve`) | CUDA 13.2 cudnn-**runtime** | `serving` | the HTTP detection service |
 | `mlops-cv-stream` | `Dockerfile.cudnn-runtime` (`stream`) | CUDA 13.2 cudnn-**runtime** | `serving` + `streaming` | streaming consumers (command override) |
 | `mlops-cv-beam` | `Dockerfile.beam` | `python:3.12-slim` | `beam` | Beam data pipelines (ingest, profile) |
+| `mlops-cv-monitor` | `Dockerfile.monitor` | `python:3.12-slim` | `monitoring` | the drift monitor (no torch, no CUDA, no ONNX) |
 | airflow image | `Dockerfile.airflow` | `apache/airflow:3.2.2-python3.12` | base deps + providers-docker + mlflow-skinny (pip) | scheduler / api-server / dag-processor / triggerer |
 | mlflow image | `Dockerfile.mlflow` | `ghcr.io/mlflow/mlflow:v3.14.0` | — (adds psycopg2 + boto3) | the tracking server |
 
 Third-party services (Postgres, RustFS, Redpanda + Console, Prometheus, Grafana, the DCGM
 exporter) run their upstream images, tag-pinned in the compose files.
 
-`make train-image / beam-image / optimize-image / serve-image / stream-image` build the
-first-party images; the image tags are single-sourced in the Makefile and exported to the
-compose files, so a stack can never launch a tag the Makefile didn't build.
+`make train-image / beam-image / optimize-image / serve-image / stream-image /
+monitor-image` build the first-party images; the image tags are single-sourced in the
+Makefile and exported to the compose files, so a stack can never launch a tag the Makefile
+didn't build.
 
 ## The build pattern: opt-in dependency groups
 
@@ -63,6 +65,7 @@ flowchart TB
         serving["detection service :8000 (GPU)"]
         infcons["inference consumer (GPU)"]
         anomcons["anomaly consumer (CPU)"]
+        driftmon["drift monitor (CPU)"]
         prometheus["prometheus :9090"]
         grafana["grafana :3000"]
         dcgm["dcgm-exporter"]
@@ -72,7 +75,10 @@ flowchart TB
     infcons -- "champion's published graph" --> mlflow
     infcons --- redpanda
     anomcons --- redpanda
+    driftmon --- redpanda
+    driftmon -- "champion's drift baseline" --> mlflow
     prometheus -- "/metrics" --> serving
+    prometheus -- "/metrics" --> driftmon
     prometheus -- "/public_metrics" --> redpanda
     prometheus --> dcgm
     grafana --> prometheus
@@ -83,7 +89,7 @@ flowchart TB
 | MLflow (tracking + registry) | `make mlflow-up` … | — |
 | Airflow (continuous training) | `make airflow-up` … | MLflow + train/beam images |
 | Streaming (broker + topics) | `make streaming-up` … | MLflow |
-| Serving (service + consumers + observability) | `make serving-up` … | Streaming + serve/stream images |
+| Serving (service + consumers + drift monitor + observability) | `make serving-up` … | Streaming + serve/stream/monitor images |
 | Everything | `make stack-up` / `stack-down` | all of the above |
 
 ## Cloud migration

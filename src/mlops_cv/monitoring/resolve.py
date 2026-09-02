@@ -28,6 +28,7 @@ class ResolvedBaseline:
     scenes: list[BaselineScene]
     model: ModelInfo
     data_run_id: str
+    training_run_id: str  # the run that produced the champion — where its evidence is recorded
 
 
 def training_run_tags(run_id: str) -> dict[str, str]:
@@ -107,8 +108,10 @@ def resolve_baseline(settings: Settings) -> ResolvedBaseline:
     """Champion alias -> the drift baseline the monitor scores live windows against."""
     version = champion_version(settings)
     data_run_id = data_version_id(version)
+    assert version.run_id is not None
     return ResolvedBaseline(
         scenes=baseline_scenes(data_run_id),
         model=ModelInfo(name=settings.mlflow.registered_model, version=version.version),
         data_run_id=data_run_id,
+        training_run_id=version.run_id,
     )

@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import csv
 import io
-from collections.abc import Iterable
+from collections.abc import Generator, Iterable
+from contextlib import contextmanager
 from pathlib import Path
 
 from PIL import Image, ImageFilter, ImageStat
@@ -69,21 +70,32 @@ def dhash(im: Image.Image, size: int = DHASH_SIZE) -> str:
     return str(imagehash.dhash(im, hash_size=size))
 
 
-def profile_image_bytes(data: bytes) -> dict:
-    """Decode one image and compute its per-frame metrics; raises on corrupt/unreadable data."""
+@contextmanager
+def _decoded(data: bytes) -> Generator[Image.Image, None, None]:
+    """One image, fully decoded; raises on corrupt/unreadable data."""
     Image.open(io.BytesIO(data)).verify()  # structural check; verify() invalidates the handle
     with Image.open(io.BytesIO(data)) as im:
         im.load()  # force a full decode so truncated data fails here, not lazily later
+        yield im
+
+
+def drift_metrics(im: Image.Image) -> dict[str, float]:
+    """The drift statistics of one decoded image, keyed by ``DRIFT_METRICS``."""
+    brightness, contrast = brightness_contrast(im)
+    return {"brightness": brightness, "contrast": contrast, "blur": blur_score(im)}
+
+
+def profile_image_bytes(data: bytes) -> dict:
+    """Decode one image and compute its per-frame metrics; raises on corrupt/unreadable data."""
+    with _decoded(data) as im:
         width, height = im.size
-        brightness, contrast = brightness_contrast(im)
-        return {
-            "width": width,
-            "height": height,
-            "brightness": brightness,
-            "contrast": contrast,
-            "blur": blur_score(im),
-            "dhash": dhash(im),
-        }
+        return {"width": width, "height": height, **drift_metrics(im), "dhash": dhash(im)}
+
+
+def profile_drift_bytes(data: bytes) -> dict[str, float]:
+    """Decode one image and compute *only* its drift statistics"""
+    with _decoded(data) as im:
+        return drift_metrics(im)
 
 
 def box_stats(boxes: list[YoloBox]) -> list[dict]:

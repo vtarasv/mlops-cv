@@ -83,8 +83,7 @@ def _write_frame(root: Path, split: str, name: str, image: Image.Image, label_li
 
 @pytest.fixture
 def subset(tmp_path: Path) -> Path:
-    """Synthetic subset: a duplicate pair in train (solid frames), distinct val/test frames.
-    """
+    """Synthetic subset: a duplicate pair in train (solid frames), distinct val/test frames."""
     root = tmp_path / "subset"
     # imagehash's dhash sets a bit only where brightness INCREASES left-to-right, so solid
     # frames, constant rows, and monotonically decreasing gradients all hash to zero. A

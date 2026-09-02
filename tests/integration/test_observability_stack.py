@@ -45,20 +45,22 @@ def grafana_url() -> str:
     return _base_url_or_skip("grafana", "GRAFANA_HOST_PORT", "3000", "/api/health")
 
 
-def test_prometheus_sees_exactly_three_targets_and_all_are_up(prometheus_url: str) -> None:
-    """serving + redpanda + dcgm scraped and healthy, and nothing else configured."""
+def test_prometheus_sees_exactly_four_targets_and_all_are_up(prometheus_url: str) -> None:
+    """serving + drift + redpanda + dcgm scraped and healthy, and nothing else configured."""
     deadline = time.monotonic() + SCRAPE_WAIT_S
     while True:
         targets = _get_json(f"{prometheus_url}/api/v1/targets")["data"]["activeTargets"]  # type: ignore
         health = {t["labels"]["job"]: t["health"] for t in targets}
-        if set(health) == {"serving", "redpanda", "dcgm"} and set(health.values()) == {"up"}:
+        if set(health) == {"serving", "drift", "redpanda", "dcgm"} and set(health.values()) == {
+            "up"
+        }:
             break
         if time.monotonic() > deadline:
-            pytest.fail(f"targets never converged to three up: {health}")
+            pytest.fail(f"targets never converged to four up: {health}")
         time.sleep(2)
 
 
-def test_grafana_serves_the_three_provisioned_dashboards_anonymously(grafana_url: str) -> None:
+def test_grafana_serves_the_four_provisioned_dashboards_anonymously(grafana_url: str) -> None:
     """Zero clicks from `up` to dashboards: anonymous access + file provisioning both work."""
     dashboards = _get_json(f"{grafana_url}/api/search?type=dash-db")
-    assert {d["uid"] for d in dashboards} == {"serving", "gpu", "streaming"}
+    assert {d["uid"] for d in dashboards} == {"serving", "gpu", "streaming", "drift"}

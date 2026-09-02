@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from mlops_cv.config import Settings
-from mlops_cv.streaming.producer import build_parser, discover_sequences
+from mlops_cv.streaming.producer import build_parser, discover_sequences, resolve_shift
 
 
 def _store(root: Path, sequences: dict[str, list[int]]) -> Path:
@@ -51,3 +51,37 @@ def test_parser_defaults_come_from_settings(tmp_path: Path) -> None:
     assert args.fps == settings.streaming.fps
     assert args.loops == 0  # forever
     assert args.sequences is None  # all clips
+    assert args.shift is None  # no synthetic drift unless asked for
+    assert args.shift_amount is None  # each mode carries its own measured default
+
+
+def test_shift_flags_resolve_to_the_transform_the_producer_applies(tmp_path: Path) -> None:
+    """The default replay must stay unshifted — byte-for-byte publishing depends on it."""
+    from mlops_cv.streaming.shift import Shift
+
+    parser = build_parser(Settings(_env_file=str(tmp_path / "none")))  # type: ignore[call-arg]
+
+    assert Shift.resolve(*_shift_args(parser, [])) is None
+    assert Shift.resolve(*_shift_args(parser, ["--shift", "defocus"])) == Shift(
+        mode="defocus", amount=4.0
+    )
+    assert Shift.resolve(
+        *_shift_args(parser, ["--shift", "brightness", "--shift-amount", "1.6"])
+    ) == Shift(mode="brightness", amount=1.6)
+
+
+def test_an_unusable_shift_is_refused_at_the_command_line(tmp_path: Path) -> None:
+    """Every way of asking for a shift that cannot happen fails here, not mid-replay."""
+    parser = build_parser(Settings(_env_file=str(tmp_path / "none")))  # type: ignore[call-arg]
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--shift", "snow"])
+    with pytest.raises(SystemExit):
+        resolve_shift(parser, parser.parse_args(["--shift-amount", "0.5"]))
+    with pytest.raises(SystemExit):
+        resolve_shift(parser, parser.parse_args(["--shift", "defocus", "--shift-amount", "0"]))
+
+
+def _shift_args(parser, argv: list[str]) -> tuple[str | None, float | None]:  # noqa: ANN001
+    args = parser.parse_args(argv)
+    return args.shift, args.shift_amount

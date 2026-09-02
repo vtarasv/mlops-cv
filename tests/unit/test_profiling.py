@@ -27,6 +27,7 @@ from mlops_cv.pipelines.profiling import (
     dhash,
     frame_flags,
     is_profile_current,
+    profile_drift_bytes,
     profile_image_bytes,
 )
 
@@ -92,6 +93,25 @@ def test_profile_image_bytes_raises_on_corrupt() -> None:
     truncated = _jpeg_bytes(_checkerboard())[:40]
     with pytest.raises(Exception):  # noqa: B017 - any decode failure counts as corrupt
         profile_image_bytes(truncated)
+
+
+def test_profile_drift_bytes_reads_exactly_the_drift_statistics() -> None:
+    """The live monitor's reading: the drift metrics alone, no hash and no dimensions."""
+    out = profile_drift_bytes(_jpeg_bytes(_checkerboard()))
+    assert set(out) == set(DRIFT_METRICS)
+
+
+def test_profile_drift_bytes_agrees_with_the_function_that_built_the_baseline() -> None:
+    """A live score is only comparable to the baseline if it is the *same* measurement."""
+    jpeg = _jpeg_bytes(_checkerboard())
+    full = profile_image_bytes(jpeg)
+    assert profile_drift_bytes(jpeg) == {name: full[name] for name in DRIFT_METRICS}
+
+
+def test_profile_drift_bytes_raises_on_corrupt() -> None:
+    """The monitor's skip-and-count path needs the raise, like the pipeline's failure path."""
+    with pytest.raises(Exception):  # noqa: B017 - any decode failure counts as corrupt
+        profile_drift_bytes(_jpeg_bytes(_checkerboard())[:40])
 
 
 def test_box_stats_area_and_aspect() -> None:

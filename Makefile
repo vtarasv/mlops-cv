@@ -75,13 +75,13 @@ mlflow-logs:
 
 # Train YOLO26s on the train subset -> MLflow run + registered version.
 train: mlflow-up
-	uv run python -m mlops_cv.training.train
+	uv run python -m mlops_cv.training
 
 # Evaluate an MLflow model -> test metrics + report + gate + demo videos + TP/FP crops in MLflow.
 # Pass MODEL=<models:/aerial-object-detector@champion | runs:/<run_id>/weights/best.pt>.
 # Add RUN_ID=<train run id> to log onto that run (one run per model version) instead of a new one.
 eval: mlflow-up
-	uv run python -m mlops_cv.eval.evaluate --model "$(MODEL)" $(if $(RUN_ID),--run-id "$(RUN_ID)")
+	uv run python -m mlops_cv.evaluation --model "$(MODEL)" $(if $(RUN_ID),--run-id "$(RUN_ID)")
 
 # Build a model's serving variants + benchmark them -> optimization report in MLflow.
 # Defaults to the champion; pass MODEL=<uri> for another, RUN_ID=<train run id> to record on a

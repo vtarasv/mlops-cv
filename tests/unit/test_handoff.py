@@ -91,7 +91,7 @@ def test_train_cmd_parses_with_real_parser() -> None:
     from mlops_cv.training.train import build_parser
 
     cmd = train_cmd(epochs=7)
-    assert cmd[:3] == ["python", "-m", "mlops_cv.training.train"]
+    assert cmd[:3] == ["python", "-m", "mlops_cv.training"]
     args = build_parser(_settings()).parse_args(cmd[3:])
     assert args.epochs == 7
 
@@ -102,10 +102,10 @@ def test_train_cmd_passes_jinja_through() -> None:
 
 
 def test_evaluate_cmd_parses_with_real_parser() -> None:
-    from mlops_cv.eval.evaluate import build_parser
+    from mlops_cv.evaluation.evaluate import build_parser
 
     cmd = evaluate_cmd(run_id="abc123")
-    assert cmd[:3] == ["python", "-m", "mlops_cv.eval.evaluate"]
+    assert cmd[:3] == ["python", "-m", "mlops_cv.evaluation"]
     args = build_parser(_settings()).parse_args(cmd[3:])
     assert args.model == best_weights_uri("abc123")
     assert args.run_id == "abc123"

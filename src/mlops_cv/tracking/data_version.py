@@ -12,6 +12,7 @@ from mlops_cv.config import Settings, get_settings
 from mlops_cv.pipelines import profiling
 from mlops_cv.tracking import client
 from mlops_cv.tracking.metric_keys import data_metrics
+from mlops_cv.tracking.records import tag_filter
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -47,7 +48,7 @@ def run_name(subset_name: str, identity: str) -> str:
 
 def find_data_version(registry: Any, experiment_id: str, identity: str) -> str | None:
     """The run id of the data version with this identity, or ``None`` if there is none."""
-    found = registry.search_runs([experiment_id], filter_string=f"tags.{STAMP_TAG} = '{identity}'")
+    found = registry.search_runs([experiment_id], filter_string=tag_filter(STAMP_TAG, identity))
     return next((run.info.run_id for run in found), None)
 
 

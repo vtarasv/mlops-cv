@@ -77,3 +77,30 @@ def test_connect_without_experiment_joins_existing_runs_only(
     mlflow = client.connect(load_settings(base_dir="/nonexistent"), experiment=False)
     assert mlflow.uri == "http://localhost:5000"  # type: ignore[attr-defined]
     assert not hasattr(mlflow, "experiment")
+
+
+def test_registry_hands_back_an_injected_client_untouched() -> None:
+    sentinel = object()
+    assert client.registry(load_settings(base_dir="/nonexistent"), injected=sentinel) is sentinel
+
+
+def test_registry_configures_the_session_before_building_the_real_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The ordering invariant of every registry walk, owned here: URI exported, then the client."""
+    import os
+
+    monkeypatch.delenv("MLFLOW_TRACKING_URI", raising=False)
+    monkeypatch.setenv("MLFLOW__TRACKING_URI", "http://host:1234")
+    seen: dict[str, str | None] = {}
+
+    class FakeClient:
+        def __init__(self) -> None:
+            seen["env"] = os.environ.get("MLFLOW_TRACKING_URI")
+
+    fake = types.ModuleType("mlflow")
+    fake.MlflowClient = FakeClient  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "mlflow", fake)
+
+    assert isinstance(client.registry(load_settings(base_dir="/nonexistent")), FakeClient)
+    assert seen["env"] == "http://host:1234"

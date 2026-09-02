@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import re
 from types import SimpleNamespace
 
 import pytest
@@ -12,7 +11,6 @@ from mlops_cv.monitoring.drift import WindowVerdict
 from mlops_cv.monitoring.evidence import (
     DATA_VERSION_TAG,
     EPISODES_ARTIFACT_PATH,
-    PARENT_TAG,
     RECORD_RUN_NAME,
     RECORD_TAG,
     SOURCE_RUN_TAG,
@@ -24,61 +22,9 @@ from mlops_cv.monitoring.monitor import DriftWindow
 from mlops_cv.monitoring.resolve import ResolvedBaseline
 from mlops_cv.streaming.messages import FrameRef, ModelInfo
 from mlops_cv.tracking.metric_keys import DRIFT_EPISODE_METRIC
+from mlops_cv.tracking.records import PARENT_TAG
 
 TRAINING_RUN = "train-run-1"
-EXPERIMENT = "7"
-
-
-# --- doubles ---
-
-
-class FakeRun:
-    def __init__(self, run_id: str, experiment_id: str, tags: dict[str, str]) -> None:
-        self.info = SimpleNamespace(run_id=run_id, experiment_id=experiment_id, status="RUNNING")
-        self.data = SimpleNamespace(tags=dict(tags), metrics={})
-
-
-class FakeClient:
-    """A stand-in for ``MlflowClient``, recording every write."""
-
-    def __init__(self) -> None:
-        self.runs: dict[str, FakeRun] = {TRAINING_RUN: FakeRun(TRAINING_RUN, EXPERIMENT, {})}
-        self.history: dict[tuple[str, str], list[SimpleNamespace]] = {}
-        self.texts: list[tuple[str, str, str]] = []
-        self._counter = 0
-
-    def get_run(self, run_id: str) -> FakeRun:
-        return self.runs[run_id]
-
-    def search_runs(self, experiment_ids: list[str], filter_string: str = "") -> list[FakeRun]:
-        match = re.fullmatch(r"tags\.(\S+) = '(.*)'", filter_string)
-        assert match, f"unsupported filter {filter_string!r}"
-        key, value = match.groups()
-        return [
-            run
-            for run in self.runs.values()
-            if run.info.experiment_id in experiment_ids and run.data.tags.get(key) == value
-        ]
-
-    def create_run(self, experiment_id: str, tags: dict[str, str], run_name: str) -> FakeRun:
-        self._counter += 1
-        run_id = f"record-{self._counter}"
-        run = FakeRun(run_id, experiment_id, {**tags, "mlflow.runName": run_name})
-        self.runs[run_id] = run
-        return run
-
-    def set_terminated(self, run_id: str, status: str) -> None:
-        self.runs[run_id].info.status = status
-
-    def log_metric(self, run_id: str, key: str, value: float, step: int = 0) -> None:
-        self.history.setdefault((run_id, key), []).append(SimpleNamespace(step=step, value=value))
-        self.runs[run_id].data.metrics[key] = value
-
-    def get_metric_history(self, run_id: str, key: str) -> list[SimpleNamespace]:
-        return self.history.get((run_id, key), [])
-
-    def log_text(self, run_id: str, text: str, artifact_file: str) -> None:
-        self.texts.append((run_id, text, artifact_file))
 
 
 def _resolved(version: str = "8", training_run: str = TRAINING_RUN) -> ResolvedBaseline:
@@ -101,24 +47,26 @@ def _window(*, crossed: tuple[str, ...] = ("brightness",), frames: list[FrameRef
 
 
 @pytest.fixture
-def client() -> FakeClient:
-    return FakeClient()
+def client(registry):
+    """The shared in-memory registry, holding the champion's training run."""
+    registry.add_run(TRAINING_RUN)
+    return registry
 
 
 # --- the record run ---
 
 
-def test_the_record_is_a_child_of_the_champions_training_run(client: FakeClient) -> None:
+def test_the_record_is_a_child_of_the_champions_training_run(client) -> None:
     """One parent holds the whole story: trained here, priced and observed beside it."""
     recorder = open_record(_resolved(), client=client)
     record = client.runs[recorder.run_id]
 
     assert record.data.tags[PARENT_TAG] == TRAINING_RUN
     assert record.data.tags["mlflow.runName"] == RECORD_RUN_NAME
-    assert record.info.experiment_id == EXPERIMENT  # a nested run lives in its parent's
+    assert record.info.experiment_id == client.EXPERIMENT_ID  # a nested run lives in its parent's
 
 
-def test_the_record_names_the_version_it_judges_not_the_alias(client: FakeClient) -> None:
+def test_the_record_names_the_version_it_judges_not_the_alias(client) -> None:
     """The alias moves; the evidence must still identify its subject afterwards."""
     recorder = open_record(_resolved(version="8"), client=client)
     tags = client.runs[recorder.run_id].data.tags
@@ -129,13 +77,13 @@ def test_the_record_names_the_version_it_judges_not_the_alias(client: FakeClient
     assert tags[DATA_VERSION_TAG] == "data-run-1"
 
 
-def test_the_record_is_terminated_not_left_open(client: FakeClient) -> None:
+def test_the_record_is_terminated_not_left_open(client) -> None:
     """SIGTERM runs no atexit handler, so a held-open run would strand RUNNING on the first stop."""
     recorder = open_record(_resolved(), client=client)
     assert client.runs[recorder.run_id].info.status == "FINISHED"
 
 
-def test_a_second_monitor_reuses_the_record_rather_than_duplicating_it(client: FakeClient) -> None:
+def test_a_second_monitor_reuses_the_record_rather_than_duplicating_it(client) -> None:
     first = open_record(_resolved(), client=client)
     second = open_record(_resolved(), client=client)
 
@@ -144,20 +92,21 @@ def test_a_second_monitor_reuses_the_record_rather_than_duplicating_it(client: F
 
 
 def test_the_optimization_record_beside_it_is_not_mistaken_for_the_monitoring_one(
-    client: FakeClient,
+    client,
 ) -> None:
     """Both are children of the same parent; only the marker tag tells them apart."""
-    sibling_tags = {PARENT_TAG: TRAINING_RUN, "optimize.model": "models:/x@champion"}
-    client.runs["optimize-run"] = FakeRun("optimize-run", EXPERIMENT, sibling_tags)
+    from mlops_cv.optimize.optimize import RECORD_TAG as OPTIMIZE_TAG
+
+    client.add_run("optimize-run", tags={PARENT_TAG: TRAINING_RUN, OPTIMIZE_TAG: "models:/x@c"})
     recorder = open_record(_resolved(), client=client)
 
     assert recorder.run_id != "optimize-run"
     assert client.runs[recorder.run_id].data.tags[RECORD_TAG] == "aerial-object-detector"
 
 
-def test_a_promotion_reparents_the_evidence(client: FakeClient) -> None:
+def test_a_promotion_reparents_the_evidence(client) -> None:
     """Resolution ran against whoever is champion now, so the restart follows the promotion."""
-    client.runs["train-run-2"] = FakeRun("train-run-2", EXPERIMENT, {})
+    client.add_run("train-run-2")
     old = open_record(_resolved(version="8"), client=client)
     new = open_record(_resolved(version="9", training_run="train-run-2"), client=client)
 
@@ -169,7 +118,7 @@ def test_a_promotion_reparents_the_evidence(client: FakeClient) -> None:
 # --- the episode series ---
 
 
-def test_an_episode_is_exactly_one_step(client: FakeClient) -> None:
+def test_an_episode_is_exactly_one_step(client) -> None:
     recorder = open_record(_resolved(), client=client)
     recorder(_window())
 
@@ -182,7 +131,7 @@ def test_an_episode_is_exactly_one_step(client: FakeClient) -> None:
     assert len(client.get_metric_history(recorder.run_id, DRIFT_EPISODE_METRIC)) == 1
 
 
-def test_episodes_advance_the_step_within_one_monitor(client: FakeClient) -> None:
+def test_episodes_advance_the_step_within_one_monitor(client) -> None:
     recorder = open_record(_resolved(), client=client)
     recorder(_window())
     recorder(_window())
@@ -191,7 +140,7 @@ def test_episodes_advance_the_step_within_one_monitor(client: FakeClient) -> Non
     assert steps == [0, 1]
 
 
-def test_a_restarted_monitor_continues_the_series(client: FakeClient) -> None:
+def test_a_restarted_monitor_continues_the_series(client) -> None:
     """The series belongs to the model version, not to the process that happened to observe it."""
     first = open_record(_resolved(), client=client)
     first(_window())
@@ -205,14 +154,14 @@ def test_a_restarted_monitor_continues_the_series(client: FakeClient) -> None:
     assert steps == [0, 1, 2]
 
 
-def test_a_fresh_record_starts_at_step_zero(client: FakeClient) -> None:
+def test_a_fresh_record_starts_at_step_zero(client) -> None:
     assert open_record(_resolved(), client=client).step == 0
 
 
 # --- the footage behind an episode ---
 
 
-def test_the_frames_are_recorded_by_address(client: FakeClient) -> None:
+def test_the_frames_are_recorded_by_address(client) -> None:
     recorder = open_record(_resolved(), client=client)
     recorder(_window())
 
@@ -228,7 +177,7 @@ def test_the_frames_are_recorded_by_address(client: FakeClient) -> None:
     assert payload["ranges"] == [{"sequence": "seqA", "first": 0, "last": 10, "n_frames": 3}]
 
 
-def test_each_episode_gets_its_own_artifact(client: FakeClient) -> None:
+def test_each_episode_gets_its_own_artifact(client) -> None:
     recorder = open_record(_resolved(), client=client)
     recorder(_window())
     recorder(_window())
@@ -239,7 +188,7 @@ def test_each_episode_gets_its_own_artifact(client: FakeClient) -> None:
     ]
 
 
-def test_a_failed_write_costs_its_own_step_not_the_next_one(client: FakeClient) -> None:
+def test_a_failed_write_costs_its_own_step_not_the_next_one(client) -> None:
     """Reusing a step would put two points on one index and misfile the next episode's footage."""
     recorder = open_record(_resolved(), client=client)
 
@@ -250,7 +199,7 @@ def test_a_failed_write_costs_its_own_step_not_the_next_one(client: FakeClient) 
     with pytest.raises(RuntimeError):
         recorder(_window())
 
-    client.log_text = FakeClient.log_text.__get__(client)  # type: ignore[method-assign]
+    client.log_text = type(client).log_text.__get__(client)  # type: ignore[method-assign]
     recorder(_window())
 
     steps = [m.step for m in client.get_metric_history(recorder.run_id, DRIFT_EPISODE_METRIC)]
@@ -258,10 +207,10 @@ def test_a_failed_write_costs_its_own_step_not_the_next_one(client: FakeClient) 
     assert [f for _, _, f in client.texts] == [f"{EPISODES_ARTIFACT_PATH}/episode-0001.json"]
 
 
-def test_the_recorder_needs_no_open_run(client: FakeClient) -> None:
+def test_the_recorder_needs_no_open_run(client) -> None:
     """Everything is written by run id, so nothing is left active between episodes."""
     recorder = EpisodeRecorder(client, "record-x", step=4)
-    client.runs["record-x"] = FakeRun("record-x", EXPERIMENT, {})
+    client.add_run("record-x")
     recorder(_window(crossed=("brightness", "contrast")))
 
     assert client.get_metric_history("record-x", DRIFT_EPISODE_METRIC)[0].value == 2.0

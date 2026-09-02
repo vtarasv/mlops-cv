@@ -24,6 +24,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from mlops_cv.config import Settings, get_settings
+from mlops_cv.startup import exits_on_startup_error
 from mlops_cv.streaming.messages import (
     FRAME_MAX_MESSAGE_BYTES,
     Box,
@@ -225,22 +226,15 @@ def detector_inference(detector: Detector, conf_threshold: float) -> InferenceFn
     return infer
 
 
+@exits_on_startup_error
 def main(argv: list[str] | None = None) -> int:
     settings = get_settings()
     logging.basicConfig(level=settings.log_level.upper(), format="%(message)s")
     args = build_parser().parse_args(argv)
 
-    from mlops_cv.serving.errors import StartupError
     from mlops_cv.serving.resolve import champion_detector
-    from mlops_cv.tracking import client
 
-    client.configure(settings)
-    try:
-        detector = champion_detector(settings)
-    except StartupError as exc:
-        logger.error(str(exc))
-        return 2
-
+    detector = champion_detector(settings)
     run_loop(
         settings,
         detector_inference(detector, settings.serving.conf_threshold),

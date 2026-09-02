@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from mlops_cv.eval.error_analysis import (
+from mlops_cv.evaluation.error_analysis import (
     Detection,
     GroundTruth,
     Matched,

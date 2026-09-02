@@ -3,14 +3,17 @@ champion."""
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from mlops_cv.tracking.metric_keys import PRIMARY, metric_key
 
 if TYPE_CHECKING:
-    from mlflow.entities.model_registry import ModelVersion
+    from mlops_cv.config import Settings
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -115,23 +118,22 @@ def evaluate_gate(
     )
 
 
-def fetch_champion_metrics(model_name: str, alias: str = "champion") -> dict[str, float] | None:
-    """The champion model version's logged run metrics, or ``None`` if no such alias/model exists.
+def fetch_champion_metrics(
+    settings: Settings, *, registry: Any | None = None
+) -> dict[str, float] | None:
+    """The champion's training-run metrics, or ``None`` when there is no champion yet.
 
-    ``None`` means "no champion yet" → :func:`evaluate_gate` treats the candidate as a bootstrap.
+    ``None`` means exactly "no champion yet" → :func:`evaluate_gate` treats the candidate as a bootstrap.
     """
-    from mlflow import MlflowClient
-    from mlflow.exceptions import MlflowException
-
-    from mlops_cv.tracking.resolve import model_version
+    from mlops_cv.startup import StartupError
+    from mlops_cv.tracking import champion
 
     try:
-        version: ModelVersion | None = model_version(f"models:/{model_name}@{alias}", model_name)
-    except MlflowException:
+        version = champion.resolve(settings, registry=registry)
+    except StartupError as exc:
+        logger.info(f"no champion to compare against ({exc}) — bootstrap")
         return None
-    if version is None or version.run_id is None:
-        return None
-    return dict(MlflowClient().get_run(version.run_id).data.metrics)
+    return dict(champion.training_run(version, registry=registry).data.metrics)
 
 
 def promote(model_name: str, version: str | int, alias: str = "champion") -> None:

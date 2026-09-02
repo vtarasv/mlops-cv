@@ -101,11 +101,11 @@ Every task is a thin wrapper over `mlops_cv` code — the DAG contains orchestra
    images; statistical flags are informational rows in the quality report.
 5. **`validate_data`** (in-process) — `validate_dataset(...)` fails fast on schema/value skew
    before any GPU time is spent.
-6. **`train`** (`DockerOperator`, GPU) — `python -m mlops_cv.training.train` in the
+6. **`train`** (`DockerOperator`, GPU) — `python -m mlops_cv.training` in the
    `mlops-cv-train` image: trains, logs to MLflow, registers a challenger version. Its last
    stdout line — the `TrainHandoff` line `{"version", "run_id"}` — becomes the task's XCom.
 7. **`parse_train_output`** (in-process) — parses that handoff line for downstream templating.
-8. **`evaluate`** (`DockerOperator`, GPU) — `python -m mlops_cv.eval.evaluate --run-id <train run>
+8. **`evaluate`** (`DockerOperator`, GPU) — `python -m mlops_cv.evaluation --run-id <train run>
    --exit-zero`: logs the held-out test metrics, comparison report, gate, and the qualitative
    artifacts **onto the training run** (one run = one model version's full record; see
    [evaluation.md](evaluation.md)). Demo videos render from the subset's demo store — no raw

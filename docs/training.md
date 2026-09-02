@@ -22,11 +22,11 @@ flowchart LR
 
 ```bash
 make mlflow-up
-uv run python -m mlops_cv.training.train --epochs 10
+uv run python -m mlops_cv.training --epochs 10
 # or with `make train` (brings the MLflow stack up idempotently)
 
 # then evaluate the new version onto the same run (test metrics + report + visuals):
-uv run python -m mlops_cv.eval.evaluate --model runs:/<run_id>/weights/best.pt --run-id=<run_id>
+uv run python -m mlops_cv.evaluation --model runs:/<run_id>/weights/best.pt --run-id=<run_id>
 # or with `make eval MODEL=runs:/<run_id>/weights/best.pt RUN_ID=<run_id>`
 
 ```

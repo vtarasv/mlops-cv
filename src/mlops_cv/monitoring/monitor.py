@@ -18,7 +18,7 @@ from mlops_cv.monitoring.drift import DriftReference, EpisodeRule, window_means
 from mlops_cv.monitoring.metrics import MonitorMetrics
 from mlops_cv.monitoring.resolve import REPROFILE_HINT, ResolvedBaseline, resolve_baseline
 from mlops_cv.pipelines.profiling import profile_drift_bytes
-from mlops_cv.serving.errors import StartupError
+from mlops_cv.startup import StartupError, exits_on_startup_error
 from mlops_cv.streaming.messages import DetectionEvent, FrameRef, InboundHeaders, parse_frame
 
 if TYPE_CHECKING:
@@ -347,20 +347,14 @@ def consumer_config(settings: Settings, *, offset_reset: str) -> dict:
     }
 
 
+@exits_on_startup_error
 def main(argv: list[str] | None = None) -> int:
     settings = get_settings()
     logging.basicConfig(level=settings.log_level.upper(), format="%(message)s")
     args = build_parser().parse_args(argv)
 
-    from mlops_cv.tracking import client
-
-    client.configure(settings)
-    try:
-        resolved = resolve_baseline(settings)
-        reference = drift_reference(resolved.scenes, settings)
-    except StartupError as exc:
-        logger.error(str(exc))
-        return 2
+    resolved = resolve_baseline(settings)
+    reference = drift_reference(resolved.scenes, settings)
     logger.info(
         f"judging against model version {resolved.model.version}'s data version "
         f"{resolved.data_run_id}"

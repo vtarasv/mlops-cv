@@ -23,7 +23,7 @@ from typing import Any, Protocol
 import numpy as np
 
 from mlops_cv.serving import prepost
-from mlops_cv.serving.errors import StartupError
+from mlops_cv.startup import StartupError
 from mlops_cv.streaming.messages import Box, ModelInfo
 
 logger = logging.getLogger(__name__)

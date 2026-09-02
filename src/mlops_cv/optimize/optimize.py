@@ -16,7 +16,7 @@ import logging
 import tempfile
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from mlops_cv import benchmark as benchmark_mod
 from mlops_cv.config import Settings, get_settings
@@ -35,7 +35,8 @@ from mlops_cv.optimize.variants import (
     ladder,
     select,
 )
-from mlops_cv.tracking import client
+from mlops_cv.startup import StartupError, exits_on_startup_error
+from mlops_cv.tracking import champion, client, records
 from mlops_cv.tracking.metric_keys import (
     headline_metrics,
     variant_latency_prefix,
@@ -58,7 +59,7 @@ SPEED_STAGES = ("preprocess", "inference", "postprocess")
 # Name of the child run a version's variant record lands on.
 RECORD_RUN_NAME = "optimize"
 
-# Tag whose presence marks a run as an optimization record (set on every run this driver opens).
+# The marker that makes a child run *this* record (set on every run this driver opens).
 RECORD_TAG = "optimize.model"
 
 
@@ -108,14 +109,6 @@ def record_tags(
     return tags
 
 
-def existing_record_run(client: Any, parent_run_id: str, experiment_id: str) -> str | None:
-    """An earlier optimization record."""
-    children = client.search_runs(
-        [experiment_id], filter_string=f"tags.mlflow.parentRunId = '{parent_run_id}'"
-    )
-    return next((r.info.run_id for r in children if RECORD_TAG in r.data.tags), None)
-
-
 def _measure_variant(
     model: YOLO,
     variant: Variant,
@@ -153,6 +146,7 @@ def _measure_variant(
     return metrics
 
 
+@exits_on_startup_error
 def main(argv: list[str] | None = None) -> int:
     settings = get_settings()
     logging.basicConfig(level=settings.log_level.upper(), format="%(message)s")
@@ -161,7 +155,6 @@ def main(argv: list[str] | None = None) -> int:
     mlflow = client.connect(settings)
 
     import torch
-    from mlflow import MlflowClient
     from mlflow.exceptions import MlflowException
     from ultralytics import YOLO
 
@@ -178,21 +171,19 @@ def main(argv: list[str] | None = None) -> int:
         args.variants.split(",") if args.variants else None,
     )
     uri = model_uri(args, settings)
-    try:
+    if args.model is None:
+        try:
+            registered = champion.resolve(settings)
+        except StartupError as exc:
+            raise StartupError(f"{exc} Or name a model explicitly with --model <uri>.") from exc
         weights, model_ref = resolve_model(uri)
-    except MlflowException as exc:
-        # Nothing has been promoted yet.
-        if args.model:
-            logger.error(f"cannot resolve --model {uri}: {exc}")
-        else:
-            logger.error(
-                f"no '{settings.mlflow.champion_alias}' alias on "
-                f"'{settings.mlflow.registered_model}' — train and promote a model first, or "
-                f"name one explicitly with --model <uri>"
-            )
-        return 2
-
-    registered = model_version(uri, settings.mlflow.registered_model)
+    else:
+        # An explicit --model that resolves to nothing is the caller's typo.
+        try:
+            registered = model_version(uri, settings.mlflow.registered_model)
+            weights, model_ref = resolve_model(uri)
+        except MlflowException as exc:
+            raise StartupError(f"cannot resolve --model {uri}: {exc}") from exc
     version = registered.version if registered else None
     source_run = registered.run_id if registered else None
     if version is None:
@@ -216,21 +207,22 @@ def main(argv: list[str] | None = None) -> int:
     started = time.perf_counter()
     work_dir = Path(tempfile.mkdtemp(prefix="optimize-"))
     with contextlib.ExitStack() as stack:
+        tags = record_tags(model_ref, args.split, version, source_run)
         if args.run_id:
             # The record goes to a CHILD of the model version's run, never onto it.
-            stack.enter_context(mlflow.start_run(run_id=args.run_id))
-            parent = mlflow.active_run().info  # type: ignore
-            previous = existing_record_run(MlflowClient(), parent.run_id, parent.experiment_id)
-            stack.enter_context(
-                mlflow.start_run(run_id=previous)
-                if previous
-                else mlflow.start_run(nested=True, run_name=RECORD_RUN_NAME)
+            record = records.open_record(
+                client.registry(settings),
+                args.run_id,
+                RECORD_TAG,
+                run_name=RECORD_RUN_NAME,
+                tags=tags,
             )
+            stack.enter_context(mlflow.start_run(run_id=record))
         else:
             stack.enter_context(mlflow.start_run(run_name=f"optimize-{model_ref}"))
 
         mlflow.autolog(disable=True)
-        mlflow.set_tags(record_tags(model_ref, args.split, version, source_run))
+        mlflow.set_tags(tags)  # refreshed on every run: a re-run may resolve to a new version
         run_id = mlflow.active_run().info.run_id  # type: ignore
 
         def publish(local: Path, artifact_path: str, tag_key: str) -> None:

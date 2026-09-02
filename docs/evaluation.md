@@ -10,7 +10,7 @@ experiment comparison and the promotion gate for continuous training.
 ```mermaid
 flowchart LR
   model[("model<br/>MLflow URI")] --> val
-  subgraph eval["mlops_cv.eval.evaluate"]
+  subgraph eval["mlops_cv.evaluation.evaluate"]
     val["ultralytics<br/>model.val()"] --> metrics["P / R / mAP50 / mAP50-95<br/>(overall + per class)"]
     val --> lat["latency stub<br/>P50 / P95"]
     val --> vis["demo videos +<br/>TP/FP crops"]
@@ -29,13 +29,13 @@ flowchart LR
 # The champion (brings the MLflow stack up first):
 make eval MODEL=models:/aerial-object-detector@champion
 # or directly (the stack must be up — `make mlflow-up`):
-uv run python -m mlops_cv.eval.evaluate --model models:/aerial-object-detector@champion --batch 16
+uv run python -m mlops_cv.evaluation --model models:/aerial-object-detector@champion --batch 16
 
 # Evaluate a fresh training run ONTO that run (one run = one model version's full record):
 make eval MODEL=runs:/<run_id>/weights/best.pt RUN_ID=<run_id>
 
 # Promote the candidate to the champion alias if it passes the gate:
-uv run python -m mlops_cv.eval.evaluate --model runs:/<run_id>/weights/best.pt --min-improvement 0.03 --promote
+uv run python -m mlops_cv.evaluation --model runs:/<run_id>/weights/best.pt --min-improvement 0.03 --promote
 ```
 
 `--model` is an MLflow URI: a registry ref (`models:/<name>@<alias>`, `models:/<name>/<version>`) or a

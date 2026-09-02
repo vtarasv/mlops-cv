@@ -216,7 +216,7 @@ def aerial_object_detection_ct() -> None:
     def promote(train_info: dict[str, str]) -> None:
         """Point the champion alias at the challenger version (the gate already passed)."""
         from mlops_cv.config import get_settings
-        from mlops_cv.eval.gate import promote as set_champion_alias
+        from mlops_cv.evaluation.gate import promote as set_champion_alias
         from mlops_cv.tracking import client
 
         client.configure()

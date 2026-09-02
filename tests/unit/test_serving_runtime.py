@@ -10,8 +10,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from mlops_cv.serving.errors import StartupError
 from mlops_cv.serving.runtime import Detector, graph_spec
+from mlops_cv.startup import StartupError
 from mlops_cv.streaming.messages import ModelInfo
 
 MODEL = ModelInfo(name="aerial-object-detector", version="7")

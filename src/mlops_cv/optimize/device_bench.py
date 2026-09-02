@@ -17,9 +17,10 @@ from pathlib import Path
 from mlops_cv import benchmark as benchmark_mod
 from mlops_cv.config import Settings, get_settings
 from mlops_cv.optimize.variants import NCNN, Variant, parse_artifact_tag
-from mlops_cv.tracking import client
+from mlops_cv.startup import StartupError, exits_on_startup_error
+from mlops_cv.tracking import champion, client
 from mlops_cv.tracking.metric_keys import OPTIMIZE_PREFIX, variant_device_latency_prefix
-from mlops_cv.tracking.resolve import model_version, run_id_from_uri
+from mlops_cv.tracking.resolve import download, run_id_from_uri
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +89,7 @@ def record_run_id(artifact_uris: Iterable[str]) -> str:
     return run_ids.pop()
 
 
+@exits_on_startup_error
 def main(argv: list[str] | None = None) -> int:
     settings = get_settings()
     logging.basicConfig(level=settings.log_level.upper(), format="%(message)s")
@@ -95,25 +97,20 @@ def main(argv: list[str] | None = None) -> int:
 
     images = [str(p) for p in sorted(args.images.glob("*.jpg"))]
     if not images:
-        logger.error(f"no .jpg frames in {args.images} — copy a few once, any frames work")
-        return 2
+        raise StartupError(f"no .jpg frames in {args.images} — copy a few once, any frames work")
 
     mlflow = client.connect(settings, experiment=False)
 
     from ultralytics import YOLO
 
     name = settings.mlflow.registered_model
-    ref = (
-        f"models:/{name}/{args.model_version}"
-        if args.model_version
-        else client.champion_uri(settings)
-    )
-    version = model_version(ref, name)
-    assert version is not None
+    version = champion.resolve(settings, args.model_version)
     selected = ncnn_artifacts(version.tags, args.variants.split(",") if args.variants else None)
     if not selected:
-        logger.error(f"version {version.version} advertises no NCNN artifacts — run optimize first")
-        return 2
+        raise StartupError(
+            f"version {version.version} advertises no NCNN artifacts — run the optimization "
+            f"first (`make optimize`)"
+        )
 
     record_run = record_run_id(selected.values())
     logger.info(
@@ -121,11 +118,9 @@ def main(argv: list[str] | None = None) -> int:
         f"({len(images)} frames) -> run {record_run}: {', '.join(selected)}"
     )
 
-    from mlflow.artifacts import download_artifacts
-
     with mlflow.start_run(run_id=record_run):
         for variant_name, uri in selected.items():
-            local = Path(download_artifacts(artifact_uri=uri))
+            local = download(uri)
             model = YOLO(str(local), task="detect")
             prefix = variant_device_latency_prefix(variant_name, args.device_label)
             metrics = benchmark_mod.benchmark_model(

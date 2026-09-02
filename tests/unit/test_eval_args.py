@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from mlops_cv.config import load_settings
-from mlops_cv.eval.evaluate import build_parser
+from mlops_cv.evaluation.evaluate import build_parser
 
 
 def _settings():

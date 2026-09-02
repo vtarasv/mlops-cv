@@ -23,9 +23,10 @@ from mlops_cv.data.subset import (
     LABELS_DIRNAME,
     demo_store_present,
 )
-from mlops_cv.eval import gate as gate_mod
-from mlops_cv.eval import report as report_mod
+from mlops_cv.evaluation import gate as gate_mod
+from mlops_cv.evaluation import report as report_mod
 from mlops_cv.orchestration.handoff import GateVerdict
+from mlops_cv.startup import exits_on_startup_error
 from mlops_cv.tracking import client
 from mlops_cv.tracking.metric_keys import (
     LATENCY_PREFIX,
@@ -83,6 +84,7 @@ def build_parser(settings: Settings) -> argparse.ArgumentParser:
     return p
 
 
+@exits_on_startup_error
 def main(argv: list[str] | None = None) -> int:
     settings = get_settings()
     logging.basicConfig(level=settings.log_level.upper(), format="%(message)s")
@@ -120,9 +122,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         mlflow.log_metrics(candidate)
 
-        champion = gate_mod.fetch_champion_metrics(
-            settings.mlflow.registered_model, settings.mlflow.champion_alias
-        )
+        champion = gate_mod.fetch_champion_metrics(settings)
         thresholds = gate_mod.GateThresholds(
             min_map50_95=args.min_map50_95,
             min_map50=args.min_map50,
@@ -157,7 +157,7 @@ def main(argv: list[str] | None = None) -> int:
             logger.warning("subset has no demo store; skipping demo videos")
         elif args.demos_enabled:
             try:
-                from mlops_cv.eval.visualize import load_demo_clips, render_demo_clips
+                from mlops_cv.evaluation.visualize import load_demo_clips, render_demo_clips
 
                 # Frames + GT come from the subset's demo store (built by the ingest pipeline).
                 videos = render_demo_clips(
@@ -174,7 +174,7 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.crops_enabled:
             try:
-                from mlops_cv.eval.error_analysis import run_error_analysis
+                from mlops_cv.evaluation.error_analysis import run_error_analysis
 
                 crops = run_error_analysis(
                     model,

@@ -7,7 +7,7 @@ from pathlib import Path
 from PIL import Image
 
 from mlops_cv.data.convert_visdrone_vid import YoloBox
-from mlops_cv.eval.visualize import (
+from mlops_cv.evaluation.visualize import (
     ClipSpec,
     DrawBox,
     draw_boxes,

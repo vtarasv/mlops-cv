@@ -90,3 +90,12 @@ def test_parser_accepts_explicit_version_and_label() -> None:
     assert args.model_version == "7"
     assert args.device_label == "desktop-cpu"
     assert args.variants == "ncnn-fp16-320"
+
+
+def test_main_refuses_an_empty_image_directory_with_the_fix(tmp_path, caplog) -> None:
+    """The same exit-2-with-the-fix contract as every other entrypoint — no assert, no traceback."""
+    from mlops_cv.optimize import device_bench
+
+    with caplog.at_level("ERROR"):
+        assert device_bench.main(["--images", str(tmp_path)]) == 2
+    assert "copy a few" in caplog.text

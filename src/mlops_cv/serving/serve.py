@@ -7,9 +7,8 @@ import logging
 
 from mlops_cv.config import Settings, get_settings
 from mlops_cv.serving.app import create_app
-from mlops_cv.serving.errors import StartupError
 from mlops_cv.serving.resolve import champion_detector
-from mlops_cv.tracking import client
+from mlops_cv.startup import exits_on_startup_error
 
 logger = logging.getLogger(__name__)
 
@@ -21,17 +20,13 @@ def build_parser(settings: Settings) -> argparse.ArgumentParser:
     return p
 
 
+@exits_on_startup_error
 def main(argv: list[str] | None = None) -> int:
     settings = get_settings()
     logging.basicConfig(level=settings.log_level.upper(), format="%(message)s")
     args = build_parser(settings).parse_args(argv)
 
-    client.configure(settings)
-    try:
-        detector = champion_detector(settings)
-    except StartupError as exc:
-        logger.error(str(exc))
-        return 2
+    detector = champion_detector(settings)
 
     import uvicorn
 

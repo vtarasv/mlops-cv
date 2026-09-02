@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from mlops_cv.config import Settings
 from mlops_cv.optimize.variants import graph_tag
-from mlops_cv.serving.errors import StartupError
+from mlops_cv.startup import StartupError
 from mlops_cv.streaming.messages import ModelInfo
-from mlops_cv.tracking import client
-from mlops_cv.tracking.resolve import model_version
+from mlops_cv.tracking import champion
+from mlops_cv.tracking.resolve import download
 
 if TYPE_CHECKING:
     from mlflow.entities.model_registry import ModelVersion
@@ -39,37 +39,10 @@ def graph_uri(version: ModelVersion, imgsz: int) -> str:
     return uri
 
 
-def champion_version(settings: Settings) -> ModelVersion:
-    """The model version the champion alias points at."""
-    from mlflow.exceptions import MlflowException
-
-    mlflow_settings = settings.mlflow
-    ref = client.champion_uri(settings)
-    hint = (
-        f"no '{mlflow_settings.champion_alias}' alias on "
-        f"'{mlflow_settings.registered_model}' — train and promote a model first "
-        f"(`make train`, then evaluation promotes a winner)."
-    )
-    try:
-        version = model_version(ref, mlflow_settings.registered_model)
-    except MlflowException as exc:
-        raise StartupError(hint) from exc
-    if version is None:
-        raise StartupError(hint)
-    return version
-
-
-def download_graph(uri: str) -> Path:
-    """Pull a published artifact to local disk (proxied through the tracking server)."""
-    from mlflow.artifacts import download_artifacts
-
-    return Path(download_artifacts(artifact_uri=uri))
-
-
-def resolve_graph(settings: Settings) -> ResolvedGraph:
+def resolve_graph(settings: Settings, *, registry: Any | None = None) -> ResolvedGraph:
     """Champion alias -> the local graph to load and the model."""
-    version = champion_version(settings)
-    local = download_graph(graph_uri(version, settings.optimize.server_imgsz))
+    version = champion.resolve(settings, registry=registry)
+    local = download(graph_uri(version, settings.optimize.server_imgsz))
     return ResolvedGraph(
         path=local,
         model=ModelInfo(name=settings.mlflow.registered_model, version=version.version),
@@ -77,6 +50,7 @@ def resolve_graph(settings: Settings) -> ResolvedGraph:
 
 
 def champion_detector(settings: Settings) -> Detector:
+    """Production wiring: the champion's graph, downloaded and loaded on the GPU."""
     from mlops_cv.serving.runtime import Detector
 
     resolved = resolve_graph(settings)

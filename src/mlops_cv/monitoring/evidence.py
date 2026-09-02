@@ -1,8 +1,9 @@
 """Where a drift episode is kept after the graph scrolls away.
 
 A Prometheus counter says *that* an episode happened and forgets it at the end of its retention;
-the frames it covered are nowhere. This module records each episode as one **step** on a run that
-belongs to the model being judged — a child of the champion's training run.
+the frames it covered are nowhere. This module records each episode as one **step** on a record
+run that belongs to the model being judged — a child of the champion's training run, beside the
+optimization record (``tracking.records`` owns that shape).
 """
 
 from __future__ import annotations
@@ -11,6 +12,8 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any
 
+from mlops_cv.tracking import client as tracking_client
+from mlops_cv.tracking import records
 from mlops_cv.tracking.metric_keys import DRIFT_EPISODE_METRIC, episode_metrics
 
 if TYPE_CHECKING:
@@ -19,9 +22,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# MLflow nesting is this tag.
-PARENT_TAG = "mlflow.parentRunId"
-
+# The marker that makes a child run *this* record and not the optimization one beside it.
 RECORD_TAG = "monitor.model"
 VERSION_TAG = "monitor.version"
 SOURCE_RUN_TAG = "monitor.source_run"
@@ -32,8 +33,8 @@ RECORD_RUN_NAME = "monitor"
 EPISODES_ARTIFACT_PATH = "episodes"
 
 
-def record_tags(resolved: ResolvedBaseline) -> dict[str, str]:
-    """What this evidence is about, in full."""
+def evidence_tags(resolved: ResolvedBaseline) -> dict[str, str]:
+    """What this evidence is about, in full — the alias moves, the record must still say."""
     return {
         RECORD_TAG: resolved.model.name,
         VERSION_TAG: resolved.model.version,
@@ -54,14 +55,6 @@ def episode_payload(window: DriftWindow, step: int) -> dict[str, Any]:
         "n_frames": len(window.frames),
         "ranges": window.spans(),
     }
-
-
-def existing_record(client: Any, parent_run_id: str, experiment_id: str) -> str | None:
-    """This model version's monitoring record, if some earlier monitor already opened it."""
-    children = client.search_runs(
-        [experiment_id], filter_string=f"tags.{PARENT_TAG} = '{parent_run_id}'"
-    )
-    return next((r.info.run_id for r in children if RECORD_TAG in r.data.tags), None)
 
 
 def next_step(client: Any, run_id: str) -> int:
@@ -98,24 +91,14 @@ def open_record(resolved: ResolvedBaseline, *, client: Any | None = None) -> Epi
     champion *now*, so a restarted monitor opens the record under that version's training run
     without knowing a promotion happened.
     """
-    if client is None:
-        from mlflow import MlflowClient
-
-        client = MlflowClient()
-
-    parent = resolved.training_run_id
-    experiment_id = client.get_run(parent).info.experiment_id
-    run_id = existing_record(client, parent, experiment_id)
-    if run_id is None:
-        run = client.create_run(
-            experiment_id,
-            tags={PARENT_TAG: parent, **record_tags(resolved)},
-            run_name=RECORD_RUN_NAME,
-        )
-        run_id = run.info.run_id
-        # Terminated on creation: the ledger outlives every monitor that appends to it.
-        client.set_terminated(run_id, "FINISHED")
-        logger.info(f"opened the monitoring record {run_id} under training run {parent}")
+    client = tracking_client.registry(injected=client)
+    run_id = records.open_record(
+        client,
+        resolved.training_run_id,
+        RECORD_TAG,
+        run_name=RECORD_RUN_NAME,
+        tags=evidence_tags(resolved),
+    )
     step = next_step(client, run_id)
     logger.info(
         f"recording model version {resolved.model.version}'s drift episodes on run {run_id}, "

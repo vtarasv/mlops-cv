@@ -69,6 +69,18 @@ client.experiment()         # "aerial-object-detection"
 client.registered_model()   # "aerial-object-detector"
 ```
 
+## Resolving the champion
+
+Every process that serves, judges or measures "the champion" starts with the same walk, written
+once in `mlops_cv.tracking.champion`:
+
+```mermaid
+flowchart LR
+    alias["registry alias\n'champion'"] --> version["model version\n(tags: published artifacts)"]
+    version -- "run that produced it" --> train["training run\n(metrics, data.version tag)"]
+    train --> children["record runs\n(optimize, monitor)"]
+```
+
 ## Persistence & teardown
 
 Backend metadata and artifacts persist in the named volumes `pgdata` and `rustfs-data`. To wipe

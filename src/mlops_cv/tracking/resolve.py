@@ -1,15 +1,18 @@
-"""Resolve model URIs against MLflow: weights download + registered-version lookup.
+"""Resolve model URIs against MLflow: artifact download + registered-version lookup.
 
-Shared by every consumer of a registered model (evaluation, streaming inference): the same
-``models:/`` / ``runs:/`` grammar resolves everywhere. mlflow imports stay lazy so the module
-is importable under CI's CPU-only sync.
+Shared by every consumer of a registered model (evaluation, optimization, serving, monitoring):
+the same ``models:/`` / ``runs:/`` grammar resolves everywhere, and every published artifact —
+weights, graph, engine, NCNN directory, Profile — comes down through :func:`download`. mlflow
+imports stay lazy so the module is importable under CI's CPU-only sync.
 """
 
 from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+
+from mlops_cv.tracking import client
 
 if TYPE_CHECKING:
     from mlflow.entities.model_registry import ModelVersion
@@ -20,6 +23,16 @@ def slug(text: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "-", text).strip("-")
 
 
+def download(uri: str) -> Path:
+    """Pull a published artifact — a file or a directory — to local disk.
+
+    Proxied through the tracking server, so the only thing a client needs is the tracking URI.
+    """
+    from mlflow.artifacts import download_artifacts
+
+    return Path(download_artifacts(artifact_uri=uri))
+
+
 def resolve_model(model_ref: str) -> tuple[Path, str]:
     """Download a model's ``best.pt`` from MLflow → ``(local path, run-name slug)``.
 
@@ -27,13 +40,9 @@ def resolve_model(model_ref: str) -> tuple[Path, str]:
     ``models:/<name>@<alias>`` / ``models:/<name>/<version>``. A registry ref is redirected to its
     version's ``source`` artifact URI and downloaded from there.
     """
-    from mlflow.artifacts import download_artifacts
-
     if model_ref.startswith("models:/"):
-        from mlflow import MlflowClient
-
         spec = model_ref.removeprefix("models:/")
-        registry = MlflowClient()
+        registry = client.registry()
         version: ModelVersion = (
             registry.get_model_version_by_alias(*spec.split("@", 1))
             if "@" in spec
@@ -42,7 +51,7 @@ def resolve_model(model_ref: str) -> tuple[Path, str]:
         model_ref, ref_slug = version.source, slug(spec)  # type: ignore[union-attr]
     else:
         ref_slug = slug(model_ref.split(":/", 1)[1])
-    return Path(download_artifacts(artifact_uri=model_ref)), ref_slug
+    return download(model_ref), ref_slug
 
 
 def run_id_from_uri(uri: str) -> str | None:
@@ -52,7 +61,9 @@ def run_id_from_uri(uri: str) -> str | None:
     return uri.removeprefix("runs:/").split("/", 1)[0]
 
 
-def model_version(model_ref: str, registered_model: str) -> ModelVersion | None:
+def model_version(
+    model_ref: str, registered_model: str, *, registry: Any | None = None
+) -> ModelVersion | None:
     """The registered ``ModelVersion`` a model URI refers to; ``None`` when it maps to none.
 
     The full entity, not just its number: a version's tags carry the published-artifact
@@ -61,17 +72,17 @@ def model_version(model_ref: str, registered_model: str) -> ModelVersion | None:
     missing alias/version raises, as it would on use); ``runs:/`` refs are searched by run id;
     anything else (a bare local path) is ``None``.
     """
-    from mlflow import MlflowClient
-
     if model_ref.startswith("models:/"):
         spec = model_ref.removeprefix("models:/")
         if "@" in spec:
-            return MlflowClient().get_model_version_by_alias(*spec.split("@", 1))
+            return client.registry(injected=registry).get_model_version_by_alias(
+                *spec.split("@", 1)
+            )
         if "/" in spec:
-            return MlflowClient().get_model_version(*spec.rsplit("/", 1))
+            return client.registry(injected=registry).get_model_version(*spec.rsplit("/", 1))
         return None
     if run_id := run_id_from_uri(model_ref):
-        found = MlflowClient().search_model_versions(
+        found = client.registry(injected=registry).search_model_versions(
             f"run_id='{run_id}' and name='{registered_model}'"
         )
         return found[0] if found else None

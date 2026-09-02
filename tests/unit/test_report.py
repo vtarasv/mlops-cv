@@ -6,7 +6,7 @@ import csv
 from pathlib import Path
 from types import SimpleNamespace
 
-from mlops_cv.eval.report import (
+from mlops_cv.evaluation.report import (
     comparison_table_md,
     metrics_csv_rows,
     write_report,

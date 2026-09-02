@@ -6,7 +6,7 @@ import csv
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
-from mlops_cv.eval.gate import GateResult
+from mlops_cv.evaluation.gate import GateResult
 from mlops_cv.tracking.metric_keys import HEADLINE_ATTRS, PRIMARY, metric_key
 
 

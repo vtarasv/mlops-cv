@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from mlops_cv.eval.gate import GateThresholds, evaluate_gate
+import pytest
+
+from mlops_cv.config import Settings
+from mlops_cv.evaluation.gate import GateThresholds, evaluate_gate, fetch_champion_metrics
+from mlops_cv.startup import StartupError
 
 
 def _metrics(
@@ -79,3 +83,27 @@ def test_summary_mentions_pass_and_fail() -> None:
     assert evaluate_gate(_metrics(), GateThresholds(), None).summary().startswith("GATE PASS")
     failing = evaluate_gate(_metrics(primary=0.0), GateThresholds(min_map50_95=0.9), None)
     assert failing.summary().startswith("GATE FAIL")
+
+
+# --- the champion's headline ---
+
+
+def test_champion_metrics_are_read_off_its_training_run(registry) -> None:
+    registry.promote(version="7", run_id="train-7")
+    registry.runs["train-7"].data.metrics["test/mAP50-95"] = 0.41
+
+    assert fetch_champion_metrics(Settings(), registry=registry) == {"test/mAP50-95": 0.41}
+
+
+def test_no_champion_is_the_bootstrap_answer(registry) -> None:
+    """The one consumer for which an empty registry is an answer, not a refusal."""
+    assert fetch_champion_metrics(Settings(), registry=registry) is None
+
+
+def test_a_champion_whose_training_run_is_gone_is_not_mistaken_for_no_champion(registry) -> None:
+    """Reading a pruned run as "no champion" would hand the challenger a silent bootstrap win."""
+    registry.promote(version="7", run_id="train-7")
+    del registry.runs["train-7"]
+
+    with pytest.raises(StartupError, match="train-7"):
+        fetch_champion_metrics(Settings(), registry=registry)

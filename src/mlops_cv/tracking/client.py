@@ -7,7 +7,7 @@ only needs ``MLFLOW_TRACKING_URI`` to log runs, params, metrics, and register mo
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from mlops_cv.config import Settings, get_settings
 
@@ -57,3 +57,17 @@ def connect(settings: Settings | None = None, *, experiment: bool = True) -> Mod
     if experiment:
         mlflow.set_experiment(resolved.mlflow.experiment)
     return mlflow
+
+
+def registry(settings: Settings | None = None, *, injected: Any | None = None) -> Any:
+    """The registry client: ``injected`` if given (tests), else the real one.
+
+    The real client reads the tracking URI from the environment when it is built, so the session
+    is configured first — every walk over the registry goes through here and cannot skip that.
+    """
+    if injected is not None:
+        return injected
+    configure(settings)
+    from mlflow import MlflowClient
+
+    return MlflowClient()

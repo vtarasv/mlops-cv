@@ -15,7 +15,7 @@ from mlops_cv.monitoring.drift import DriftReference, WindowVerdict
 from mlops_cv.monitoring.metrics import MonitorMetrics
 from mlops_cv.monitoring.monitor import DriftWindow, SourceMessage, prediction_health, run_loop
 from mlops_cv.pipelines.profiling import BaselineScene, profile_drift_bytes
-from mlops_cv.serving.errors import StartupError
+from mlops_cv.startup import StartupError
 from mlops_cv.streaming.messages import Box, DetectionEvent, FrameRef, ModelInfo, pack_frame
 
 FRAMES_TOPIC = Settings().streaming.raw_frames_topic
@@ -527,9 +527,6 @@ def test_the_margin_setting_widens_the_derived_bars(reference) -> None:
 
 def test_main_exits_2_when_the_champion_carries_no_baseline(monkeypatch, caplog) -> None:
     """A misconfigured registry is an error in seconds with the fix, not silence for hours."""
-    from mlops_cv.tracking import client
-
-    monkeypatch.setattr(client, "configure", lambda settings=None: None)
 
     def refuse(settings):
         raise StartupError("the champion's training run carries no 'data.version' tag")

@@ -1,7 +1,8 @@
 """Train YOLO26s on the VisDrone-VID subset, log to MLflow, and register the model.
 
 Training is pure model production (train + per-epoch val); the held-out test metrics, report,
-gate, and qualitative artifacts are the eval harness's job (``mlops_cv.eval.evaluate --run-id``).
+gate, and qualitative artifacts are the evaluation harness's job
+(``python -m mlops_cv.evaluation --run-id``).
 The last stdout line is a machine-readable JSON for orchestrators.
 """
 

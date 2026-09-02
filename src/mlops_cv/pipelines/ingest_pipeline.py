@@ -48,7 +48,7 @@ from mlops_cv.data.subset import (
     raw_split_dir,
     stamp_dataset_yaml,
 )
-from mlops_cv.eval.visualize import ClipSpec, load_demo_clips
+from mlops_cv.evaluation.visualize import ClipSpec, load_demo_clips
 
 logger = logging.getLogger(__name__)
 

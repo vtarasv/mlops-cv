@@ -5,8 +5,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from mlops_cv.serving.errors import StartupError
 from mlops_cv.serving.runtime import Detector
+from mlops_cv.startup import StartupError
 from mlops_cv.streaming import inference_consumer
 from mlops_cv.streaming.messages import ModelInfo
 
@@ -50,9 +50,6 @@ def test_main_exits_2_when_the_registry_cannot_serve(monkeypatch, caplog) -> Non
     """No champion / no published graph is an ordinary state: an exit code and the fixing
     command, exactly like the service — never a traceback into the container log."""
     import mlops_cv.serving.resolve as serving_resolve
-    from mlops_cv.tracking import client
-
-    monkeypatch.setattr(client, "configure", lambda settings=None: None)
 
     def refuse(settings):
         raise StartupError("no champion — run `make train`")
@@ -69,7 +66,6 @@ def test_main_serves_the_resolved_detector_at_the_settings_floor(monkeypatch) ->
     import mlops_cv.serving.resolve as serving_resolve
     from mlops_cv.config import get_settings
     from mlops_cv.serving.resolve import ResolvedGraph
-    from mlops_cv.tracking import client
 
     calls: dict = {}
 
@@ -80,7 +76,6 @@ def test_main_serves_the_resolved_detector_at_the_settings_floor(monkeypatch) ->
             calls["conf"] = conf_threshold
             return []
 
-    monkeypatch.setattr(client, "configure", lambda settings=None: None)
     monkeypatch.setattr(
         serving_resolve,
         "resolve_graph",

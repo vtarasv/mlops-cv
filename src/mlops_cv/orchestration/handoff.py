@@ -64,7 +64,7 @@ class GateVerdict(_HandoffPayload):
 
 def train_cmd(epochs: int | str) -> list[str]:
     """Train-container argv; the container replies with a ``TrainHandoff`` line."""
-    return ["python", "-m", "mlops_cv.training.train", "--epochs", str(epochs)]
+    return ["python", "-m", "mlops_cv.training", "--epochs", str(epochs)]
 
 
 def evaluate_cmd(run_id: str, batch: int | str = 8) -> list[str]:
@@ -77,7 +77,7 @@ def evaluate_cmd(run_id: str, batch: int | str = 8) -> list[str]:
     return [
         "python",
         "-m",
-        "mlops_cv.eval.evaluate",
+        "mlops_cv.evaluation",
         "--model",
         best_weights_uri(run_id),
         "--run-id",

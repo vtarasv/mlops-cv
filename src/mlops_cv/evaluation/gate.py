@@ -123,7 +123,8 @@ def fetch_champion_metrics(
 ) -> dict[str, float] | None:
     """The champion's training-run metrics, or ``None`` when there is no champion yet.
 
-    ``None`` means exactly "no champion yet" → :func:`evaluate_gate` treats the candidate as a bootstrap.
+    ``None`` means exactly "no champion yet" → :func:`evaluate_gate`
+    treats the candidate as a bootstrap.
     """
     from mlops_cv.startup import StartupError
     from mlops_cv.tracking import champion

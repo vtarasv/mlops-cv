@@ -74,7 +74,7 @@ Topics are provisioned by a one-shot `rpk` init service — broker auto-creation
 
 | Topic | Partitions | Value | Key | Notes |
 |---|---|---|---|---|
-| `raw-frames` | 3 | JPEG bytes verbatim | sequence | `max.message.bytes` raised to 4 MiB; metadata in headers (`frame_index`, `ts_ms`) |
+| `raw-frames` | 3 | JPEG bytes verbatim (re-encoded under `--shift`) | sequence | `max.message.bytes` raised to 4 MiB; metadata in headers (`frame_index`, `ts_ms`) |
 | `detections` | 3 | detection event JSON | sequence | co-partitioned with frames |
 | `alerts` | 1 | alert JSON | sequence | episode-scoped |
 
@@ -85,6 +85,10 @@ pairs pinned by unit tests. Detection events carry
 confidences + normalized `xywhn` (resolution-independent across the mixed-size clips).
 Parsers ignore unknown fields, so adding a field is not a breaking change — renaming or
 removing one is.
+
+Both topics have a third reader: the **drift monitor** tails them under its own group,
+judging the frames against the champion's training baseline and charting the detection
+events beside it ([monitoring.md](monitoring.md)). It commits nothing and produces nothing.
 
 **Frames delivered inline** — a deliberate choice, valid because the demo-store JPEGs
 sit under the ~1 MiB sweet spot (~450 KB average). Production systems outgrow this in two
@@ -138,6 +142,22 @@ backlogs within seconds) and drains at GPU speed — watch it in Console or via
 `docker exec redpanda rpk group describe inference-consumer`. The consumer additionally
 pauses frame intake whenever too many detection events await broker confirmation and
 resumes once the queue drains, keeping its memory bounded under flood.
+
+## Simulating drift
+
+The producer can dial a **synthetic photometric shift** into the stream, so the drift
+monitor can be watched crossing its bars, opening an episode, and re-arming on demand
+(what it measures and how it judges: [monitoring.md](monitoring.md)):
+
+```bash
+uv run python -m mlops_cv.streaming.producer --shift defocus --loops 2 --fps 0
+uv run python -m mlops_cv.streaming.producer --shift brightness --loops 2 --fps 0
+```
+
+| Mode | Dial | What it demonstrates |
+|---|---|---|
+| `defocus` | Gaussian blur radius (default 4) | a **malignant** shift — it destroys most of the champion's detections, and the charted detection rate collapses with it |
+| `brightness` | multiplier (default 0.35) | a **benign** shift — the model absorbs it (ultralytics trains HSV augmentation by default), so only the input-side alarm moves |
 
 ## The anomaly rule
 

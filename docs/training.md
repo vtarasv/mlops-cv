@@ -50,6 +50,15 @@ schema (`TrainHandoff`) and the container command line are owned by the shared c
 | `resolved_batch` / `accumulate` / `effective_batch` | a custom `on_train_start` callback |
 | `best.pt` | logged + registered as `aerial-object-detector` |
 | dataset input + `dataset_sha` | the subset `manifest.csv`; the dataset name is the subset directory's basename |
+| `data.version` tag | the run id of the [data version](batch-pipeline.md) describing the subset |
+
+### Which data taught this model
+
+Beyond the manifest hash, the run names the **data version** — the profile of the very data it is
+training on, published as its own run by the profiling pipeline. The lookup is by identity (the
+profile's provenance stamp). The link is what lets a consumer walk champion alias → model
+version → training run → data version → that data's drift baseline, and it is a pointer: the
+profile is published once by the pipeline that computed it, never copied per training run.
 
 ### Validation vs test
 

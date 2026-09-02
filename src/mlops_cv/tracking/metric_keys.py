@@ -31,6 +31,12 @@ TRAIN_PREFIX = "metrics"
 
 OPTIMIZE_PREFIX = "optimize"
 
+# The namespace a data version records its Profile's headline counts under.
+DATA_PREFIX = "data"
+
+# The namespace one drift episode is recorded under, on the monitoring record run.
+DRIFT_PREFIX = "drift"
+
 # The eval harness's single-configuration latency namespace (``latency/p50_ms`` ...).
 LATENCY_PREFIX = "latency"
 
@@ -59,6 +65,32 @@ def variant_device_latency_prefix(variant: str, device_label: str) -> str:
 def variant_speed_prefix(variant: str) -> str:
     """Where a variant's per-stage breakdown lives: ``optimize/<variant>/speed``."""
     return metric_key(variant_prefix(variant), "speed")
+
+
+def drift_statistic_prefix(statistic: str) -> str:
+    """The reserved namespace for one drift statistic's readings: ``drift/<statistic>``."""
+    return metric_key(DRIFT_PREFIX, statistic)
+
+
+DRIFT_EPISODE_METRIC = metric_key(DRIFT_PREFIX, "n_crossed")
+
+
+def episode_metrics(verdict: Any) -> dict[str, float]:
+    """Map one drift verdict to the readings of a single episode step."""
+    readings = {
+        metric_key(drift_statistic_prefix(statistic), "score"): float(score)
+        for statistic, score in verdict.scores.items()
+    }
+    readings |= {
+        metric_key(drift_statistic_prefix(statistic), "threshold"): float(threshold)
+        for statistic, threshold in verdict.thresholds.items()
+    }
+    return readings | {DRIFT_EPISODE_METRIC: float(len(verdict.crossed))}
+
+
+def data_metrics(counts: Mapping[str, float]) -> dict[str, float]:
+    """Map a data version's headline counts to their run-metric keys: ``data/<name>``."""
+    return {metric_key(DATA_PREFIX, name): float(value) for name, value in counts.items()}
 
 
 def headline_metrics(box: Any, prefix: str = "test") -> dict[str, float]:

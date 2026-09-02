@@ -6,8 +6,8 @@ pipeline if not), **profile** it (quality report + drift baseline, skipped when 
 date — see [batch-pipeline.md](batch-pipeline.md)), validate what training will consume, train a
 challenger, evaluate it against the champion, promote it to the `champion` registry alias
 **only on a champion/challenger win**, and — only then — build and benchmark its serving variants.
-The DAG fires weekly **or** on an external *new data* asset event — the hook a drift monitor
-POSTs to close the monitor → trigger → retrain loop.
+The DAG fires weekly **or** on an external *new data* asset event — the hook whatever admits new
+labeled data POSTs when the dataset actually changes.
 
 ```mermaid
 flowchart LR
@@ -160,8 +160,8 @@ wrong path or launching a stale image.
 ## Scheduling: cron + asset events
 
 The DAG uses `AssetOrTimeSchedule`: a weekly `CronTriggerTimetable` **or** an update to the
-`new-training-data` asset. Any producer can fire the asset externally through the REST API — a
-drift monitor, a data-ingest job, or you:
+`new-training-data` asset. The asset means *the dataset changed*, so its producer is whatever
+admits new data — a data-ingest job, a labeling handoff, or you:
 
 > **Enable the DAG first.** It ships **paused** (`DAGS_ARE_PAUSED_AT_CREATION=true`, so a newly
 > parsed CT DAG never auto-starts a GPU run). While paused, neither the weekly cron nor an asset

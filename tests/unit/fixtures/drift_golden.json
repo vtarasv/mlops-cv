@@ -1,0 +1,636 @@
+{
+  "source": {
+    "subset": "visdrone-vid-small",
+    "sample_every": 5,
+    "max_window": 100,
+    "jpeg_quality": 95
+  },
+  "baseline": [
+    {
+      "sequence": "uav0000357_00920_v",
+      "n_frames": 35,
+      "means": {
+        "brightness": 110.52314121727122,
+        "contrast": 43.78495121623518,
+        "blur": 1130.5601860608535
+      }
+    },
+    {
+      "sequence": "uav0000300_00000_v",
+      "n_frames": 28,
+      "means": {
+        "brightness": 114.60652757251363,
+        "contrast": 60.23438965694512,
+        "blur": 3024.6693676141113
+      }
+    },
+    {
+      "sequence": "uav0000266_03598_v",
+      "n_frames": 28,
+      "means": {
+        "brightness": 181.80455508251165,
+        "contrast": 45.8376919904915,
+        "blur": 1886.2943316487388
+      }
+    },
+    {
+      "sequence": "uav0000145_00000_v",
+      "n_frames": 16,
+      "means": {
+        "brightness": 91.36464273842495,
+        "contrast": 55.65217153893927,
+        "blur": 1649.254246793857
+      }
+    },
+    {
+      "sequence": "uav0000281_00460_v",
+      "n_frames": 26,
+      "means": {
+        "brightness": 123.61285943487502,
+        "contrast": 37.42494230819854,
+        "blur": 1216.7581363560723
+      }
+    },
+    {
+      "sequence": "uav0000218_00001_v",
+      "n_frames": 12,
+      "means": {
+        "brightness": 127.73823392686552,
+        "contrast": 58.39827268617716,
+        "blur": 1112.3120177272137
+      }
+    },
+    {
+      "sequence": "uav0000288_00001_v",
+      "n_frames": 72,
+      "means": {
+        "brightness": 119.64015276589937,
+        "contrast": 51.21083461384306,
+        "blur": 1224.8006631843464
+      }
+    },
+    {
+      "sequence": "uav0000076_00720_v",
+      "n_frames": 19,
+      "means": {
+        "brightness": 145.09993393642287,
+        "contrast": 35.53326694547147,
+        "blur": 1251.3297659683187
+      }
+    },
+    {
+      "sequence": "uav0000013_01073_v",
+      "n_frames": 3,
+      "means": {
+        "brightness": 97.35985200407323,
+        "contrast": 35.71399190176792,
+        "blur": 529.3370581478671
+      }
+    },
+    {
+      "sequence": "uav0000079_00480_v",
+      "n_frames": 19,
+      "means": {
+        "brightness": 115.8273624465266,
+        "contrast": 47.273389755364086,
+        "blur": 2499.070395099101
+      }
+    },
+    {
+      "sequence": "uav0000222_03150_v",
+      "n_frames": 22,
+      "means": {
+        "brightness": 124.74187363287065,
+        "contrast": 46.85717247675405,
+        "blur": 1465.650373664473
+      }
+    },
+    {
+      "sequence": "uav0000099_02109_v",
+      "n_frames": 63,
+      "means": {
+        "brightness": 104.49964733192665,
+        "contrast": 47.11746134323376,
+        "blur": 1831.194531714879
+      }
+    },
+    {
+      "sequence": "uav0000308_00000_v",
+      "n_frames": 12,
+      "means": {
+        "brightness": 106.14551993182893,
+        "contrast": 47.188476215099115,
+        "blur": 1489.9998314622815
+      }
+    },
+    {
+      "sequence": "uav0000013_01392_v",
+      "n_frames": 6,
+      "means": {
+        "brightness": 95.10306191342278,
+        "contrast": 39.27048053085574,
+        "blur": 733.141611538979
+      }
+    },
+    {
+      "sequence": "uav0000270_00001_v",
+      "n_frames": 34,
+      "means": {
+        "brightness": 117.52066458071116,
+        "contrast": 50.51774660355151,
+        "blur": 1602.3111399257489
+      }
+    },
+    {
+      "sequence": "uav0000140_01590_v",
+      "n_frames": 13,
+      "means": {
+        "brightness": 117.32695653938214,
+        "contrast": 48.82155776788766,
+        "blur": 1481.5854455859896
+      }
+    },
+    {
+      "sequence": "uav0000124_00944_v",
+      "n_frames": 20,
+      "means": {
+        "brightness": 108.81222234770644,
+        "contrast": 42.860933346142964,
+        "blur": 1544.2725774735002
+      }
+    },
+    {
+      "sequence": "uav0000072_05448_v",
+      "n_frames": 11,
+      "means": {
+        "brightness": 58.336325706753286,
+        "contrast": 26.185271353506984,
+        "blur": 181.88242716950006
+      }
+    },
+    {
+      "sequence": "uav0000071_03240_v",
+      "n_frames": 10,
+      "means": {
+        "brightness": 60.32887120534489,
+        "contrast": 39.86653419711976,
+        "blur": 232.9464738486166
+      }
+    },
+    {
+      "sequence": "uav0000363_00001_v",
+      "n_frames": 24,
+      "means": {
+        "brightness": 95.74177282795836,
+        "contrast": 64.61450776843036,
+        "blur": 2550.478345556689
+      }
+    },
+    {
+      "sequence": "uav0000264_02760_v",
+      "n_frames": 31,
+      "means": {
+        "brightness": 141.65222056564562,
+        "contrast": 47.435737574412315,
+        "blur": 1780.9050486329766
+      }
+    },
+    {
+      "sequence": "uav0000244_01440_v",
+      "n_frames": 37,
+      "means": {
+        "brightness": 124.19868071196194,
+        "contrast": 66.65227382537547,
+        "blur": 3605.775883064421
+      }
+    },
+    {
+      "sequence": "uav0000352_05980_v",
+      "n_frames": 10,
+      "means": {
+        "brightness": 115.10597881309386,
+        "contrast": 47.66162515252641,
+        "blur": 2381.58058407193
+      }
+    },
+    {
+      "sequence": "uav0000143_02250_v",
+      "n_frames": 14,
+      "means": {
+        "brightness": 126.12917312365587,
+        "contrast": 50.54872866734042,
+        "blur": 2003.2669877858912
+      }
+    },
+    {
+      "sequence": "uav0000315_00000_v",
+      "n_frames": 32,
+      "means": {
+        "brightness": 134.34092828307797,
+        "contrast": 42.67503899515564,
+        "blur": 2497.562881025988
+      }
+    },
+    {
+      "sequence": "uav0000239_12336_v",
+      "n_frames": 18,
+      "means": {
+        "brightness": 117.86046794296423,
+        "contrast": 60.75254862633751,
+        "blur": 3846.56319350679
+      }
+    },
+    {
+      "sequence": "uav0000342_04692_v",
+      "n_frames": 14,
+      "means": {
+        "brightness": 117.710122704544,
+        "contrast": 45.56988798731627,
+        "blur": 519.2723728505499
+      }
+    },
+    {
+      "sequence": "uav0000326_01035_v",
+      "n_frames": 19,
+      "means": {
+        "brightness": 100.42860696910343,
+        "contrast": 42.89120822662276,
+        "blur": 2133.369844891788
+      }
+    },
+    {
+      "sequence": "uav0000072_06432_v",
+      "n_frames": 5,
+      "means": {
+        "brightness": 60.408553225211655,
+        "contrast": 33.063402997220386,
+        "blur": 319.6670844347911
+      }
+    },
+    {
+      "sequence": "uav0000308_01380_v",
+      "n_frames": 10,
+      "means": {
+        "brightness": 124.69665768268092,
+        "contrast": 29.90686417610329,
+        "blur": 866.8852613361057
+      }
+    },
+    {
+      "sequence": "uav0000361_02323_v",
+      "n_frames": 11,
+      "means": {
+        "brightness": 159.03213049925853,
+        "contrast": 32.92353118727548,
+        "blur": 1255.2874545307861
+      }
+    },
+    {
+      "sequence": "uav0000084_00000_v",
+      "n_frames": 26,
+      "means": {
+        "brightness": 94.42435587794589,
+        "contrast": 30.00013781560705,
+        "blur": 1770.0158427205497
+      }
+    },
+    {
+      "sequence": "uav0000263_03289_v",
+      "n_frames": 37,
+      "means": {
+        "brightness": 138.36442587103733,
+        "contrast": 39.19091408309339,
+        "blur": 988.5200193852762
+      }
+    },
+    {
+      "sequence": "uav0000295_02300_v",
+      "n_frames": 18,
+      "means": {
+        "brightness": 110.47397647539411,
+        "contrast": 49.08111632044218,
+        "blur": 1998.690291061155
+      }
+    },
+    {
+      "sequence": "uav0000366_00001_v",
+      "n_frames": 15,
+      "means": {
+        "brightness": 129.14621976241477,
+        "contrast": 48.183722179432,
+        "blur": 2213.0272965691647
+      }
+    },
+    {
+      "sequence": "uav0000279_00001_v",
+      "n_frames": 28,
+      "means": {
+        "brightness": 114.98140775918212,
+        "contrast": 68.62715827901043,
+        "blur": 2403.139127334314
+      }
+    },
+    {
+      "sequence": "uav0000323_01173_v",
+      "n_frames": 22,
+      "means": {
+        "brightness": 105.34579252824123,
+        "contrast": 44.900586679307196,
+        "blur": 1813.1591650676723
+      }
+    },
+    {
+      "sequence": "uav0000020_00406_v",
+      "n_frames": 26,
+      "means": {
+        "brightness": 108.8119836409457,
+        "contrast": 45.413801246012476,
+        "blur": 845.3149872565702
+      }
+    },
+    {
+      "sequence": "uav0000278_00001_v",
+      "n_frames": 49,
+      "means": {
+        "brightness": 136.2511678789163,
+        "contrast": 46.08535019552346,
+        "blur": 2649.8258636200694
+      }
+    },
+    {
+      "sequence": "uav0000239_03720_v",
+      "n_frames": 34,
+      "means": {
+        "brightness": 112.11278518930722,
+        "contrast": 50.80606726948025,
+        "blur": 3754.169333740194
+      }
+    },
+    {
+      "sequence": "uav0000289_00001_v",
+      "n_frames": 25,
+      "means": {
+        "brightness": 181.45543731217975,
+        "contrast": 58.01593077617781,
+        "blur": 1806.3660745840336
+      }
+    },
+    {
+      "sequence": "uav0000126_00001_v",
+      "n_frames": 21,
+      "means": {
+        "brightness": 104.23101146047041,
+        "contrast": 47.84126958563269,
+        "blur": 1749.1101464143449
+      }
+    },
+    {
+      "sequence": "uav0000307_00000_v",
+      "n_frames": 21,
+      "means": {
+        "brightness": 121.62932701091643,
+        "contrast": 56.02679189846661,
+        "blur": 2260.432485804143
+      }
+    },
+    {
+      "sequence": "uav0000329_04715_v",
+      "n_frames": 10,
+      "means": {
+        "brightness": 116.32575657714067,
+        "contrast": 34.087233775973814,
+        "blur": 878.1428656896026
+      }
+    },
+    {
+      "sequence": "uav0000316_01288_v",
+      "n_frames": 7,
+      "means": {
+        "brightness": 103.93683631295654,
+        "contrast": 41.332520788692264,
+        "blur": 1134.2339704368155
+      }
+    },
+    {
+      "sequence": "uav0000289_06922_v",
+      "n_frames": 11,
+      "means": {
+        "brightness": 96.86600081208957,
+        "contrast": 51.94761017303751,
+        "blur": 3129.018093555044
+      }
+    },
+    {
+      "sequence": "uav0000273_00001_v",
+      "n_frames": 44,
+      "means": {
+        "brightness": 128.93077632122368,
+        "contrast": 65.25887085607008,
+        "blur": 2056.634263068557
+      }
+    },
+    {
+      "sequence": "uav0000072_04488_v",
+      "n_frames": 5,
+      "means": {
+        "brightness": 61.456313407716024,
+        "contrast": 32.48436030876866,
+        "blur": 443.7412989310001
+      }
+    },
+    {
+      "sequence": "uav0000360_00001_v",
+      "n_frames": 22,
+      "means": {
+        "brightness": 134.02099846177327,
+        "contrast": 32.85767718830851,
+        "blur": 1022.0816031952069
+      }
+    },
+    {
+      "sequence": "uav0000243_00001_v",
+      "n_frames": 39,
+      "means": {
+        "brightness": 117.32684434172529,
+        "contrast": 51.82826699977297,
+        "blur": 3600.4743882085477
+      }
+    },
+    {
+      "sequence": "uav0000266_04830_v",
+      "n_frames": 6,
+      "means": {
+        "brightness": 181.8256938457289,
+        "contrast": 45.82341175706073,
+        "blur": 1881.035839891167
+      }
+    },
+    {
+      "sequence": "uav0000013_00000_v",
+      "n_frames": 14,
+      "means": {
+        "brightness": 96.5553410021416,
+        "contrast": 39.26017475352093,
+        "blur": 963.1571930614009
+      }
+    },
+    {
+      "sequence": "uav0000138_00000_v",
+      "n_frames": 11,
+      "means": {
+        "brightness": 133.8962846068036,
+        "contrast": 52.43204849904873,
+        "blur": 1703.2881806705445
+      }
+    },
+    {
+      "sequence": "uav0000150_02310_v",
+      "n_frames": 18,
+      "means": {
+        "brightness": 106.80417727951517,
+        "contrast": 46.358300911740564,
+        "blur": 1816.4766909296643
+      }
+    },
+    {
+      "sequence": "uav0000248_00001_v",
+      "n_frames": 34,
+      "means": {
+        "brightness": 115.95096224253591,
+        "contrast": 45.97152974855422,
+        "blur": 3180.1562838868226
+      }
+    },
+    {
+      "sequence": "uav0000309_00000_v",
+      "n_frames": 21,
+      "means": {
+        "brightness": 116.53769469972865,
+        "contrast": 44.77714316006712,
+        "blur": 2011.913770100236
+      }
+    }
+  ],
+  "windows": [
+    {
+      "clip": "uav0000073_00600_v",
+      "mode": "normal",
+      "n_frames": 66,
+      "means": {
+        "brightness": 99.02018736263094,
+        "contrast": 52.739028300848595,
+        "blur": 1022.0236845310252
+      }
+    },
+    {
+      "clip": "uav0000073_00600_v",
+      "mode": "defocus-r4",
+      "n_frames": 66,
+      "means": {
+        "brightness": 99.02025042087543,
+        "contrast": 48.97359955386988,
+        "blur": 32.14468678759598
+      }
+    },
+    {
+      "clip": "uav0000073_00600_v",
+      "mode": "dark-x0.55",
+      "n_frames": 66,
+      "means": {
+        "brightness": 53.9830079805579,
+        "contrast": 29.010139048934526,
+        "blur": 382.0208647325912
+      }
+    },
+    {
+      "clip": "uav0000073_00600_v",
+      "mode": "bright-x1.6",
+      "n_frames": 66,
+      "means": {
+        "brightness": 149.2220694722105,
+        "contrast": 67.64693238459027,
+        "blur": 1428.1598202089083
+      }
+    },
+    {
+      "clip": "uav0000161_00000_v",
+      "mode": "normal",
+      "n_frames": 62,
+      "means": {
+        "brightness": 85.1922196398347,
+        "contrast": 49.231508473385524,
+        "blur": 3499.450289172305
+      }
+    },
+    {
+      "clip": "uav0000161_00000_v",
+      "mode": "defocus-r4",
+      "n_frames": 62,
+      "means": {
+        "brightness": 85.19784821784151,
+        "contrast": 41.5557698890994,
+        "blur": 86.76337152844553
+      }
+    },
+    {
+      "clip": "uav0000161_00000_v",
+      "mode": "dark-x0.55",
+      "n_frames": 62,
+      "means": {
+        "brightness": 46.3758368491139,
+        "contrast": 27.10081631912512,
+        "blur": 1579.3628082302123
+      }
+    },
+    {
+      "clip": "uav0000161_00000_v",
+      "mode": "bright-x1.6",
+      "n_frames": 62,
+      "means": {
+        "brightness": 131.60135821136996,
+        "contrast": 69.09514372225738,
+        "blur": 5118.75096724485
+      }
+    },
+    {
+      "clip": "uav0000355_00001_v",
+      "mode": "normal",
+      "n_frames": 94,
+      "means": {
+        "brightness": 141.0940483406546,
+        "contrast": 35.07955006409965,
+        "blur": 3070.704624399819
+      }
+    },
+    {
+      "clip": "uav0000355_00001_v",
+      "mode": "defocus-r4",
+      "n_frames": 94,
+      "means": {
+        "brightness": 141.09799499169713,
+        "contrast": 27.335316127672456,
+        "blur": 103.35899242948263
+      }
+    },
+    {
+      "clip": "uav0000355_00001_v",
+      "mode": "dark-x0.55",
+      "n_frames": 94,
+      "means": {
+        "brightness": 77.1017828249364,
+        "contrast": 19.36193792934005,
+        "blur": 1304.30780901321
+      }
+    },
+    {
+      "clip": "uav0000355_00001_v",
+      "mode": "bright-x1.6",
+      "n_frames": 94,
+      "means": {
+        "brightness": 215.64561097613844,
+        "contrast": 42.535165788202995,
+        "blur": 3844.6055442718502
+      }
+    }
+  ]
+}

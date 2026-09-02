@@ -1,13 +1,16 @@
-"""Unit tests for ``train._register_model`` wiring, mlflow faked (CI-safe)."""
+"""Unit tests for ``train``'s registry + data-version wiring, mlflow faked (CI-safe)."""
 
 from __future__ import annotations
 
+import logging
 import sys
 import types
 
 import pytest
 
-from mlops_cv.training.train import _register_model
+from mlops_cv.config import Settings
+from mlops_cv.tracking import data_version
+from mlops_cv.training.train import _log_data_version, _register_model
 
 
 class _FakeVersion:
@@ -63,3 +66,63 @@ def test_duplicate_registered_model_is_suppressed(registry_calls: dict) -> None:
     assert _register_model(_run(), "m") == "2"  # type: ignore[arg-type]
     assert registry_calls["models_created"] == 2
     assert registry_calls["versions_created"] == 2
+
+
+class _TaggingMlflow:
+    """The connected ``mlflow`` module, reduced to the one call the data-version link makes."""
+
+    def __init__(self) -> None:
+        self.tags: dict[str, str] = {}
+
+    def set_tag(self, key: str, value: str) -> None:
+        self.tags[key] = value
+
+
+def test_the_run_names_the_data_version_it_learned_from(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The link the monitor walks: champion -> this run -> the data version -> its baseline."""
+    asked: dict = {}
+
+    def published(subset, settings, *, mlflow=None):  # noqa: ANN001, ANN202 - test double
+        asked["subset"] = subset
+        return "data-run"
+
+    monkeypatch.setattr(data_version, "published_run", published)
+    mlflow = _TaggingMlflow()
+    settings = Settings()
+
+    _log_data_version(mlflow, settings)  # type: ignore[arg-type]
+
+    assert mlflow.tags == {data_version.RUN_TAG: "data-run"}
+    assert asked["subset"] == settings.data.subset_dir
+
+
+def test_an_unpublished_subset_warns_and_keeps_training(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A Subset without a Profile is legal — it must never fail model production."""
+    monkeypatch.setattr(data_version, "published_run", lambda *a, **k: None)
+    mlflow = _TaggingMlflow()
+
+    with caplog.at_level(logging.WARNING):
+        _log_data_version(mlflow, Settings())  # type: ignore[arg-type]
+
+    assert mlflow.tags == {}  # no tag beats a tag pointing at nothing
+    assert "make profile" in caplog.text
+
+
+def test_a_failed_lookup_never_costs_the_trained_model(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The link is metadata; it is logged inside the run, and registration comes after it."""
+
+    def unreachable(*args, **kwargs) -> str:  # noqa: ANN002, ANN003 - test double
+        raise RuntimeError("tracking server hiccup")
+
+    monkeypatch.setattr(data_version, "published_run", unreachable)
+    mlflow = _TaggingMlflow()
+
+    with caplog.at_level(logging.WARNING):
+        _log_data_version(mlflow, Settings())  # type: ignore[arg-type]
+
+    assert mlflow.tags == {}
+    assert "hiccup" in caplog.text

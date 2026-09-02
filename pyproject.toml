@@ -39,10 +39,17 @@ beam = [
     "apache-beam==2.75.0",
     "betterproto==2.0.0b6",
     "imagehash==4.3.2",
+    "mlflow-skinny==3.14.0",
 ]
 
 streaming = [
     "confluent-kafka==2.15.0",
+]
+
+monitoring = [
+    "confluent-kafka==2.15.0",
+    "mlflow-skinny==3.14.0",
+    "prometheus-client==0.26.0",
 ]
 
 serving = [
@@ -66,7 +73,16 @@ optimize = [
 ]
 
 [tool.uv]
-default-groups = ["dev", "gpu", "airflow", "beam", "streaming", "optimize", "serving"]
+default-groups = [
+    "dev",
+    "gpu",
+    "airflow",
+    "beam",
+    "streaming",
+    "monitoring",
+    "optimize",
+    "serving",
+]
 
 [tool.uv.sources]
 torch = [{ index = "pytorch-cu130", marker = "sys_platform == 'linux'" }]

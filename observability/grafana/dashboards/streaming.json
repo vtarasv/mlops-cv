@@ -67,7 +67,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "max(redpanda_kafka_consumer_group_lag_max) or vector(0)",
+          "expr": "max(redpanda_kafka_consumer_group_lag_max{redpanda_group!=\"drift-monitor\"}) or vector(0)",
           "legendFormat": "lag"
         }
       ]
@@ -82,7 +82,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "redpanda_kafka_consumer_group_lag_max",
+          "expr": "redpanda_kafka_consumer_group_lag_max{redpanda_group!=\"drift-monitor\"}",
           "legendFormat": "{{redpanda_group}}"
         }
       ]
@@ -97,7 +97,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "redpanda_kafka_consumer_group_lag_sum",
+          "expr": "redpanda_kafka_consumer_group_lag_sum{redpanda_group!=\"drift-monitor\"}",
           "legendFormat": "{{redpanda_group}}"
         }
       ]

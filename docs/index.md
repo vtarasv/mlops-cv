@@ -26,10 +26,11 @@ page here as it lands.
   pattern, stack topology, GPU policy.
 - [Serving](serving.md) — the HTTP detection service: champion's published ONNX graph on
   onnxruntime CUDA, pre/post contract, API, observability.
+- [Drift monitoring](monitoring.md) — input drift against the champion's own training baseline:
+  the statistic, derived thresholds, windows and episodes, episode evidence.
 
 ## Planned
 
 | Doc | Topic |
 |-----|-------|
-| `monitoring.md` | Drift detection + drift-triggered continuous training |
 | `iac.md` | Terraform + GCP managed mirrors |

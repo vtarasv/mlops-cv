@@ -1755,6 +1755,7 @@ beam = [
     { name = "apache-beam" },
     { name = "betterproto" },
     { name = "imagehash" },
+    { name = "mlflow-skinny" },
 ]
 dev = [
     { name = "httpx2" },
@@ -1771,6 +1772,11 @@ gpu = [
     { name = "torchvision", version = "0.27.1", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux'" },
     { name = "torchvision", version = "0.27.1+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'linux'" },
     { name = "ultralytics" },
+]
+monitoring = [
+    { name = "confluent-kafka" },
+    { name = "mlflow-skinny" },
+    { name = "prometheus-client" },
 ]
 optimize = [
     { name = "ncnn" },
@@ -1813,6 +1819,7 @@ beam = [
     { name = "apache-beam", specifier = "==2.75.0" },
     { name = "betterproto", specifier = "==2.0.0b6" },
     { name = "imagehash", specifier = "==4.3.2" },
+    { name = "mlflow-skinny", specifier = "==3.14.0" },
 ]
 dev = [
     { name = "httpx2", specifier = "==2.10.0" },
@@ -1829,6 +1836,11 @@ gpu = [
     { name = "torchvision", marker = "sys_platform != 'linux'", specifier = "==0.27.1" },
     { name = "torchvision", marker = "sys_platform == 'linux'", specifier = "==0.27.1", index = "https://download.pytorch.org/whl/cu130" },
     { name = "ultralytics", specifier = "==8.4.72" },
+]
+monitoring = [
+    { name = "confluent-kafka", specifier = "==2.15.0" },
+    { name = "mlflow-skinny", specifier = "==3.14.0" },
+    { name = "prometheus-client", specifier = "==0.26.0" },
 ]
 optimize = [
     { name = "ncnn", specifier = "==1.0.20260526" },

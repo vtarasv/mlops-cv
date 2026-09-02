@@ -5,10 +5,16 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from mlops_cv.tracking.metric_keys import (
+    DATA_PREFIX,
+    DRIFT_EPISODE_METRIC,
+    DRIFT_PREFIX,
     HEADLINE_ATTRS,
     OPTIMIZE_PREFIX,
     PRIMARY,
     TRAIN_PREFIX,
+    data_metrics,
+    drift_statistic_prefix,
+    episode_metrics,
     headline_metrics,
     metric_key,
     per_class_metrics,
@@ -105,6 +111,70 @@ def test_variant_keys_can_never_collide_with_headline_keys() -> None:
 def test_optimize_prefix_is_not_a_split_name() -> None:
     """If a split were ever named 'optimize', the namespaces would overlap."""
     assert OPTIMIZE_PREFIX not in {"train", "val", "test"}
+
+
+def test_data_version_count_golden_spellings() -> None:
+    """A data version is read back by these keys, exactly as a model version is by its own."""
+    assert DATA_PREFIX == "data"
+    assert data_metrics({"n_frames": 1238, "n_baseline_sequences": 56}) == {
+        "data/n_frames": 1238.0,
+        "data/n_baseline_sequences": 56.0,
+    }
+
+
+def test_data_counts_are_floats_and_never_collide_with_detection_keys() -> None:
+    out = data_metrics({"n_boxes": 12})
+    assert isinstance(out["data/n_boxes"], float)
+    headline = {
+        metric_key(split, name) for split in ("train", "val", "test") for name in HEADLINE_ATTRS
+    }
+    assert not (headline & set(out))
+    assert DATA_PREFIX not in {"train", "val", "test", OPTIMIZE_PREFIX}
+
+
+def _verdict(scores: dict[str, float], thresholds: dict[str, float], crossed: tuple[str, ...]):  # noqa: ANN202
+    """A drift-verdict stand-in: the three attributes the episode row is built from."""
+    return SimpleNamespace(scores=scores, thresholds=thresholds, crossed=crossed)
+
+
+def test_drift_episode_golden_spellings() -> None:
+    """An episode series is read back by these keys across monitor restarts."""
+    assert DRIFT_PREFIX == "drift"
+    assert drift_statistic_prefix("brightness") == "drift/brightness"
+    assert DRIFT_EPISODE_METRIC == "drift/n_crossed"
+
+
+def test_episode_metrics_pairs_every_score_with_its_own_bar() -> None:
+    verdict = _verdict(
+        {"brightness": 3.5, "blur": 1.0}, {"brightness": 2.6, "blur": 3.2}, ("brightness",)
+    )
+    out = episode_metrics(verdict)
+    assert out == {
+        "drift/brightness/score": 3.5,
+        "drift/brightness/threshold": 2.6,
+        "drift/blur/score": 1.0,
+        "drift/blur/threshold": 3.2,
+        "drift/n_crossed": 1.0,
+    }
+
+
+def test_episode_metrics_always_writes_the_series_marker() -> None:
+    """Its history is how a restarted monitor finds the next step, so it can never be absent."""
+    out = episode_metrics(_verdict({}, {}, ()))
+    assert out == {DRIFT_EPISODE_METRIC: 0.0}
+    assert isinstance(out[DRIFT_EPISODE_METRIC], float)
+
+
+def test_drift_keys_can_never_collide_with_the_keys_the_gate_reads() -> None:
+    """The evidence lands on a child run; the gate reads the parent. Namespaces stay disjoint."""
+    gate_keys = {
+        metric_key(split, name) for split in ("train", "val", "test") for name in HEADLINE_ATTRS
+    } | {metric_key(TRAIN_PREFIX, PRIMARY)}
+    drift_keys = set(
+        episode_metrics(_verdict({s: 1.0 for s in ("brightness", "contrast", "blur")}, {}, ()))
+    )
+    assert not (gate_keys & drift_keys)
+    assert DRIFT_PREFIX not in {"train", "val", "test", OPTIMIZE_PREFIX, DATA_PREFIX, TRAIN_PREFIX}
 
 
 def test_variant_headline_metrics_are_namespaced() -> None:

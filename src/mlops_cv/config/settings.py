@@ -11,7 +11,7 @@ from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -73,6 +73,17 @@ class StreamingSettings(BaseModel):
     anomaly_threshold: float = 30.0  # windowed mean count that opens an alert episode
 
 
+class MonitoringSettings(BaseModel):
+    """The drift monitor: what it samples, how it windows, and where it exposes readings."""
+
+    group: str = "drift-monitor"  # consumer group
+    sample_every: int = Field(default=5, ge=1)  # profile every k-th frame
+    window_frames: int = Field(default=100, ge=1)  # sampled frames per tumbling window
+    consecutive_windows: int = Field(default=2, ge=1)  # drifted windows that open an episode
+    threshold_margin: float = Field(default=1.0, gt=0)  # multiplies the derived thresholds
+    metrics_port: int = 9101  # scraped in-network; MUST match MONITOR_METRICS_PORT in .env.serving
+
+
 class OptimizeSettings(BaseModel):
     """Serving-variant production: the two deployment targets and the compiler's budget."""
 
@@ -107,6 +118,7 @@ class Settings(BaseSettings):
     mlflow: MlflowSettings = MlflowSettings()
     training: TrainingSettings = TrainingSettings()
     streaming: StreamingSettings = StreamingSettings()
+    monitoring: MonitoringSettings = MonitoringSettings()
     optimize: OptimizeSettings = OptimizeSettings()
     serving: ServingSettings = ServingSettings()
 

@@ -7,19 +7,27 @@ from pathlib import Path
 
 import pytest
 from PIL import Image, ImageFilter
+from pydantic import ValidationError
 
 from mlops_cv.data.convert_visdrone_vid import YoloBox
 from mlops_cv.pipelines import provenance
 from mlops_cv.pipelines.profiling import (
+    BASELINE_FIELDS,
+    DRIFT_METRICS,
     PROFILE_DIRNAME,
     PROFILE_PARAMS,
     STAMP_FILENAME,
+    BaselineScene,
+    baseline_csv_line,
+    baseline_header,
+    baseline_rows,
     blur_score,
     box_stats,
     brightness_contrast,
     dhash,
     frame_flags,
     is_profile_current,
+    profile_drift_bytes,
     profile_image_bytes,
 )
 
@@ -87,6 +95,25 @@ def test_profile_image_bytes_raises_on_corrupt() -> None:
         profile_image_bytes(truncated)
 
 
+def test_profile_drift_bytes_reads_exactly_the_drift_statistics() -> None:
+    """The live monitor's reading: the drift metrics alone, no hash and no dimensions."""
+    out = profile_drift_bytes(_jpeg_bytes(_checkerboard()))
+    assert set(out) == set(DRIFT_METRICS)
+
+
+def test_profile_drift_bytes_agrees_with_the_function_that_built_the_baseline() -> None:
+    """A live score is only comparable to the baseline if it is the *same* measurement."""
+    jpeg = _jpeg_bytes(_checkerboard())
+    full = profile_image_bytes(jpeg)
+    assert profile_drift_bytes(jpeg) == {name: full[name] for name in DRIFT_METRICS}
+
+
+def test_profile_drift_bytes_raises_on_corrupt() -> None:
+    """The monitor's skip-and-count path needs the raise, like the pipeline's failure path."""
+    with pytest.raises(Exception):  # noqa: B017 - any decode failure counts as corrupt
+        profile_drift_bytes(_jpeg_bytes(_checkerboard())[:40])
+
+
 def test_box_stats_area_and_aspect() -> None:
     stats = box_stats([YoloBox(0, 0.5, 0.5, 0.2, 0.1), YoloBox(1, 0.5, 0.5, 0.1, 0.0)])
     assert stats[0]["area"] == pytest.approx(0.02)
@@ -107,6 +134,35 @@ def test_box_stats_area_and_aspect() -> None:
 )
 def test_frame_flags(metrics: dict, expected: list[str]) -> None:
     assert frame_flags(metrics) == expected
+
+
+# --- drift baseline CSV contract ---
+
+
+def test_baseline_fields_are_the_pinned_column_order() -> None:
+    """The column order is a cross-process contract: the monitor reads what profiling wrote."""
+    assert BASELINE_FIELDS == ["sequence", "n_frames", "brightness", "contrast", "blur"]
+    assert DRIFT_METRICS == ("brightness", "contrast", "blur")
+    assert baseline_header() == "sequence,n_frames,brightness,contrast,blur"
+
+
+def test_baseline_csv_line_round_trips_with_typed_values() -> None:
+    scene = BaselineScene(
+        sequence="uav0000013_00000_v",
+        n_frames=14,
+        means={"brightness": 96.5553410021416, "contrast": 39.26017475352093, "blur": 963.157193},
+    )
+    assert baseline_rows([baseline_header(), baseline_csv_line(scene)]) == [scene]
+
+
+def test_baseline_rows_rejects_a_foreign_header() -> None:
+    with pytest.raises(ValueError, match="unexpected drift baseline header"):
+        baseline_rows(["sequence,brightness", "seqA,1.0"])
+
+
+def test_baseline_scene_rejects_means_that_are_not_the_drift_metrics() -> None:
+    with pytest.raises(ValidationError, match="must be keyed by"):
+        BaselineScene(sequence="seqA", n_frames=1, means={"brightness": 1.0})
 
 
 # --- provenance stamps ---
@@ -144,6 +200,14 @@ def test_is_profile_current_false_without_stamp(subset: Path) -> None:
 def test_is_profile_current_false_after_manifest_change(subset: Path) -> None:
     _write_stamp(subset, PROFILE_PARAMS)
     (subset / "manifest.csv").write_text("split,sequence\ntrain,seq2\n", encoding="utf-8")
+    assert not is_profile_current(subset)
+
+
+def test_is_profile_current_false_on_pre_baseline_stamp(subset: Path) -> None:
+    """A profile stamped before the drift baseline existed reads stale, so the DAG re-profiles."""
+    legacy = {k: v for k, v in PROFILE_PARAMS.items() if not k.startswith("baseline_")}
+    assert legacy != PROFILE_PARAMS, "the baseline parameters must be part of the profile stamp"
+    _write_stamp(subset, legacy)
     assert not is_profile_current(subset)
 
 

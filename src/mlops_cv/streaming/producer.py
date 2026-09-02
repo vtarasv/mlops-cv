@@ -3,6 +3,9 @@
 The live-camera simulation of the streaming pipeline: cycles every demo-store clip,
 publishing each JPEG byte-for-byte as it sits on disk (inline transport — no decode, no
 re-encode), keyed by sequence with frame index + publish time in headers.
+
+``--shift`` dials a labeled synthetic photometric shift into the stream to demonstrate the
+drift monitor end to end.
 """
 
 from __future__ import annotations
@@ -16,6 +19,7 @@ from pathlib import Path
 from mlops_cv.config import Settings, get_settings
 from mlops_cv.data.subset import DEMO_DIRNAME, IMAGES_DIRNAME
 from mlops_cv.streaming.messages import FRAME_MAX_MESSAGE_BYTES, pack_frame
+from mlops_cv.streaming.shift import DEFAULT_AMOUNTS, MODES, Shift
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +52,31 @@ def build_parser(settings: Settings) -> argparse.ArgumentParser:
         default=None,
         help="demo-store sequences to publish (default: all)",
     )
+    p.add_argument(
+        "--shift",
+        choices=MODES,
+        default=None,
+        help="apply a SYNTHETIC photometric shift before publishing (default: publish as-is)",
+    )
+    p.add_argument(
+        "--shift-amount",
+        type=float,
+        default=None,
+        help="how much to shift (defocus: blur radius; brightness: multiplier). "
+        f"Defaults are measured demo values: {DEFAULT_AMOUNTS}",
+    )
     return p
+
+
+def resolve_shift(parser: argparse.ArgumentParser, args: argparse.Namespace) -> Shift | None:
+    if args.shift is None:
+        if args.shift_amount is not None:
+            parser.error("--shift-amount needs a --shift mode; without one nothing is shifted")
+        return None
+    try:
+        return Shift.resolve(args.shift, args.shift_amount)
+    except ValueError as exc:
+        parser.error(str(exc))
 
 
 def discover_sequences(subset_dir: Path, only: list[str] | None) -> dict[str, list[Path]]:
@@ -72,13 +100,21 @@ def discover_sequences(subset_dir: Path, only: list[str] | None) -> dict[str, li
 def main(argv: list[str] | None = None) -> int:
     settings = get_settings()
     logging.basicConfig(level=settings.log_level.upper(), format="%(message)s")
-    args = build_parser(settings).parse_args(argv)
+    parser = build_parser(settings)
+    args = parser.parse_args(argv)
+    shift = resolve_shift(parser, args)
 
     # Discover before touching the broker so a missing demo store fails fast and clear.
     clips = discover_sequences(args.subset_dir, args.sequences)
     total_frames = sum(len(frames) for frames in clips.values())
     rate = f"{args.fps} fps" if args.fps > 0 else "flood rate"
     logger.info(f"publishing {len(clips)} clips / {total_frames} frames at {rate}")
+
+    if shift is not None:
+        logger.warning(
+            f"applying a {shift.describe()} to every frame before publishing — "
+            "simulated drift, not unseen data, and re-encoded rather than byte-for-byte"
+        )
 
     from confluent_kafka import Producer
 
@@ -115,6 +151,8 @@ def main(argv: list[str] | None = None) -> int:
                         ts_ms=time.time_ns() // 1_000_000,
                     )
                     payload = frame_path.read_bytes()
+                    if shift is not None:
+                        payload = shift.apply(payload)
                     while True:
                         try:
                             producer.produce(topic, payload, key=key, headers=headers)  # type: ignore[arg-type]

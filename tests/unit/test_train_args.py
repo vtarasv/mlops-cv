@@ -18,7 +18,6 @@ def test_defaults_from_settings() -> None:
     assert args.batch == s.training.batch
     assert args.device == s.training.device
     assert args.amp is True
-    assert args.data is None
 
 
 def test_flag_overrides() -> None:

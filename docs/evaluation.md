@@ -35,6 +35,7 @@ uv run python -m mlops_cv.evaluation --model models:/aerial-object-detector@cham
 make eval MODEL=runs:/<run_id>/weights/best.pt RUN_ID=<run_id>
 
 # Promote the candidate to the champion alias if it passes the gate:
+make eval MODEL=runs:/<run_id>/weights/best.pt RUN_ID=<run_id> PROMOTE=1
 uv run python -m mlops_cv.evaluation --model runs:/<run_id>/weights/best.pt --min-improvement 0.03 --promote
 ```
 

@@ -31,7 +31,8 @@ uv run python -m mlops_cv.evaluation --model runs:/<run_id>/weights/best.pt --ru
 
 ```
 
-CLI flags `--epochs --imgsz --batch --device --data --no-amp` override the `Settings` defaults; the
+CLI flags `--epochs --imgsz --batch --device --no-amp` override the `Settings` defaults (the
+dataset is always `DATA__SUBSET_DIR`, so the manifest and data-version lineage match the weights); the
 run logs to the server named by `MLFLOW__TRACKING_URI` (the local stack by default).
 
 The process's **last stdout line** is a machine-readable handoff for orchestrators:

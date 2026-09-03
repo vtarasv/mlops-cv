@@ -24,7 +24,6 @@ def test_defaults_from_settings() -> None:
     assert args.latency_enabled is True
     assert args.demos_enabled is True
     assert args.crops_enabled is True
-    assert args.data is None
     assert args.min_map50_95 == 0.0
     assert args.min_improvement == 0.01
     assert args.run_id is None  # default: a fresh eval run, not a resumed one

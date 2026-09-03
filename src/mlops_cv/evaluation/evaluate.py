@@ -52,9 +52,6 @@ def build_parser(settings: Settings) -> argparse.ArgumentParser:
         required=True,
         help="MLflow URI: models:/name@alias, models:/name/version, or runs:/<id>/path",
     )
-    p.add_argument(
-        "--data", type=Path, default=None, help="dataset YAML (default: the subset YAML)"
-    )
     p.add_argument("--split", default="test", help="dataset split to evaluate")
     p.add_argument("--imgsz", type=int, default=settings.training.imgsz)
     p.add_argument("--device", default=settings.training.device)
@@ -94,7 +91,7 @@ def main(argv: list[str] | None = None) -> int:
 
     from ultralytics import YOLO
 
-    data_yaml = (args.data or settings.data.subset_dir / settings.data.dataset_yaml.name).resolve()
+    data_yaml = (settings.data.subset_dir / settings.data.dataset_yaml.name).resolve()
     weights, model_ref = resolve_model(args.model)
     images_dir = settings.data.subset_dir / IMAGES_DIRNAME / args.split
 

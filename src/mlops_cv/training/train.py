@@ -38,9 +38,6 @@ def build_parser(settings: Settings) -> argparse.ArgumentParser:
     p.add_argument("--imgsz", type=int, default=t.imgsz)
     p.add_argument("--batch", type=int, default=t.batch, help="-1 = ultralytics autobatch")
     p.add_argument("--device", default=t.device)
-    p.add_argument(
-        "--data", type=Path, default=None, help="dataset YAML (default: the generated subset YAML)"
-    )
     p.add_argument("--no-amp", dest="amp", action="store_false", help="disable AMP (fp32 fallback)")
     p.set_defaults(amp=t.amp)
     return p
@@ -106,7 +103,7 @@ def main(argv: list[str] | None = None) -> int:
     from ultralytics import settings as yolo_settings
 
     t = settings.training
-    data_yaml = (args.data or settings.data.subset_dir / settings.data.dataset_yaml.name).resolve()
+    data_yaml = (settings.data.subset_dir / settings.data.dataset_yaml.name).resolve()
 
     yolo_settings.update({"mlflow": True})  # enable the built-in MLflow callback
     os.environ["MLFLOW_EXPERIMENT_NAME"] = settings.mlflow.experiment

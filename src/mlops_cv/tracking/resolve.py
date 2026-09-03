@@ -12,6 +12,7 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from mlops_cv.startup import StartupError
 from mlops_cv.tracking import client
 
 if TYPE_CHECKING:
@@ -61,6 +62,22 @@ def run_id_from_uri(uri: str) -> str | None:
     return uri.removeprefix("runs:/").split("/", 1)[0]
 
 
+def _check_registry_name(spec: str, registered_model: str) -> None:
+    """Refuse a ``models:/`` ref naming another registered model.
+
+    Callers use the *number* they get back against ``registered_model`` (promotion sets the
+    alias on it, optimization tags its versions), so ``models:/other/7`` would silently act on
+    version 7 of the configured model instead of the one named.
+    """
+    name = spec.split("@", 1)[0] if "@" in spec else spec.rsplit("/", 1)[0]
+    if name != registered_model:
+        raise StartupError(
+            f"models:/{spec} names registered model '{name}', but this process acts on "
+            f"'{registered_model}' (MLFLOW__REGISTERED_MODEL) — pass a ref on that model, "
+            "or change the setting."
+        )
+
+
 def model_version(
     model_ref: str, registered_model: str, *, registry: Any | None = None
 ) -> ModelVersion | None:
@@ -69,11 +86,14 @@ def model_version(
     The full entity, not just its number: a version's tags carry the published-artifact
     addresses, its ``run_id`` names the training run, and refetching those one field at a time
     is how callers grow their own registry clients. ``models:/`` refs resolve directly (a
-    missing alias/version raises, as it would on use); ``runs:/`` refs are searched by run id;
-    anything else (a bare local path) is ``None``.
+    missing alias/version raises, as it would on use; a ref on *another* registered model is a
+    :class:`StartupError`); ``runs:/`` refs are searched by run id; anything else (a bare local
+    path) is ``None``.
     """
     if model_ref.startswith("models:/"):
         spec = model_ref.removeprefix("models:/")
+        if "@" in spec or "/" in spec:
+            _check_registry_name(spec, registered_model)
         if "@" in spec:
             return client.registry(injected=registry).get_model_version_by_alias(
                 *spec.split("@", 1)
@@ -98,6 +118,7 @@ def registered_version(model_ref: str, registered_model: str) -> str | None:
     if model_ref.startswith("models:/"):
         spec = model_ref.removeprefix("models:/")
         if "@" not in spec and "/" in spec:
+            _check_registry_name(spec, registered_model)
             return spec.rsplit("/", 1)[1]
     version = model_version(model_ref, registered_model)
     return version.version if version is not None else None

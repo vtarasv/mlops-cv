@@ -151,7 +151,7 @@ cp .env.example .env       # then set DATA__RAW_DIR, DATA__SUBSET_DIR, TRAINING_
 make ingest                # raw frames -> training subset + demo clips
 make profile               # subset -> quality report + drift baseline (starts MLflow)
 make train                 # train YOLO26s -> MLflow run + registered model version
-make eval MODEL=runs:/<run_id>/weights/best.pt RUN_ID=<run_id>   # test metrics + gate + videos
+make eval MODEL=runs:/<run_id>/weights/best.pt RUN_ID=<run_id> PROMOTE=1   # test metrics + gate + videos; promote on a pass
 make optimize              # export + benchmark serving variants for the champion
 make serving-up            # detection service, consumers, drift monitor, Prometheus, Grafana
 uv run python -m mlops_cv.streaming.producer --loops 1            # replay the demo clips

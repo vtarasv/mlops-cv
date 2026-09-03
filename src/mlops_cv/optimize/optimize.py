@@ -84,9 +84,6 @@ def build_parser(settings: Settings) -> argparse.ArgumentParser:
         default=None,
         help="comma-separated variant names to measure (default: the whole ladder)",
     )
-    p.add_argument(
-        "--data", type=Path, default=None, help="dataset YAML (default: the subset YAML)"
-    )
     p.add_argument("--split", default="test", help="dataset split to measure on")
     p.add_argument("--device", default=settings.training.device)
     return p
@@ -165,7 +162,7 @@ def main(argv: list[str] | None = None) -> int:
         torch.zeros(1, device="cuda")
 
     opt = settings.optimize
-    data_yaml = (args.data or settings.data.subset_dir / settings.data.dataset_yaml.name).resolve()
+    data_yaml = (settings.data.subset_dir / settings.data.dataset_yaml.name).resolve()
     chosen = select(
         ladder(opt.server_imgsz, opt.edge_imgsz),
         args.variants.split(",") if args.variants else None,

@@ -101,3 +101,15 @@ def test_run_id_from_uri_reads_runs_uris_and_nothing_else() -> None:
     assert run_id_from_uri("runs:/abc123") == "abc123"
     assert run_id_from_uri(f"models:/{NAME}@champion") is None
     assert run_id_from_uri("s3://bucket/some/path") is None
+
+
+@pytest.mark.parametrize("ref", ["models:/other-model/7", "models:/other-model@champion"])
+def test_ref_on_another_registered_model_is_refused(calls: dict, ref: str) -> None:
+    """The number would be applied to NAME, so a ref on another model must not resolve."""
+    from mlops_cv.startup import StartupError
+
+    with pytest.raises(StartupError, match="other-model"):
+        registered_version(ref, NAME)
+    with pytest.raises(StartupError, match="other-model"):
+        model_version(ref, NAME)
+    assert "alias" not in calls and "version" not in calls  # refused before any registry call

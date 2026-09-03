@@ -80,8 +80,9 @@ champion has been promoted yet - exits.
 The pipeline passes the promoted version's own `runs:/` weights URI instead. `--run-id`
 names the model version's training run — the record lands on a **child** of it, and
 re-optimizing the same version reuses that child rather than adding a sibling. Without it the
-record goes to a standalone `optimize-*` run. `--variants` filters the ladder; `--data` /
-`--split` / `--device` mirror the evaluation harness.
+record goes to a standalone `optimize-*` run. `--variants` filters the ladder; `--split` /
+`--device` mirror the evaluation harness (the dataset is always `DATA__SUBSET_DIR`, so accuracy
+and latency are measured on the same subset).
 
 ### On the edge device
 

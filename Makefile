@@ -80,8 +80,10 @@ train: mlflow-up
 # Evaluate an MLflow model -> test metrics + report + gate + demo videos + TP/FP crops in MLflow.
 # Pass MODEL=<models:/aerial-object-detector@champion | runs:/<run_id>/weights/best.pt>.
 # Add RUN_ID=<train run id> to log onto that run (one run per model version) instead of a new one.
+# Add PROMOTE=1 to set the champion alias on a gate pass (the DAG promotes from its own task).
 eval: mlflow-up
-	uv run python -m mlops_cv.evaluation --model "$(MODEL)" $(if $(RUN_ID),--run-id "$(RUN_ID)")
+	uv run python -m mlops_cv.evaluation --model "$(MODEL)" $(if $(RUN_ID),--run-id "$(RUN_ID)") \
+		$(if $(PROMOTE),--promote)
 
 # Build a model's serving variants + benchmark them -> optimization report in MLflow.
 # Defaults to the champion; pass MODEL=<uri> for another, RUN_ID=<train run id> to record on a
@@ -134,6 +136,7 @@ airflow-env:
 # Airflow CT stack (Postgres + api-server + scheduler + dag-processor + triggerer).
 airflow-up: mlflow-up beam-image train-image optimize-image airflow-env
 	@test -n "$(HOST_SUBSET_DIR)" && mkdir -p "$(HOST_SUBSET_DIR)"
+	@test -n "$(HOST_WEIGHTS)" && mkdir -p "$$(dirname "$(HOST_WEIGHTS)")"
 	$(AIRFLOW_COMPOSE) up -d --build --wait
 
 airflow-down:

@@ -139,7 +139,7 @@ Host GPU and Docker GPU setup: [docs/gpu-setup.md](docs/gpu-setup.md).
 
 ```bash
 make setup                 # create the venv and install dependencies
-make ci                    # lint, format check, pyright, unit tests (what CI runs; CPU only)
+make ci                    # lint, format check, unit tests (what CI runs; CPU only)
 make gpu-smoke             # prove torch really runs on your GPU
 
 cp .env.example .env       # then set DATA__RAW_DIR, DATA__SUBSET_DIR, TRAINING__WEIGHTS

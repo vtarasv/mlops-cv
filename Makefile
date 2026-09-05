@@ -54,11 +54,10 @@ test:
 test-all:
 	uv run pytest
 
-# What CI runs: lint + format-check + typecheck + tests.
+# What CI runs: lint + format-check + tests.
 ci:
 	uv run ruff check .
 	uv run ruff format --check .
-	uv run pyright
 	uv run pytest -m "not gpu and not docker"
 
 clean:

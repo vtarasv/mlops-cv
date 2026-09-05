@@ -17,19 +17,6 @@ def tag_filter(key: str, value: str) -> str:
     return f"tags.{key} = '{value}'"
 
 
-def _find(registry: Any, experiment_id: str, parent_run_id: str, marker: str) -> str | None:
-    children = registry.search_runs(
-        [experiment_id], filter_string=tag_filter(PARENT_TAG, parent_run_id)
-    )
-    return next((r.info.run_id for r in children if marker in r.data.tags), None)
-
-
-def find_record(registry: Any, parent_run_id: str, marker: str) -> str | None:
-    """The child of ``parent_run_id`` carrying ``marker``, if some earlier producer opened it."""
-    experiment_id = registry.get_run(parent_run_id).info.experiment_id
-    return _find(registry, experiment_id, parent_run_id, marker)
-
-
 def open_record(
     registry: Any,
     parent_run_id: str,
@@ -45,12 +32,12 @@ def open_record(
     """
     if marker not in tags:
         raise ValueError(f"record tags must carry the marker {marker!r}; got {sorted(tags)}")
-    experiment_id = registry.get_run(
-        parent_run_id
-    ).info.experiment_id  # a child lives in its parent's
-    run_id = _find(registry, experiment_id, parent_run_id, marker)
-    if run_id is not None:
-        return run_id
+    experiment_id = registry.get_run(parent_run_id).info.experiment_id  # nested = same experiment
+    children = registry.search_runs(
+        [experiment_id], filter_string=tag_filter(PARENT_TAG, parent_run_id)
+    )
+    if found := next((r.info.run_id for r in children if marker in r.data.tags), None):
+        return found
     run = registry.create_run(
         experiment_id, tags={PARENT_TAG: parent_run_id, **tags}, run_name=run_name
     )

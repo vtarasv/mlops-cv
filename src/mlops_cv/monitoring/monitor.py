@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import logging
 import time
+from collections import Counter
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -19,7 +20,14 @@ from mlops_cv.monitoring.metrics import MonitorMetrics
 from mlops_cv.monitoring.resolve import REPROFILE_HINT, ResolvedBaseline, resolve_baseline
 from mlops_cv.pipelines.profiling import profile_drift_bytes
 from mlops_cv.startup import StartupError, exits_on_startup_error
-from mlops_cv.streaming.messages import DetectionEvent, FrameRef, InboundHeaders, parse_frame
+from mlops_cv.streaming import consumer_parser
+from mlops_cv.streaming.messages import (
+    FRAME_MAX_MESSAGE_BYTES,
+    DetectionEvent,
+    FrameRef,
+    InboundHeaders,
+    parse_frame,
+)
 
 if TYPE_CHECKING:
     from mlops_cv.monitoring.drift import WindowVerdict
@@ -91,14 +99,12 @@ def prediction_health(events: Sequence[DetectionEvent]) -> PredictionHealth:
     if not events:
         raise ValueError("cannot summarize an empty window of detection events")
     boxes = [box for event in events for box in event.boxes]
-    shares: dict[str, float] = {}
-    for box in boxes:
-        shares[box.cls] = shares.get(box.cls, 0.0) + 1.0 / len(boxes)
+    counts = Counter(box.cls for box in boxes)
     return PredictionHealth(
         n_events=len(events),
         detections_per_frame=len(boxes) / len(events),
         mean_confidence=sum(box.conf for box in boxes) / len(boxes) if boxes else 0.0,
-        class_shares=shares,
+        class_shares={cls: n / len(boxes) for cls, n in counts.items()},
     )
 
 
@@ -304,26 +310,7 @@ def _scoreline(verdict: WindowVerdict) -> str:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description="Score live frames against the champion's baseline.")
-    p.add_argument(
-        "--offset-reset",
-        choices=("latest", "earliest"),
-        default="latest",
-        help="where a NEW consumer group starts: latest = live tail, earliest = replay",
-    )
-    p.add_argument(
-        "--max-messages",
-        type=int,
-        default=None,
-        help="stop after this many messages (tests/smokes)",
-    )
-    p.add_argument(
-        "--idle-timeout-s",
-        type=float,
-        default=None,
-        help="stop after this long with no messages (tests/smokes)",
-    )
-    return p
+    return consumer_parser("Score live frames against the champion's baseline.", "messages")
 
 
 def consumer_config(settings: Settings, *, offset_reset: str) -> dict:
@@ -336,8 +323,6 @@ def consumer_config(settings: Settings, *, offset_reset: str) -> dict:
     zero: stale readings wearing a live timestamp. Never committing keeps every restart a
     tail of what is happening now.
     """
-    from mlops_cv.streaming.messages import FRAME_MAX_MESSAGE_BYTES
-
     return {
         "bootstrap.servers": settings.streaming.bootstrap_servers,
         "group.id": settings.monitoring.group,

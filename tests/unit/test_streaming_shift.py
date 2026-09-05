@@ -9,7 +9,7 @@ import pytest
 from PIL import Image
 
 from mlops_cv.pipelines.profiling import profile_drift_bytes
-from mlops_cv.streaming.shift import DEFAULT_AMOUNTS, Shift
+from mlops_cv.streaming.shift import Shift
 
 
 def _frame(seed: int = 0, shade: int = 110, size: tuple[int, int] = (96, 96)) -> bytes:
@@ -67,13 +67,6 @@ def test_an_unusable_shift_is_refused_rather_than_published() -> None:
         Shift(mode="sharpen", amount=1.0)
     with pytest.raises(ValueError, match="positive"):
         Shift(mode="defocus", amount=0.0)
-
-
-def test_no_mode_means_no_shift_and_a_mode_carries_its_measured_amount() -> None:
-    """Absent flag = the unshifted producer, byte-for-byte; present flag = a measured default."""
-    assert Shift.resolve(None, None) is None
-    assert Shift.resolve("defocus", None) == Shift("defocus", DEFAULT_AMOUNTS["defocus"])
-    assert Shift.resolve("brightness", 0.4) == Shift(mode="brightness", amount=0.4)
 
 
 def test_the_shift_describes_itself_as_synthetic() -> None:

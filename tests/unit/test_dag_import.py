@@ -40,7 +40,7 @@ def dagbag():
 
 def test_dags_import_cleanly(dagbag) -> None:
     assert dagbag.import_errors == {}
-    assert set(dagbag.dag_ids) == {CT_DAG, "smoke_test"}
+    assert set(dagbag.dag_ids) == {CT_DAG}
 
 
 def test_ct_dag_topology(dagbag) -> None:

@@ -21,10 +21,12 @@ import argparse
 import logging
 import time
 from collections.abc import Callable
+from functools import partial
 from typing import TYPE_CHECKING
 
 from mlops_cv.config import Settings, get_settings
 from mlops_cv.startup import exits_on_startup_error
+from mlops_cv.streaming import consumer_parser
 from mlops_cv.streaming.messages import (
     FRAME_MAX_MESSAGE_BYTES,
     Box,
@@ -36,7 +38,6 @@ from mlops_cv.streaming.messages import (
 if TYPE_CHECKING:
     from confluent_kafka import Message
 
-    from mlops_cv.serving.runtime import Detector
 
 logger = logging.getLogger(__name__)
 
@@ -52,23 +53,7 @@ LOG_EVERY = 100
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description="Run streaming inference on Frame messages.")
-    p.add_argument(
-        "--offset-reset",
-        choices=("latest", "earliest"),
-        default="latest",
-        help="where a NEW consumer group starts: latest = live tail, earliest = replay",
-    )
-    p.add_argument(
-        "--max-messages", type=int, default=None, help="stop after this many frames (tests/smokes)"
-    )
-    p.add_argument(
-        "--idle-timeout-s",
-        type=float,
-        default=None,
-        help="stop after this long with no frames (tests/smokes)",
-    )
-    return p
+    return consumer_parser("Run streaming inference on Frame messages.", "frames")
 
 
 def consumer_config(settings: Settings, *, offset_reset: str) -> dict:
@@ -217,15 +202,6 @@ def run_loop(
     return counts
 
 
-def detector_inference(detector: Detector, conf_threshold: float) -> InferenceFn:
-    """Production wiring of the injectable seam: the serving detector on JPEG bytes."""
-
-    def infer(jpeg: bytes) -> list[Box]:
-        return detector.detect(jpeg, conf_threshold)
-
-    return infer
-
-
 @exits_on_startup_error
 def main(argv: list[str] | None = None) -> int:
     settings = get_settings()
@@ -237,7 +213,7 @@ def main(argv: list[str] | None = None) -> int:
     detector = champion_detector(settings)
     run_loop(
         settings,
-        detector_inference(detector, settings.serving.conf_threshold),
+        partial(detector.detect, conf_threshold=settings.serving.conf_threshold),
         detector.model,
         offset_reset=args.offset_reset,
         max_messages=args.max_messages,

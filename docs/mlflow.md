@@ -61,12 +61,15 @@ the S3 endpoint and credentials and uploads artifacts to RustFS on the client's 
 > a client uses (e.g. a cloud DNS name) to that list.
 
 ```python
+from mlops_cv.config import get_settings
 from mlops_cv.tracking import client
 
-client.configure()          # exports MLFLOW_TRACKING_URI into the environment
-client.tracking_uri()       # "http://localhost:5000" (override with MLFLOW__TRACKING_URI)
-client.experiment()         # "aerial-object-detection"
-client.registered_model()   # "aerial-object-detector"
+settings = get_settings()
+settings.mlflow.tracking_uri      # "http://localhost:5000" (override with MLFLOW__TRACKING_URI)
+settings.mlflow.experiment        # "aerial-object-detection"
+settings.mlflow.registered_model  # "aerial-object-detector"
+client.configure(settings)        # exports MLFLOW_TRACKING_URI into the environment
+mlflow = client.connect(settings) # the configured module, ready to open runs
 ```
 
 ## Resolving the champion
@@ -94,7 +97,7 @@ The credentials in `docker-compose/.env.mlflow` are **local-dev defaults, not se
 
 ## Cloud migration
 
-The only client-visible switch between environments is `MLFLOW_TRACKING_URI` (via `MLFLOW__TRACKING_URI`
-/ the `ENV` overlay). In the cloud the server moves to a managed runtime, the backend store becomes a
+The only client-visible switch between environments is `MLFLOW_TRACKING_URI` (via `MLFLOW__TRACKING_URI`).
+In the cloud the server moves to a managed runtime, the backend store becomes a
 managed Postgres, and the artifact store becomes object storage — the `--serve-artifacts` design
 means training and evaluation code does not change.

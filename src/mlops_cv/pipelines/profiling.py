@@ -16,7 +16,7 @@ from PIL import Image, ImageFilter, ImageStat
 from pydantic import BaseModel, ConfigDict, field_validator
 
 from mlops_cv.data.convert_visdrone_vid import YoloBox
-from mlops_cv.data.subset import MANIFEST_FILENAME
+from mlops_cv.data.subset import MANIFEST_FILENAME, csv_line
 from mlops_cv.pipelines import provenance
 
 PROFILE_DIRNAME = "profile"
@@ -136,17 +136,10 @@ class BaselineScene(BaseModel):
         return means
 
 
-def baseline_header() -> str:
-    """The drift baseline's CSV header line."""
-    return ",".join(BASELINE_FIELDS)
-
-
 def baseline_csv_line(scene: BaselineScene) -> str:
     """One scene as a CSV line (no trailing newline), field order = ``BASELINE_FIELDS``."""
-    row: dict[str, object] = {"sequence": scene.sequence, "n_frames": scene.n_frames, **scene.means}
-    buf = io.StringIO()
-    csv.writer(buf).writerow([row[field] for field in BASELINE_FIELDS])
-    return buf.getvalue().rstrip("\r\n")
+    row = {"sequence": scene.sequence, "n_frames": scene.n_frames, **scene.means}
+    return csv_line(row, BASELINE_FIELDS)
 
 
 def baseline_rows(lines: Iterable[str]) -> list[BaselineScene]:

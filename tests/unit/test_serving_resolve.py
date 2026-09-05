@@ -60,10 +60,10 @@ def test_resolve_graph_downloads_the_tagged_artifact(
 
     monkeypatch.setattr(serving_resolve, "download", download)
 
-    resolved = resolve_graph(Settings(), registry=registry)
-    assert resolved.path == graph
-    assert resolved.model.name == "aerial-object-detector"
-    assert resolved.model.version == "7"
+    path, model = resolve_graph(Settings(), registry=registry)
+    assert path == graph
+    assert model.name == "aerial-object-detector"
+    assert model.version == "7"
     assert asked == ["runs:/record-run/onnx/best_640.onnx"]
 
 

@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any
 from mlops_cv.config import Settings
 from mlops_cv.startup import StartupError
 from mlops_cv.tracking import client
-from mlops_cv.tracking.resolve import model_version
 
 if TYPE_CHECKING:
     from mlflow.entities import Run
@@ -30,19 +29,18 @@ def resolve(
 
     name = settings.mlflow.registered_model
     alias = settings.mlflow.champion_alias
-    ref = f"models:/{name}/{version}" if version else client.champion_uri(settings)
-    hint = (
-        f"'{name}' has no version {version} — check the number against the registry."
-        if version
-        else f"no '{alias}' alias on '{name}' — {TRAIN_HINT}"
-    )
+    reg = client.registry(settings, injected=registry)
     try:
-        found = model_version(ref, name, registry=client.registry(settings, injected=registry))
+        if version:
+            return reg.get_model_version(name, version)
+        return reg.get_model_version_by_alias(name, alias)
     except MlflowException as exc:
+        hint = (
+            f"'{name}' has no version {version} — check the number against the registry."
+            if version
+            else f"no '{alias}' alias on '{name}' — {TRAIN_HINT}"
+        )
         raise StartupError(f"{hint} ({exc})") from exc
-    if found is None:
-        raise StartupError(hint)
-    return found
 
 
 def training_run(version: ModelVersion, *, registry: Any | None = None) -> Run:

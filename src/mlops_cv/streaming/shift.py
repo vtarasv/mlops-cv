@@ -34,13 +34,6 @@ class Shift:
         if self.amount <= 0:
             raise ValueError(f"the shift amount must be positive, not {self.amount}")
 
-    @classmethod
-    def resolve(cls, mode: str | None, amount: float | None) -> Shift | None:
-        """The producer's flags as a shift — ``None`` means unshifted replay."""
-        if mode is None:
-            return None
-        return cls(mode=mode, amount=DEFAULT_AMOUNTS[mode] if amount is None else amount)
-
     def describe(self) -> str:
         """How the shift announces itself — in the startup log line, and nowhere unlabeled."""
         return f"synthetic {self.mode} shift ({_UNITS[self.mode]} {self.amount:g})"

@@ -47,7 +47,6 @@ def test_baseline_is_the_first_rung() -> None:
     rungs = ladder(640, 320)
     assert rungs[0].runtime == TORCH
     assert rungs[0].precision == "fp32"
-    assert rungs[0].is_baseline
 
 
 def test_slug_is_runtime_precision_resolution() -> None:
@@ -75,14 +74,6 @@ def test_graph_variants_need_the_exported_onnx_graph() -> None:
     assert rungs["onnx-ort-fp32-640"].needs_graph is True
     assert rungs["trt-fp16-640"].needs_graph is True
     assert rungs["ncnn-fp16-320"].needs_graph is False
-
-
-def test_only_trt_variants_are_compiled() -> None:
-    """NCNN artifacts are portable directories, not host-bound binaries."""
-    rungs = {v.name: v for v in ladder(640, 320)}
-    assert rungs["trt-fp16-640"].is_compiled is True
-    assert rungs["onnx-ort-fp32-640"].is_compiled is False
-    assert rungs["ncnn-fp16-320"].is_compiled is False
 
 
 def test_ncnn_variants_measure_on_the_cpu() -> None:

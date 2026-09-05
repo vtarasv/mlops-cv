@@ -53,17 +53,8 @@ class Variant:
         return cls.of(runtime, precision, int(imgsz))
 
     @property
-    def is_baseline(self) -> bool:
-        return self.runtime == TORCH and self.precision == FP32
-
-    @property
     def needs_graph(self) -> bool:
         return self.runtime in (ONNX_ORT, TRT)
-
-    @property
-    def is_compiled(self) -> bool:
-        """Whether this variant is an ahead-of-time compiled engine, bound to one GPU + compiler."""
-        return self.runtime == TRT
 
     def measure_device(self, cuda_device: str) -> str:
         """The device this variant is measured on: NCNN targets the CPU, everything else the GPU."""

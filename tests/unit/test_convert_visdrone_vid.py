@@ -10,12 +10,10 @@ from mlops_cv.data.convert_visdrone_vid import (
     CLASS_MERGE,
     YoloBox,
     convert_annotation_line,
-    convert_sequence,
     convert_sequence_text,
     labels_from_text,
     labels_to_text,
     read_yolo_labels,
-    write_label_file,
 )
 
 
@@ -104,26 +102,11 @@ def test_convert_sequence_groups_by_frame_and_drops_all_skipped(tmp_path: Path) 
         _line(frame=2, score=1, cat=11, left=5, top=5, w=10, h=10),  # others -> skip
         _line(frame=3, cat=10, left=40, top=40, w=20, h=20),  # two-three-wheeler
     ]
-    ann = tmp_path / "seq.txt"
-    ann.write_text("\n".join(lines) + "\n", encoding="utf-8")
-
-    by_frame = convert_sequence(ann, (100, 100))
+    by_frame = convert_sequence_text("\n".join(lines) + "\n", (100, 100))
 
     assert set(by_frame) == {1, 3}  # frame 2's rows are all skipped -> frame absent
     assert [b.cls for b in by_frame[1]] == [0, 1]
     assert [b.cls for b in by_frame[3]] == [2]
-
-
-def test_convert_sequence_text_matches_file_variant(tmp_path: Path) -> None:
-    lines = [
-        _line(frame=1, cat=1, left=10, top=10, w=20, h=20),
-        _line(frame=2, cat=4, left=30, top=30, w=20, h=20),
-    ]
-    text = "\n".join(lines) + "\n"
-    ann = tmp_path / "seq.txt"
-    ann.write_text(text, encoding="utf-8")
-    assert convert_sequence_text(text, (100, 100)) == convert_sequence(ann, (100, 100))
-    assert set(convert_sequence_text(text, (100, 100))) == {1, 2}
 
 
 def test_yolobox_to_line_format() -> None:
@@ -133,7 +116,7 @@ def test_yolobox_to_line_format() -> None:
 def test_read_yolo_labels_roundtrips_write(tmp_path: Path) -> None:
     boxes = [YoloBox(1, 0.5, 0.5, 0.2, 0.2), YoloBox(2, 0.1, 0.9, 0.05, 0.07)]
     dest = tmp_path / "lbl.txt"
-    write_label_file(boxes, dest)
+    dest.write_text(labels_to_text(boxes), encoding="utf-8")
     out = read_yolo_labels(dest)
     assert len(out) == 2
     for got, exp in zip(out, boxes, strict=True):

@@ -43,13 +43,7 @@ def resolve_model(model_ref: str) -> tuple[Path, str]:
     """
     if model_ref.startswith("models:/"):
         spec = model_ref.removeprefix("models:/")
-        registry = client.registry()
-        version: ModelVersion = (
-            registry.get_model_version_by_alias(*spec.split("@", 1))
-            if "@" in spec
-            else registry.get_model_version(*spec.rsplit("/", 1))
-        )
-        model_ref, ref_slug = version.source, slug(spec)  # type: ignore[union-attr]
+        model_ref, ref_slug = _lookup(spec, None).source, slug(spec)  # type: ignore[union-attr]
     else:
         ref_slug = slug(model_ref.split(":/", 1)[1])
     return download(model_ref), ref_slug
@@ -60,6 +54,14 @@ def run_id_from_uri(uri: str) -> str | None:
     if not uri.startswith("runs:/"):
         return None
     return uri.removeprefix("runs:/").split("/", 1)[0]
+
+
+def _lookup(spec: str, registry: Any | None) -> ModelVersion:
+    """The registry entity a ``models:/`` spec (``name@alias`` or ``name/version``) names."""
+    reg = client.registry(injected=registry)
+    if "@" in spec:
+        return reg.get_model_version_by_alias(*spec.split("@", 1))
+    return reg.get_model_version(*spec.rsplit("/", 1))
 
 
 def _check_registry_name(spec: str, registered_model: str) -> None:
@@ -92,15 +94,10 @@ def model_version(
     """
     if model_ref.startswith("models:/"):
         spec = model_ref.removeprefix("models:/")
-        if "@" in spec or "/" in spec:
-            _check_registry_name(spec, registered_model)
-        if "@" in spec:
-            return client.registry(injected=registry).get_model_version_by_alias(
-                *spec.split("@", 1)
-            )
-        if "/" in spec:
-            return client.registry(injected=registry).get_model_version(*spec.rsplit("/", 1))
-        return None
+        if "@" not in spec and "/" not in spec:
+            return None
+        _check_registry_name(spec, registered_model)
+        return _lookup(spec, registry)
     if run_id := run_id_from_uri(model_ref):
         found = client.registry(injected=registry).search_model_versions(
             f"run_id='{run_id}' and name='{registered_model}'"
@@ -110,15 +107,6 @@ def model_version(
 
 
 def registered_version(model_ref: str, registered_model: str) -> str | None:
-    """The registered version *number* a model URI refers to; ``None`` for a bare local path.
-
-    A ``models:/<name>/<version>`` ref already carries the number, so it stays a pure string
-    parse (no registry query); everything else goes through :func:`model_version`.
-    """
-    if model_ref.startswith("models:/"):
-        spec = model_ref.removeprefix("models:/")
-        if "@" not in spec and "/" in spec:
-            _check_registry_name(spec, registered_model)
-            return spec.rsplit("/", 1)[1]
+    """The registered version *number* a model URI refers to; ``None`` for a bare local path."""
     version = model_version(model_ref, registered_model)
     return version.version if version is not None else None

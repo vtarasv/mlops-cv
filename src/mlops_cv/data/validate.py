@@ -4,13 +4,12 @@ from __future__ import annotations
 
 import argparse
 import sys
-from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
 from mlops_cv.config import get_settings
 from mlops_cv.data.convert_visdrone_vid import YOLO_NAMES
-from mlops_cv.data.subset import IMAGES_DIRNAME, IMG_EXTS, LABELS_DIRNAME, SPLITS
+from mlops_cv.data.subset import IMAGES_DIRNAME, LABELS_DIRNAME, SPLITS
 
 ALLOWED_CLASSES = set(YOLO_NAMES)
 
@@ -26,7 +25,6 @@ class Report:
     splits: dict[str, int]  # split -> image count
     class_counts: dict[int, int]  # merged class id -> box count
     n_images: int
-    n_labels: int
     n_boxes: int
 
     def summary(self) -> str:
@@ -37,42 +35,27 @@ class Report:
         return f"OK: {self.n_images} images ({per_split}), {self.n_boxes} boxes ({per_class})"
 
 
-def _image_stems(images_dir: Path) -> set[str]:
-    if not images_dir.is_dir():
-        return set()
-    return {p.stem for p in images_dir.iterdir() if p.suffix.lower() in IMG_EXTS}
-
-
-def _label_paths(labels_dir: Path) -> list[Path]:
-    return sorted(labels_dir.glob("*.txt")) if labels_dir.is_dir() else []
-
-
-def validate_dataset(
-    dataset_dir: str | Path,
-    *,
-    class_bounds: Mapping[int, tuple[int, int | None]] | None = None,
-) -> Report:
+def validate_dataset(dataset_dir: str | Path) -> Report:
     """Validate the YOLO dataset under ``dataset_dir``; raise on any failure, else return a Report.
 
     Checks: every split (train, val, test) non-empty; exact image<->label pairing per split; every
-    class id in ``{0,1,2}``; every bbox coord in [0, 1] with positive width/height; and each merged
-    class within ``class_bounds`` (default: at least 1 box each).
+    class id in ``{0,1,2}``; every bbox coord in [0, 1] with positive width/height; and at least
+    one box per merged class.
     """
     root = Path(dataset_dir)
     errors: list[str] = []
     splits_count: dict[str, int] = {}
     class_counts: dict[int, int] = dict.fromkeys(ALLOWED_CLASSES, 0)
-    n_images = n_labels = n_boxes = 0
+    n_images = n_boxes = 0
 
     for split in SPLITS:
         images_dir = root / IMAGES_DIRNAME / split
         labels_dir = root / LABELS_DIRNAME / split
-        img_stems = _image_stems(images_dir)
-        label_paths = _label_paths(labels_dir)
+        img_stems = {p.stem for p in images_dir.glob("*.jpg")}
+        label_paths = sorted(labels_dir.glob("*.txt"))
         label_stems = {p.stem for p in label_paths}
         splits_count[split] = len(img_stems)
         n_images += len(img_stems)
-        n_labels += len(label_paths)
 
         if not img_stems:
             errors.append(f"[{split}] no images found under {images_dir}")
@@ -106,20 +89,15 @@ def validate_dataset(
                 elif coords[2] <= 0.0 or coords[3] <= 0.0:
                     errors.append(f"[{split}] {lp.name}:{n} non-positive box size: {coords[2:]}")
 
-    bounds = class_bounds or {c: (1, None) for c in ALLOWED_CLASSES}
-    for cls, (lo, hi) in bounds.items():
-        count = class_counts.get(cls, 0)
-        name = YOLO_NAMES.get(cls, cls)
-        if count < lo:
-            errors.append(f"class {name} has {count} boxes, expected >= {lo}")
-        if hi is not None and count > hi:
-            errors.append(f"class {name} has {count} boxes, expected <= {hi}")
+    for cls, count in class_counts.items():
+        if count < 1:
+            errors.append(f"class {YOLO_NAMES[cls]} has no boxes")
 
     if errors:
         raise DatasetValidationError(
             f"{len(errors)} dataset validation error(s):\n  - " + "\n  - ".join(errors)
         )
-    return Report(splits_count, class_counts, n_images, n_labels, n_boxes)
+    return Report(splits_count, class_counts, n_images, n_boxes)
 
 
 def main(argv: list[str] | None = None) -> int:

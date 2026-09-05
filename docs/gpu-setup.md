@@ -29,10 +29,8 @@ sudo dnf install -y nvidia-container-toolkit-1.19.1
 sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker
 ```
 
-Validate the boundary with the provided base image
-([docker/Dockerfile.base](../docker/Dockerfile.base); its tag should match your driver's CUDA):
+Validate the boundary with the stock CUDA image (its tag should match your driver's CUDA):
 
 ```bash
-docker build -f docker/Dockerfile.base -t mlops-cv-base .
-docker run --rm --gpus all mlops-cv-base        # prints nvidia-smi from inside the container
+docker run --rm --gpus all nvidia/cuda:13.2.0-cudnn-runtime-ubuntu24.04 nvidia-smi
 ```

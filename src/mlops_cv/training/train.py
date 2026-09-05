@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING
 from mlops_cv.config import Settings, get_settings
 from mlops_cv.orchestration.handoff import BEST_WEIGHTS_RELPATH, TrainHandoff
 from mlops_cv.tracking import client, data_version
-from mlops_cv.training.callbacks import make_batch_params_callback, make_per_class_callback
+from mlops_cv.training.callbacks import log_batch_params, log_per_class
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -44,17 +44,18 @@ def build_parser(settings: Settings) -> argparse.ArgumentParser:
 
 
 def _log_dataset(mlflow: ModuleType, manifest: Path) -> None:
-    """Log the dataset manifest as an MLflow input + a content hash tag for lineage."""
-    import pandas as pd
+    """Log the dataset manifest as an MLflow input (name + source + content digest) for lineage."""
+    from mlflow.data.dataset_source_registry import resolve_dataset_source
+    from mlflow.data.meta_dataset import MetaDataset
 
     sha = hashlib.sha256(manifest.read_bytes()).hexdigest()
     with warnings.catch_warnings():
-        # mlflow.data emits benign hints here
+        # the registry warns that a local path matches two equivalent source classes
         warnings.simplefilter("ignore", UserWarning)
-        dataset = mlflow.data.from_pandas(
-            pd.read_csv(manifest), source=manifest.resolve().as_uri(), name=manifest.parent.name
-        )
-        mlflow.log_input(dataset, context="training")
+        source = resolve_dataset_source(str(manifest.resolve()))
+    # The server caps a digest at 36 chars; the full hash goes on the tag below.
+    dataset = MetaDataset(source, name=manifest.parent.name, digest=sha[:16])
+    mlflow.log_input(dataset, context="training")
     mlflow.set_tag("dataset_sha", sha)
 
 
@@ -109,12 +110,12 @@ def main(argv: list[str] | None = None) -> int:
     os.environ["MLFLOW_EXPERIMENT_NAME"] = settings.mlflow.experiment
 
     run_name = f"{Path(t.weights).stem}-imgsz{args.imgsz}-e{args.epochs}"
-    logger.info(f"training {t.weights} on {data_yaml} -> MLflow {client.tracking_uri()}")
+    logger.info(f"training {t.weights} on {data_yaml} -> MLflow {settings.mlflow.tracking_uri}")
 
     with mlflow.start_run(run_name=run_name) as run:
         model = YOLO(t.weights)
-        model.add_callback("on_train_start", make_batch_params_callback())
-        model.add_callback("on_fit_epoch_end", make_per_class_callback())
+        model.add_callback("on_train_start", log_batch_params)
+        model.add_callback("on_fit_epoch_end", log_per_class)
         model.train(
             data=str(data_yaml),
             epochs=args.epochs,

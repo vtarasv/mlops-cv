@@ -1,25 +1,15 @@
 """Application settings from a single ``.env`` file plus the OS environment (which wins).
 
-Precedence (lowest first): ``.env``  <  OS environment. ``settings.env`` is a plain
-``local|dev|stage|prod`` identifier read from the ``ENV`` variable
-(for environment-aware branching / run labels).
+Precedence (lowest first): ``.env``  <  OS environment.
 """
 
 from __future__ import annotations
 
-from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
 
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-
-class Environment(StrEnum):
-    local = "local"
-    dev = "dev"
-    stage = "stage"
-    prod = "prod"
 
 
 class DataSettings(BaseModel):
@@ -112,7 +102,6 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    env: Environment = Environment.local
     log_level: str = "INFO"
     data: DataSettings = DataSettings()
     mlflow: MlflowSettings = MlflowSettings()

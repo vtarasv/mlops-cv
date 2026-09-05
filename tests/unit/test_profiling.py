@@ -19,7 +19,6 @@ from mlops_cv.pipelines.profiling import (
     STAMP_FILENAME,
     BaselineScene,
     baseline_csv_line,
-    baseline_header,
     baseline_rows,
     blur_score,
     box_stats,
@@ -143,7 +142,6 @@ def test_baseline_fields_are_the_pinned_column_order() -> None:
     """The column order is a cross-process contract: the monitor reads what profiling wrote."""
     assert BASELINE_FIELDS == ["sequence", "n_frames", "brightness", "contrast", "blur"]
     assert DRIFT_METRICS == ("brightness", "contrast", "blur")
-    assert baseline_header() == "sequence,n_frames,brightness,contrast,blur"
 
 
 def test_baseline_csv_line_round_trips_with_typed_values() -> None:
@@ -152,7 +150,7 @@ def test_baseline_csv_line_round_trips_with_typed_values() -> None:
         n_frames=14,
         means={"brightness": 96.5553410021416, "contrast": 39.26017475352093, "blur": 963.157193},
     )
-    assert baseline_rows([baseline_header(), baseline_csv_line(scene)]) == [scene]
+    assert baseline_rows([",".join(BASELINE_FIELDS), baseline_csv_line(scene)]) == [scene]
 
 
 def test_baseline_rows_rejects_a_foreign_header() -> None:

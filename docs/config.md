@@ -17,9 +17,6 @@ Configuration is layered, **lowest precedence first**:
 - **OS environment** — overrides the file. In containers/cloud, inject variables directly
   (Cloud Run env vars / Secret Manager) and ship **no** `.env` file.
 
-`settings.env` is a `local` (default) / `dev` / `stage` / `prod` identifier read from the `ENV`
-variable — use it for environment-aware branching or run labels.
-
 ## Files
 
 | File | Purpose |
@@ -39,7 +36,7 @@ cp .env.example .env
 from mlops_cv.config import get_settings
 
 settings = get_settings()          # cached; reads .env + OS env (OS wins)
-print(settings.env, settings.log_level)
+print(settings.log_level)
 ```
 
 `load_settings(base_dir=…)` builds an uncached instance from `<base_dir>/.env` — used by tests to
@@ -54,7 +51,6 @@ separator: `MLFLOW__TRACKING_URI=...` maps to `settings.mlflow.tracking_uri`.
 
 ```bash
 uv run python -c "from mlops_cv.config import get_settings; print(get_settings().model_dump())"
-ENV=prod uv run python -c "from mlops_cv.config import get_settings; print(get_settings().env)"
 ```
 
 Precedence is covered by [`tests/unit/test_settings.py`](../tests/unit/test_settings.py).

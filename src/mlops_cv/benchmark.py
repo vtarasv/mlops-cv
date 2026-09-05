@@ -9,6 +9,8 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+import numpy as np
+
 from mlops_cv.tracking.metric_keys import LATENCY_PREFIX
 
 logger = logging.getLogger(__name__)
@@ -23,15 +25,7 @@ def percentiles(samples: Sequence[float], ps: Sequence[float] = (50.0, 95.0)) ->
     """Linear-interpolation percentiles of ``samples`` (numpy's default method). Empty -> zeros."""
     if not samples:
         return {float(p): 0.0 for p in ps}
-    ordered = sorted(float(s) for s in samples)
-    n = len(ordered)
-    out: dict[float, float] = {}
-    for p in ps:
-        rank = (p / 100.0) * (n - 1)
-        lo = int(rank)
-        hi = min(lo + 1, n - 1)
-        out[float(p)] = ordered[lo] + (rank - lo) * (ordered[hi] - ordered[lo])
-    return out
+    return {float(p): float(v) for p, v in zip(ps, np.percentile(samples, ps), strict=True)}
 
 
 @dataclass(frozen=True)

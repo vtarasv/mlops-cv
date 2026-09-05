@@ -15,7 +15,7 @@ import uuid
 
 import pytest
 
-from mlops_cv.tracking import client
+from mlops_cv.config import get_settings
 
 pytestmark = pytest.mark.docker
 
@@ -40,7 +40,7 @@ def _post_json(url: str, payload: dict) -> dict:
 
 @pytest.fixture(scope="module")
 def base_url() -> str:
-    url = client.tracking_uri()
+    url = get_settings().mlflow.tracking_uri
     try:
         urllib.request.urlopen(f"{url}/health", timeout=TIMEOUT)  # noqa: S310
     except (urllib.error.URLError, OSError) as exc:

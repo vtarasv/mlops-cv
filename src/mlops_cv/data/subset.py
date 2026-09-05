@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import csv
 import io
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from pathlib import Path
 
 import yaml
@@ -43,8 +43,6 @@ IMAGES_DIRNAME = "images"
 LABELS_DIRNAME = "labels"
 # Subset subdir holding full-rate demo-clip frames + labels (rendered by evaluation).
 DEMO_DIRNAME = "demo"
-
-IMG_EXTS = {".jpg", ".jpeg", ".png", ".bmp"}
 
 
 def raw_split_dir(split: str) -> str:
@@ -83,15 +81,11 @@ def demo_store_present(subset_dir: str | Path) -> bool:
     return any(images.glob("*/*.jpg"))
 
 
-def manifest_header() -> str:
-    """The manifest's CSV header line."""
-    return ",".join(MANIFEST_FIELDS)
-
-
-def manifest_csv_line(row: dict[str, object]) -> str:
-    """One manifest row as a CSV line (no trailing newline), field order = ``MANIFEST_FIELDS``."""
+def csv_line(row: dict[str, object], fields: Sequence[str]) -> str:
+    """One row as a CSV line (no trailing newline) in ``fields`` order — the header is
+    ``",".join(fields)``."""
     buf = io.StringIO()
-    csv.writer(buf).writerow([row[field] for field in MANIFEST_FIELDS])
+    csv.writer(buf).writerow([row[field] for field in fields])
     return buf.getvalue().rstrip("\r\n")
 
 

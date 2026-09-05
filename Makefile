@@ -1,4 +1,4 @@
-.PHONY: setup lint fmt test test-all ci clean gpu-smoke \
+.PHONY: setup lint fmt typecheck test test-all ci clean gpu-smoke \
 	train eval ingest profile optimize serve \
 	beam-image train-image optimize-image serve-image stream-image monitor-image \
     mlflow-up mlflow-down mlflow-logs \
@@ -42,6 +42,10 @@ fmt:
 	uv run ruff check --fix .
 	uv run ruff format .
 
+# Static type check of the package.
+typecheck:
+	uv run pyright
+
 # Run the unit test suite (CPU-only; gpu/docker-marked tests skipped).
 test:
 	uv run pytest -m "not gpu and not docker"
@@ -50,10 +54,11 @@ test:
 test-all:
 	uv run pytest
 
-# What CI runs: lint + format-check + tests.
+# What CI runs: lint + format-check + typecheck + tests.
 ci:
 	uv run ruff check .
 	uv run ruff format --check .
+	uv run pyright
 	uv run pytest -m "not gpu and not docker"
 
 clean:

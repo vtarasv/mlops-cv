@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from mlops_cv.tracking.records import PARENT_TAG, find_record, open_record, tag_filter
+from mlops_cv.tracking.records import PARENT_TAG, open_record, tag_filter
 
 PARENT = "train-1"
 OPTIMIZE = {"optimize.model": "models:/m@champion", "optimize.split": "test"}
@@ -44,8 +44,10 @@ def test_records_of_another_kind_under_the_same_parent_are_not_confused(registry
     monitor = open_record(registry, PARENT, "monitor.model", run_name="monitor", tags=MONITOR)
 
     assert optimize != monitor
-    assert find_record(registry, PARENT, "optimize.model") == optimize
-    assert find_record(registry, PARENT, "monitor.model") == monitor
+    again = open_record(registry, PARENT, "optimize.model", run_name="optimize", tags=OPTIMIZE)
+    assert again == optimize
+    again = open_record(registry, PARENT, "monitor.model", run_name="monitor", tags=MONITOR)
+    assert again == monitor
 
 
 def test_children_that_are_no_record_are_ignored(registry) -> None:
@@ -53,12 +55,10 @@ def test_children_that_are_no_record_are_ignored(registry) -> None:
     registry.add_run(PARENT)
     registry.add_run("trial-3", tags={PARENT_TAG: PARENT, "mlflow.runName": "hpo-trial-3"})
 
-    assert find_record(registry, PARENT, "optimize.model") is None
+    record = open_record(registry, PARENT, "optimize.model", run_name="optimize", tags=OPTIMIZE)
 
-
-def test_a_parent_with_no_children_has_no_record(registry) -> None:
-    registry.add_run(PARENT)
-    assert find_record(registry, PARENT, "optimize.model") is None
+    assert record != "trial-3"
+    assert len(registry.runs) == 3  # parent, trial, and a fresh record
 
 
 def test_the_marker_must_be_among_the_tags(registry) -> None:

@@ -95,13 +95,6 @@ def convert_sequence_text(text: str, image_size: tuple[int, int]) -> dict[int, l
     return by_frame
 
 
-def convert_sequence(
-    annotation_path: str | Path, image_size: tuple[int, int]
-) -> dict[int, list[YoloBox]]:
-    """Convert one sequence's annotation file into ``{frame_index: [YoloBox, ...]}``."""
-    return convert_sequence_text(Path(annotation_path).read_text(encoding="utf-8"), image_size)
-
-
 def image_size(path: str | Path) -> tuple[int, int]:
     """Return an image's ``(width, height)``."""
     with Image.open(path) as im:
@@ -130,11 +123,6 @@ def labels_from_text(text: str) -> list[YoloBox]:
             continue
         boxes.append(YoloBox(cls, xc, yc, w, h))
     return boxes
-
-
-def write_label_file(boxes: list[YoloBox], dest: str | Path) -> None:
-    """Write YOLO label lines (one per box) to ``dest``."""
-    Path(dest).write_text(labels_to_text(boxes), encoding="utf-8")
 
 
 def read_yolo_labels(path: str | Path) -> list[YoloBox]:

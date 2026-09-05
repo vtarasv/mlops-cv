@@ -7,6 +7,7 @@ import urllib.request
 
 import pytest
 
+from mlops_cv.config import get_settings
 from mlops_cv.tracking import client
 
 _TIMEOUT = 5
@@ -20,7 +21,7 @@ def registry():
     """
     mlflow = pytest.importorskip("mlflow")
     client.configure()
-    uri = client.tracking_uri()
+    uri = get_settings().mlflow.tracking_uri
     try:
         urllib.request.urlopen(f"{uri}/health", timeout=_TIMEOUT)  # noqa: S310 (localhost only)
     except (urllib.error.URLError, OSError) as exc:

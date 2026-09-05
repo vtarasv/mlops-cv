@@ -78,7 +78,6 @@ def write_report(
     champion: Mapping[str, float] | None,
     gate: GateResult,
     latency: Mapping[str, float] | None = None,
-    extra_md: str = "",
 ) -> tuple[Path, Path]:
     """Write ``report.md`` (gate verdict + tables) and ``metrics.csv``; return their paths."""
     out = Path(out_dir)
@@ -100,8 +99,6 @@ def write_report(
         sections += [f"### Per class ({PRIMARY})", "", per_class, ""]
     if latency:
         sections += ["## Latency", "", _latency_md(latency), ""]
-    if extra_md:
-        sections += [extra_md, ""]
 
     md_path = out / "report.md"
     md_path.write_text("\n".join(sections).rstrip() + "\n", encoding="utf-8")

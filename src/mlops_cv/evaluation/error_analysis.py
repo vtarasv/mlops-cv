@@ -31,14 +31,7 @@ class Detection:
 
     cls: int
     conf: float
-    x1: float
-    y1: float
-    x2: float
-    y2: float
-
-    @property
-    def box(self) -> Box:
-        return (self.x1, self.y1, self.x2, self.y2)
+    box: Box
 
 
 @dataclass(frozen=True)
@@ -46,14 +39,7 @@ class GroundTruth:
     """One ground-truth box: class id and a pixel corner-form box."""
 
     cls: int
-    x1: float
-    y1: float
-    x2: float
-    y2: float
-
-    @property
-    def box(self) -> Box:
-        return (self.x1, self.y1, self.x2, self.y2)
+    box: Box
 
 
 @dataclass(frozen=True)
@@ -146,12 +132,13 @@ def select_segments(matched: Sequence[Matched], k: int) -> tuple[list[Matched], 
 
 def _crop_box(det: Detection, width: int, height: int) -> tuple[int, int, int, int]:
     """A padded, in-bounds crop region around ``det`` (≥16 px or 20% of the box per side)."""
-    pad_x = max(0.2 * (det.x2 - det.x1), 16.0)
-    pad_y = max(0.2 * (det.y2 - det.y1), 16.0)
-    x0 = max(0, int(det.x1 - pad_x))
-    y0 = max(0, int(det.y1 - pad_y))
-    x1 = min(width, int(det.x2 + pad_x))
-    y1 = min(height, int(det.y2 + pad_y))
+    bx1, by1, bx2, by2 = det.box
+    pad_x = max(0.2 * (bx2 - bx1), 16.0)
+    pad_y = max(0.2 * (by2 - by1), 16.0)
+    x0 = max(0, int(bx1 - pad_x))
+    y0 = max(0, int(by1 - pad_y))
+    x1 = min(width, int(bx2 + pad_x))
+    y1 = min(height, int(by2 + pad_y))
     return x0, y0, max(x0 + 1, x1), max(y0 + 1, y1)
 
 
@@ -174,7 +161,8 @@ def _render_bucket(
             crop_box = _crop_box(det, width, height)
             crop = im.convert("RGB").crop(crop_box)
         x0, y0 = crop_box[0], crop_box[1]
-        local = DrawBox(det.x1 - x0, det.y1 - y0, det.x2 - x0, det.y2 - y0, cls_name, det.conf)
+        bx1, by1, bx2, by2 = det.box
+        local = DrawBox(bx1 - x0, by1 - y0, bx2 - x0, by2 - y0, cls_name, det.conf)
         font = _load_font(_label_font_size(crop.height))
         draw_boxes(crop, [local], color, width=_line_width(crop.height), font=font, with_conf=True)
         rel = f"{kind}/{rank:02d}_{Path(m.image).stem}_{cls_name}.jpg"
@@ -188,7 +176,7 @@ def _detections(result: object) -> list[Detection]:
     if boxes is None:
         return []
     return [
-        Detection(int(c), float(cf), float(x1), float(y1), float(x2), float(y2))
+        Detection(int(c), float(cf), (float(x1), float(y1), float(x2), float(y2)))
         for (x1, y1, x2, y2), c, cf in zip(
             boxes.xyxy.tolist(), boxes.cls.tolist(), boxes.conf.tolist(), strict=True
         )
@@ -222,7 +210,7 @@ def run_error_analysis(
         n_preds += len(preds)
         height, width = result.orig_shape  # type: ignore[attr-defined]  # ultralytics: (h, w)
         gts = [
-            GroundTruth(b.cls, *_yolo_corners(b, width, height))
+            GroundTruth(b.cls, _yolo_corners(b, width, height))
             for b in read_yolo_labels(labels_dir / f"{fp.stem}.txt")
         ]
         pool.extend(match_detections(preds, gts, iou_thr, image=fp.name))

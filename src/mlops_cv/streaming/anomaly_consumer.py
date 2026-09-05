@@ -7,6 +7,7 @@ import logging
 import time
 
 from mlops_cv.config import Settings, get_settings
+from mlops_cv.streaming import consumer_parser
 from mlops_cv.streaming.anomaly import EpisodeRule
 from mlops_cv.streaming.messages import DetectionEvent
 
@@ -14,24 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """No settings argument: unlike the other entrypoints, no flag defaults to a setting."""
-    p = argparse.ArgumentParser(description="Watch Detection events; publish Alerts.")
-    p.add_argument(
-        "--offset-reset",
-        choices=("latest", "earliest"),
-        default="latest",
-        help="where a NEW consumer group starts: latest = live tail, earliest = replay",
-    )
-    p.add_argument(
-        "--max-messages", type=int, default=None, help="stop after this many events (tests/smokes)"
-    )
-    p.add_argument(
-        "--idle-timeout-s",
-        type=float,
-        default=None,
-        help="stop after this long with no events (tests/smokes)",
-    )
-    return p
+    return consumer_parser("Watch Detection events; publish Alerts.", "events")
 
 
 def run_loop(

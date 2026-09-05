@@ -69,12 +69,14 @@ def build_parser(settings: Settings) -> argparse.ArgumentParser:
 
 
 def resolve_shift(parser: argparse.ArgumentParser, args: argparse.Namespace) -> Shift | None:
+    """The flags as a shift — ``None`` means unshifted replay; anything unusable fails here."""
     if args.shift is None:
         if args.shift_amount is not None:
             parser.error("--shift-amount needs a --shift mode; without one nothing is shifted")
         return None
     try:
-        return Shift.resolve(args.shift, args.shift_amount)
+        amount = DEFAULT_AMOUNTS[args.shift] if args.shift_amount is None else args.shift_amount
+        return Shift(args.shift, amount)
     except ValueError as exc:
         parser.error(str(exc))
 

@@ -44,8 +44,8 @@ make airflow-up      # brings the MLflow stack up, builds the GPU train image, s
 
 `make airflow-up` depends on the MLflow stack (shared Docker network + tracking server), on
 `make train-image` (the GPU image the DAG launches), and on `make beam-image` (the CPU data-prep
-image for the ingestion and profiling tasks). DAGs start **paused**: trigger `smoke_test` once to
-prove the stack executes tasks, then unpause/trigger `aerial_object_detection_ct`.
+image for the ingestion and profiling tasks). DAGs start **paused**: unpause/trigger
+`aerial_object_detection_ct` from the UI.
 
 ## Topology
 

@@ -61,13 +61,11 @@ def test_shift_flags_resolve_to_the_transform_the_producer_applies(tmp_path: Pat
 
     parser = build_parser(Settings(_env_file=str(tmp_path / "none")))  # type: ignore[call-arg]
 
-    assert Shift.resolve(*_shift_args(parser, [])) is None
-    assert Shift.resolve(*_shift_args(parser, ["--shift", "defocus"])) == Shift(
-        mode="defocus", amount=4.0
+    assert _shift(parser, []) is None
+    assert _shift(parser, ["--shift", "defocus"]) == Shift(mode="defocus", amount=4.0)
+    assert _shift(parser, ["--shift", "brightness", "--shift-amount", "1.6"]) == Shift(
+        mode="brightness", amount=1.6
     )
-    assert Shift.resolve(
-        *_shift_args(parser, ["--shift", "brightness", "--shift-amount", "1.6"])
-    ) == Shift(mode="brightness", amount=1.6)
 
 
 def test_an_unusable_shift_is_refused_at_the_command_line(tmp_path: Path) -> None:
@@ -82,6 +80,5 @@ def test_an_unusable_shift_is_refused_at_the_command_line(tmp_path: Path) -> Non
         resolve_shift(parser, parser.parse_args(["--shift", "defocus", "--shift-amount", "0"]))
 
 
-def _shift_args(parser, argv: list[str]) -> tuple[str | None, float | None]:  # noqa: ANN001
-    args = parser.parse_args(argv)
-    return args.shift, args.shift_amount
+def _shift(parser, argv: list[str]):  # noqa: ANN001
+    return resolve_shift(parser, parser.parse_args(argv))

@@ -14,6 +14,7 @@ co-partitioned with their frames.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from typing import Self
 
 from pydantic import BaseModel
 
@@ -81,11 +82,29 @@ class ModelInfo(BaseModel):
     version: str
 
 
-class DetectionEvent(BaseModel):
+class _KeyedJson(BaseModel):
+    """A JSON value keyed by its ``sequence`` — co-partitioned with the frames it is about."""
+
+    sequence: str
+
+    def to_value(self) -> bytes:
+        """The Kafka message value: compact single-line JSON."""
+        return self.model_dump_json().encode()
+
+    @classmethod
+    def from_value(cls, value: bytes) -> Self:
+        """Parse a consumed value; unknown fields are ignored (skew tolerance)."""
+        return cls.model_validate_json(value)
+
+    def kafka_key(self) -> bytes:
+        """The Kafka message key: the sequence."""
+        return self.sequence.encode()
+
+
+class DetectionEvent(_KeyedJson):
     """One model answer for one Frame message — the record downstream readers consume."""
 
     schema_version: int = 1
-    sequence: str
     frame_index: int
     ts_frame_ms: int  # the frame's publish time (scene time under pacing)
     ts_infer_ms: int  # when inference finished (epoch ms)
@@ -93,21 +112,8 @@ class DetectionEvent(BaseModel):
     model: ModelInfo
     boxes: list[Box]
 
-    def to_value(self) -> bytes:
-        """The Kafka message value: compact single-line JSON."""
-        return self.model_dump_json().encode()
 
-    @classmethod
-    def from_value(cls, value: bytes) -> DetectionEvent:
-        """Parse a consumed value; unknown fields are ignored (skew tolerance)."""
-        return cls.model_validate_json(value)
-
-    def kafka_key(self) -> bytes:
-        """The Kafka message key: the sequence, co-partitioning events with their frames."""
-        return self.sequence.encode()
-
-
-class Alert(BaseModel):
+class Alert(_KeyedJson):
     """One anomaly-rule episode opening: the windowed reading that crossed its threshold."""
 
     schema_version: int = 1
@@ -117,19 +123,5 @@ class Alert(BaseModel):
     threshold: float
     observed: float  # the windowed reading at the crossing
     n_frames: int  # frames inside the window at the crossing
-    sequence: str  # the frame that tipped the window
-    frame_index: int
+    frame_index: int  # with ``sequence``: the frame that tipped the window
     ts_ms: int  # that frame's scene time (its ts_frame_ms)
-
-    def to_value(self) -> bytes:
-        """The Kafka message value: compact single-line JSON."""
-        return self.model_dump_json().encode()
-
-    @classmethod
-    def from_value(cls, value: bytes) -> Alert:
-        """Parse a consumed value; unknown fields are ignored (skew tolerance)."""
-        return cls.model_validate_json(value)
-
-    def kafka_key(self) -> bytes:
-        """The Kafka message key: the sequence that tipped the rule."""
-        return self.sequence.encode()

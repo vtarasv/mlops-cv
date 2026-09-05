@@ -14,9 +14,6 @@ if TYPE_CHECKING:
 # Ratio-scale statistics: distance from normal is multiplicative, so they are scored in log space.
 LOG_SCALE_METRICS: tuple[str, ...] = ("blur",)
 
-DEFAULT_MARGIN = 1.0
-CONSECUTIVE_WINDOWS = 2  # drifted windows that open an episode
-
 LOG_FLOOR = 1e-6
 
 
@@ -50,7 +47,7 @@ class DriftReference:
         cls,
         scenes: Sequence[BaselineScene],
         *,
-        margin: float = DEFAULT_MARGIN,
+        margin: float = 1.0,
         log_scale: tuple[str, ...] = LOG_SCALE_METRICS,
     ) -> DriftReference:
         """Derive the cloud and its thresholds from a published drift baseline."""
@@ -115,7 +112,7 @@ class EpisodeRule:
     condition holds, and re-arms only after a clean window.
     """
 
-    consecutive: int = CONSECUTIVE_WINDOWS
+    consecutive: int = 2
     _run: int = 0  # consecutive drifted windows seen
     _active: bool = False  # an episode is open
 

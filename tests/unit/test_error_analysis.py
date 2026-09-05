@@ -32,11 +32,11 @@ def test_iou_zero_area_is_zero() -> None:
 
 
 def _det(cls: int = 0, conf: float = 0.5, box: tuple = (0, 0, 10, 10)) -> Detection:
-    return Detection(cls, conf, *box)
+    return Detection(cls, conf, box)
 
 
 def _gt(cls: int = 0, box: tuple = (0, 0, 10, 10)) -> GroundTruth:
-    return GroundTruth(cls, *box)
+    return GroundTruth(cls, box)
 
 
 def test_match_single_tp() -> None:
@@ -70,7 +70,7 @@ def test_match_no_gt_all_fp() -> None:
 
 
 def _matched(conf: float, is_tp: bool, image: str = "a.jpg") -> Matched:
-    return Matched(Detection(0, conf, 0, 0, 10, 10), is_tp, 1.0 if is_tp else 0.0, image)
+    return Matched(Detection(0, conf, (0, 0, 10, 10)), is_tp, 1.0 if is_tp else 0.0, image)
 
 
 def test_select_low_conf_tp_ascending() -> None:

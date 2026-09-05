@@ -115,7 +115,7 @@ def subset(tmp_path: Path) -> Path:
     (root / MANIFEST_FILENAME).write_text("split,sequence\ntrain,seqA\n", encoding="utf-8")
     (profile_dir / profiling.PROFILE_JSON).write_text(json.dumps(PROFILE), encoding="utf-8")
     (profile_dir / profiling.DRIFT_BASELINE_CSV).write_text(
-        f"{profiling.baseline_header()}\nseqA,3,10.0,1.0,50.0\n", encoding="utf-8"
+        f"{','.join(profiling.BASELINE_FIELDS)}\nseqA,3,10.0,1.0,50.0\n", encoding="utf-8"
     )
     return root
 

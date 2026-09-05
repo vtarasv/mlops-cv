@@ -51,11 +51,8 @@ def prune_ncnn_dir(model_dir: Path) -> list[str]:
 
 
 def sha256(path: str | Path) -> str:
-    digest = hashlib.sha256()
     with Path(path).open("rb") as fh:
-        for chunk in iter(lambda: fh.read(1 << 20), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+        return hashlib.file_digest(fh, "sha256").hexdigest()
 
 
 def size_mb(path: str | Path) -> float:

@@ -20,12 +20,13 @@ from __future__ import annotations
 import io
 import logging
 from collections.abc import Iterator
+from functools import partial
 from pathlib import Path
 
 import apache_beam as beam
 from apache_beam.io.filesystems import FileSystems
 from apache_beam.io.textio import WriteToText
-from apache_beam.metrics.metric import Metrics, MetricsFilter
+from apache_beam.metrics.metric import Metrics
 from apache_beam.options.pipeline_options import PipelineOptions
 from PIL import Image
 
@@ -38,17 +39,17 @@ from mlops_cv.data.subset import (
     MANIFEST_FIELDS,
     MANIFEST_FILENAME,
     SPLITS,
+    csv_line,
     demo_image_relpath,
     demo_label_relpath,
     frame_name,
     image_relpath,
     label_relpath,
-    manifest_csv_line,
-    manifest_header,
     raw_split_dir,
     stamp_dataset_yaml,
 )
 from mlops_cv.evaluation.visualize import ClipSpec, load_demo_clips
+from mlops_cv.pipelines import query_counters
 
 logger = logging.getLogger(__name__)
 
@@ -255,11 +256,6 @@ def _prepare_output_dirs(output_dir: str, demo_sequences: list[str]) -> None:
             FileSystems.mkdirs(FileSystems.join(output_dir, DEMO_DIRNAME, sub, seq))
 
 
-def _query_counters(result) -> dict[str, int]:  # noqa: ANN001 - Beam PipelineResult
-    metrics = result.metrics().query(MetricsFilter().with_namespace(COUNTER_NAMESPACE))
-    return {m.key.metric.name: m.result for m in metrics["counters"]}
-
-
 def run(options: IngestOptions) -> int:
     """Execute the ingestion pipeline; assumes all options are fully resolved (see ``main``)."""
     raw_dir, output_dir = options.raw_dir, options.output_dir
@@ -289,12 +285,12 @@ def run(options: IngestOptions) -> int:
             # Fusion break: sequences can be heavily skewed; rebalance the per-frame IO.
             | "RebalanceFrames" >> beam.Reshuffle()
             | "MaterializeFrames" >> beam.ParDo(MaterializeFrameDoFn(output_dir))
-            | "ToCsvLine" >> beam.Map(manifest_csv_line)
+            | "ToCsvLine" >> beam.Map(partial(csv_line, fields=MANIFEST_FIELDS))
             | "WriteManifest"
             >> WriteToText(
                 FileSystems.join(output_dir, MANIFEST_FILENAME),
                 shard_name_template="",
-                header=manifest_header(),
+                header=",".join(MANIFEST_FIELDS),
             )
         )
         if demo_config:
@@ -306,7 +302,7 @@ def run(options: IngestOptions) -> int:
                 | "MaterializeDemoFrames" >> beam.ParDo(MaterializeDemoFrameDoFn(output_dir))
             )
 
-    counters = _query_counters(p.result)
+    counters = query_counters(p.result, COUNTER_NAMESPACE)
     kept, copied = counters.get("frames_kept", 0), counters.get("images_copied", 0)
     if kept != copied:
         logger.warning(f"frame count mismatch: {kept} converted vs {copied} copied")

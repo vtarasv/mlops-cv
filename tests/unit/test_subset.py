@@ -9,14 +9,13 @@ import pytest
 from mlops_cv.data.subset import (
     MANIFEST_FIELDS,
     SPLITS,
+    csv_line,
     demo_image_relpath,
     demo_label_relpath,
     demo_store_present,
     frame_name,
     image_relpath,
     label_relpath,
-    manifest_csv_line,
-    manifest_header,
     manifest_rows,
     raw_split_dir,
 )
@@ -64,7 +63,7 @@ def test_raw_split_dir_maps_yolo_names() -> None:
 
 def test_manifest_write_read_round_trip() -> None:
     rows = [_row(), _row(split="val", frame_index=9, n_boxes=0, n_vehicle=0, n_person=0)]
-    text = "\n".join([manifest_header(), *(manifest_csv_line(r) for r in rows)])
+    text = "\n".join([",".join(MANIFEST_FIELDS), *(csv_line(r, MANIFEST_FIELDS) for r in rows)])
     parsed = manifest_rows(text.splitlines())
     assert [list(r.keys()) for r in parsed] == [MANIFEST_FIELDS, MANIFEST_FIELDS]
     assert [r["frame_index"] for r in parsed] == ["7", "9"]  # CSV strings by design

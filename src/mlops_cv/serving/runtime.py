@@ -16,7 +16,6 @@ from __future__ import annotations
 import ast
 import logging
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -45,14 +44,8 @@ class RuntimeSession(Protocol):
     ) -> Sequence[Any]: ...
 
 
-@dataclass(frozen=True)
-class GraphSpec:
-    names: dict[int, str]
-    imgsz: int
-
-
-def graph_spec(session: RuntimeSession) -> GraphSpec:
-    """Read the exporter's embedded metadata off a loaded session."""
+def graph_spec(session: RuntimeSession) -> tuple[dict[int, str], int]:
+    """Read the exporter's embedded metadata off a loaded session: ``(class names, imgsz)``."""
     metadata = session.get_modelmeta().custom_metadata_map
     try:
         raw_names, raw_imgsz = metadata["names"], metadata["imgsz"]
@@ -73,7 +66,7 @@ def graph_spec(session: RuntimeSession) -> GraphSpec:
         raise StartupError(
             f"the graph takes a {width}x{height} input; serving letterboxes onto a square"
         )
-    return GraphSpec(names={int(k): str(v) for k, v in names.items()}, imgsz=int(height))
+    return {int(k): str(v) for k, v in names.items()}, int(height)
 
 
 def load_session(graph: Path) -> RuntimeSession:
@@ -117,11 +110,9 @@ class Detector:
     """One loaded graph, answering uploads with wire boxes."""
 
     def __init__(self, session: RuntimeSession, model: ModelInfo) -> None:
-        spec = graph_spec(session)
         self.session = session
         self.model = model
-        self.names = spec.names
-        self.imgsz = spec.imgsz
+        self.names, self.imgsz = graph_spec(session)
         self._input = session.get_inputs()[0].name
 
     @classmethod

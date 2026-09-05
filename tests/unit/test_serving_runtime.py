@@ -22,9 +22,7 @@ def test_graph_spec_reads_class_names_and_resolution_from_the_graph(
     fake_session, graph_names
 ) -> None:
     """Names travel inside the published graph, so serving cannot drift from the model."""
-    spec = graph_spec(fake_session(EMPTY))
-    assert spec.names == graph_names
-    assert spec.imgsz == 640
+    assert graph_spec(fake_session(EMPTY)) == (graph_names, 640)
 
 
 def test_graph_without_class_names_refuses_to_serve(fake_session) -> None:

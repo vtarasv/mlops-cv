@@ -67,7 +67,6 @@ JOIN_RULE = "none_failed_min_one_success"
 
 _TASK_ENV = {
     "MLFLOW__TRACKING_URI": MLFLOW_URI,
-    "ENV": "{{ var.value.get('CONFIG_ENV', 'local') }}",
     "DATA__SUBSET_DIR": SUBSET_DIR,
     "TRAINING__WEIGHTS": WEIGHTS,
 }
@@ -219,8 +218,8 @@ def aerial_object_detection_ct() -> None:
         from mlops_cv.evaluation.gate import promote as set_champion_alias
         from mlops_cv.tracking import client
 
-        client.configure()
         settings = get_settings()
+        client.configure(settings)
         alias = settings.mlflow.champion_alias
         set_champion_alias(settings.mlflow.registered_model, train_info["version"], alias)
         logger.info(f"promoted v{train_info['version']} -> alias {alias!r}")

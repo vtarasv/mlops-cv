@@ -19,11 +19,7 @@ logging.getLogger("apache_beam.utils.subprocess_server").setLevel(logging.ERROR)
 
 from PIL import Image  # noqa: E402
 
-from mlops_cv.data.subset import (  # noqa: E402
-    MANIFEST_FILENAME,
-    manifest_csv_line,
-    manifest_header,
-)
+from mlops_cv.data.subset import MANIFEST_FIELDS, MANIFEST_FILENAME, csv_line  # noqa: E402
 from mlops_cv.pipelines.profile_pipeline import StatsCombineFn, main  # noqa: E402
 from mlops_cv.pipelines.profiling import (  # noqa: E402
     DRIFT_METRICS,
@@ -112,7 +108,7 @@ def subset(tmp_path: Path) -> Path:
         _write_frame(root, "val", "seqA_0000041", _checkerboard(), "1 0.5 0.5 0.5 0.5\n"),
         _write_frame(root, "test", "seqA_0000061", half_split, "2 0.5 0.5 0.5 0.5\n"),
     ]
-    lines = [manifest_header(), *(manifest_csv_line(row) for row in rows)]
+    lines = [",".join(MANIFEST_FIELDS), *(csv_line(row, MANIFEST_FIELDS) for row in rows)]
     (root / MANIFEST_FILENAME).write_text("\n".join(lines) + "\n", encoding="utf-8")
     return root
 

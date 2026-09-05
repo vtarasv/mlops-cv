@@ -21,23 +21,13 @@ def _settings(settings: Settings | None) -> Settings:
     return settings if settings is not None else get_settings()
 
 
-def tracking_uri(settings: Settings | None = None) -> str:
-    """The MLflow tracking-server URI (``settings.mlflow.tracking_uri``)."""
-    return _settings(settings).mlflow.tracking_uri
-
-
-def mlflow_env(settings: Settings | None = None) -> dict[str, str]:
-    """The environment a client needs to reach the tracking server.
+def configure(settings: Settings | None = None) -> None:
+    """Export the tracking URI into ``os.environ`` so ``import mlflow`` reads it.
 
     Only ``MLFLOW_TRACKING_URI`` — proxied artifacts mean no S3 endpoint or AWS credentials
     are required client-side.
     """
-    return {TRACKING_URI_ENV: tracking_uri(settings)}
-
-
-def configure(settings: Settings | None = None) -> None:
-    """Export :func:`mlflow_env` into ``os.environ`` so ``import mlflow`` reads it."""
-    os.environ.update(mlflow_env(settings))
+    os.environ[TRACKING_URI_ENV] = _settings(settings).mlflow.tracking_uri
 
 
 def champion_uri(settings: Settings | None = None) -> str:
@@ -53,7 +43,7 @@ def connect(settings: Settings | None = None, *, experiment: bool = True) -> Mod
 
     import mlflow
 
-    mlflow.set_tracking_uri(tracking_uri(resolved))
+    mlflow.set_tracking_uri(resolved.mlflow.tracking_uri)
     if experiment:
         mlflow.set_experiment(resolved.mlflow.experiment)
     return mlflow

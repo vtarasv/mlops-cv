@@ -21,7 +21,7 @@ def profile_dir(tmp_path: Path) -> Path:
     local.mkdir()
     (local / profiling.PROFILE_JSON).write_text("{}", encoding="utf-8")
     (local / profiling.DRIFT_BASELINE_CSV).write_text(
-        f"{profiling.baseline_header()}\nseqA,12,116.2,46.3,1748.6\nseqB,8,90.0,30.0,900.0\n",
+        f"{','.join(profiling.BASELINE_FIELDS)}\nseqA,12,116.2,46.3,1748.6\nseqB,8,90.0,30.0,900.0\n",
         encoding="utf-8",
     )
     return local
@@ -150,7 +150,7 @@ def test_an_empty_baseline_is_a_refusal_too(
     headers_only = tmp_path / "headers-only"
     headers_only.mkdir()
     (headers_only / profiling.DRIFT_BASELINE_CSV).write_text(
-        f"{profiling.baseline_header()}\n", encoding="utf-8"
+        f"{','.join(profiling.BASELINE_FIELDS)}\n", encoding="utf-8"
     )
     monkeypatch.setattr(monitoring_resolve, "download", lambda uri: headers_only)
     with pytest.raises(StartupError, match="make profile"):

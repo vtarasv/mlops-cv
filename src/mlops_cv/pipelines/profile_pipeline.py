@@ -27,7 +27,6 @@ Run locally:
 
 from __future__ import annotations
 
-import csv
 import io
 import json
 import logging
@@ -40,13 +39,13 @@ import apache_beam as beam
 from apache_beam import pvalue
 from apache_beam.io.filesystems import FileSystems
 from apache_beam.io.textio import WriteToText
-from apache_beam.metrics.metric import Metrics, MetricsFilter
+from apache_beam.metrics.metric import Metrics
 from apache_beam.options.pipeline_options import PipelineOptions
 
 from mlops_cv.config import get_settings
 from mlops_cv.data.convert_visdrone_vid import YOLO_NAMES, labels_from_text
-from mlops_cv.data.subset import MANIFEST_FILENAME, SPLITS, manifest_rows
-from mlops_cv.pipelines import profiling, provenance
+from mlops_cv.data.subset import MANIFEST_FILENAME, SPLITS, csv_line, manifest_rows
+from mlops_cv.pipelines import profiling, provenance, query_counters
 from mlops_cv.tracking import data_version
 
 logger = logging.getLogger(__name__)
@@ -188,12 +187,6 @@ def _duplicate_clusters(element: tuple[str, list[str]]) -> Iterator[dict]:
             yield {"dhash": dhash, "image_relpath": relpath}
 
 
-def _csv_line(row: dict, fields: list[str]) -> str:
-    buf = io.StringIO()
-    csv.writer(buf).writerow([row[field] for field in fields])
-    return buf.getvalue().rstrip("\r\n")
-
-
 def _baseline_csv_line(element: tuple[str, dict]) -> str:
     """One aggregated training sequence as a drift-baseline CSV line."""
     sequence, stats = element
@@ -274,11 +267,6 @@ def _read_manifest(input_dir: str) -> list[dict[str, str]]:
         return manifest_rows(io.TextIOWrapper(fh, encoding="utf-8"))
 
 
-def _query_counters(result) -> dict[str, int]:  # noqa: ANN001 - Beam PipelineResult
-    metrics = result.metrics().query(MetricsFilter().with_namespace(COUNTER_NAMESPACE))
-    return {m.key.metric.name: m.result for m in metrics["counters"]}
-
-
 def run(options: ProfileOptions, publish: Publisher = data_version.publish_profile) -> int:
     """Execute the profiling pipeline; assumes all options are fully resolved (see ``main``)."""
     input_dir = options.input_dir
@@ -322,7 +310,7 @@ def run(options: ProfileOptions, publish: Publisher = data_version.publish_profi
         _write_csv(
             report_rows,
             "Report",
-            partial(_csv_line, fields=REPORT_FIELDS),
+            partial(csv_line, fields=REPORT_FIELDS),
             ",".join(REPORT_FIELDS),
             profile_dir,
             profiling.QUALITY_REPORT,
@@ -331,14 +319,14 @@ def run(options: ProfileOptions, publish: Publisher = data_version.publish_profi
             sequence_stats,
             "Baseline",
             _baseline_csv_line,
-            profiling.baseline_header(),
+            ",".join(profiling.BASELINE_FIELDS),
             profile_dir,
             profiling.DRIFT_BASELINE_CSV,
         )
         _write_csv(
             duplicate_rows,
             "Duplicates",
-            partial(_csv_line, fields=profiling.DUPLICATES_FIELDS),
+            partial(csv_line, fields=profiling.DUPLICATES_FIELDS),
             ",".join(profiling.DUPLICATES_FIELDS),
             profile_dir,
             profiling.DUPLICATES_CSV,
@@ -366,7 +354,7 @@ def run(options: ProfileOptions, publish: Publisher = data_version.publish_profi
             )
         )
 
-    counters = _query_counters(p.result)
+    counters = query_counters(p.result, COUNTER_NAMESPACE)
     corrupt = counters.get("corrupt_images", 0)
     logger.info(
         f"profiled {counters.get('frames_profiled', 0)} frames "

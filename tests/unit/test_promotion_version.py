@@ -48,9 +48,9 @@ def test_alias_uri_returns_version_from_alias_lookup(calls: dict) -> None:
     assert calls["alias"] == (NAME, "champion")
 
 
-def test_versioned_uri_is_parsed_without_registry_query(calls: dict) -> None:
+def test_versioned_uri_fetches_that_version(calls: dict) -> None:
     assert registered_version(f"models:/{NAME}/7", NAME) == "7"
-    assert "alias" not in calls and "search" not in calls  # pure string parse
+    assert calls["version"] == (NAME, "7")
 
 
 def test_run_uri_searches_by_run_id_and_name(calls: dict) -> None:

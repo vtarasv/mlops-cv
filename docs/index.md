@@ -28,9 +28,3 @@ page here as it lands.
   onnxruntime CUDA, pre/post contract, API, observability.
 - [Drift monitoring](monitoring.md) — input drift against the champion's own training baseline:
   the statistic, derived thresholds, windows and episodes, episode evidence.
-
-## Planned
-
-| Doc | Topic |
-|-----|-------|
-| `iac.md` | Terraform + GCP managed mirrors |

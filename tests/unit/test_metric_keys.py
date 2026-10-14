@@ -19,6 +19,7 @@ from mlops_cv.tracking.metric_keys import (
     metric_key,
     per_class_metrics,
     variant_device_latency_prefix,
+    variant_device_prefix,
     variant_latency_prefix,
     variant_prefix,
 )
@@ -85,15 +86,16 @@ def test_variant_namespace_golden_spellings() -> None:
     assert variant_latency_prefix("trt-fp16-640") == "optimize/trt-fp16-640/latency"
     assert (
         variant_device_latency_prefix("ncnn-fp16-320", "pi5")
-        == "optimize/ncnn-fp16-320/latency/pi5"
+        == "optimize/ncnn-fp16-320/device/pi5/latency"
     )
+    assert variant_device_prefix("ncnn-fp16-640", "pi5") == "optimize/ncnn-fp16-640/device/pi5"
 
 
 def test_device_latency_keys_never_collide_with_the_desktops() -> None:
     plain = metric_key(variant_latency_prefix("ncnn-fp16-320"), "p50_ms")
     device = metric_key(variant_device_latency_prefix("ncnn-fp16-320", "pi5"), "p50_ms")
     assert plain != device
-    assert device.startswith(variant_latency_prefix("ncnn-fp16-320") + "/")
+    assert device.startswith(variant_device_prefix("ncnn-fp16-320", "pi5") + "/")
 
 
 def test_variant_keys_can_never_collide_with_headline_keys() -> None:

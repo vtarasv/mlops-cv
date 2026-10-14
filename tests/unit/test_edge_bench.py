@@ -2,15 +2,28 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from mlops_cv.config import Settings
-from mlops_cv.optimize.device_bench import (
+from mlops_cv.config.settings import DataSettings
+from mlops_cv.edge import bench
+from mlops_cv.edge.bench import (
+    accuracy_gate,
     build_parser,
+    device_report,
     ncnn_artifacts,
     record_run_id,
 )
 from mlops_cv.optimize.variants import Variant, artifact_tag
+from mlops_cv.tracking.metric_keys import (
+    PRIMARY,
+    metric_key,
+    variant_device_latency_prefix,
+    variant_device_prefix,
+    variant_prefix,
+)
 
 # A model version's tags as the optimize driver writes them.
 TAGS = {
@@ -80,7 +93,6 @@ def test_parser_defaults() -> None:
     assert args.model_version is None  # champion by default
     assert args.variants is None  # every published NCNN artifact
     assert args.device_label == "pi5"
-    assert args.images.name == "bench-images"
 
 
 def test_parser_accepts_explicit_version_and_label() -> None:
@@ -92,10 +104,76 @@ def test_parser_accepts_explicit_version_and_label() -> None:
     assert args.variants == "ncnn-fp16-320"
 
 
-def test_main_refuses_an_empty_image_directory_with_the_fix(tmp_path, caplog) -> None:
-    """The same exit-2-with-the-fix contract as every other entrypoint — no assert, no traceback."""
-    from mlops_cv.optimize import device_bench
+def test_gate_measures_the_gap_in_points() -> None:
+    delta, within = accuracy_gate(0.2213, 0.2218, 0.5)
+    assert delta == pytest.approx(-0.05)
+    assert within
 
+
+@pytest.mark.parametrize("device", [0.2160, 0.2280])
+def test_gate_fails_either_way_past_the_tolerance(device: float) -> None:
+    _, within = accuracy_gate(device, 0.2218, 0.5)
+    assert not within
+
+
+def test_main_refuses_a_missing_test_split_with_the_fix(tmp_path, monkeypatch, caplog) -> None:
+    """The same exit-2-with-the-fix contract as every other entrypoint — no assert, no traceback."""
+    settings = Settings(data=DataSettings(subset_dir=tmp_path))
+    monkeypatch.setattr(bench, "get_settings", lambda: settings)
     with caplog.at_level("ERROR"):
-        assert device_bench.main(["--images", str(tmp_path)]) == 2
-    assert "copy a few" in caplog.text
+        assert bench.main([]) == 2
+    assert "rsync" in caplog.text
+
+
+def test_pull_model_downloads_the_named_variant_of_the_resolved_version(
+    monkeypatch, tmp_path
+) -> None:
+    versions = {"2": SimpleNamespace(tags=TAGS)}
+    monkeypatch.setattr(bench.client, "connect", lambda settings, experiment: None)
+    monkeypatch.setattr(bench.champion, "resolve", lambda settings, version: versions[version])
+    monkeypatch.setattr(bench, "download", lambda uri, dst: (uri, dst))
+    got = bench.pull_model("2", "ncnn-fp16-640", tmp_path)
+    assert got == ("runs:/abc/ncnn/ncnn-fp16-640_ncnn_model", tmp_path)
+
+
+def test_device_report_rows_carry_both_readings_latency_and_verdict() -> None:
+    def desktop(v: str) -> str:
+        return metric_key(variant_prefix(v), PRIMARY)
+
+    def device(v: str) -> str:
+        return metric_key(variant_device_prefix(v, "pi5"), PRIMARY)
+
+    def latency(v: str, p: int) -> str:
+        return metric_key(variant_device_latency_prefix(v, "pi5"), f"p{p}_ms")
+
+    metrics = {
+        desktop("ncnn-fp16-640"): 0.2218,
+        device("ncnn-fp16-640"): 0.2213,
+        latency("ncnn-fp16-640", 50): 171.42,
+        latency("ncnn-fp16-640", 95): 180.07,
+        desktop("ncnn-fp16-320"): 0.1500,
+        device("ncnn-fp16-320"): 0.1400,
+    }
+    md = device_report(
+        "models:/m/2",
+        "pi5",
+        ["ncnn-fp16-640", "ncnn-fp16-320"],
+        metrics,
+        0.5,
+        {"ultralytics": "8.4.0", "ncnn": "1.0.2"},
+    )
+    assert md == (
+        "# Edge report: pi5\n"
+        "\n"
+        "Model: `models:/m/2`\n"
+        "\n"
+        "| Variant | Desktop mAP50-95 | Device mAP50-95 | Δ pt | P50 ms | P95 ms | Gate ±0.5 pt |\n"
+        "|---|---|---|---|---|---|---|\n"
+        "| `ncnn-fp16-640` | 0.2218 | 0.2213 | -0.05 | 171.42 | 180.07 | pass |\n"
+        "| `ncnn-fp16-320` | 0.1500 | 0.1400 | -1.00 | — | — | fail |\n"
+        "\n"
+        "| Package | Version |\n"
+        "|---|---|\n"
+        "| ultralytics | 8.4.0 |\n"
+        "| ncnn | 1.0.2 |\n"
+    )

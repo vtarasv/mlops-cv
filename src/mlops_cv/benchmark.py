@@ -7,6 +7,7 @@ import os
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -19,6 +20,14 @@ DEFAULT_WARMUP = 20
 DEFAULT_ITERATIONS = 200
 
 DEFAULT_PERCENTILES: tuple[float, ...] = (50.0, 95.0, 99.0)
+
+# Images cycled through the latency benchmark. Every variant, on every device, sees the same ones.
+LATENCY_IMAGES = 16
+
+
+def latency_frames(images_dir: Path) -> list[str]:
+    """The first ``LATENCY_IMAGES`` frames of a split, in name order."""
+    return [str(p) for p in sorted(images_dir.glob("*.jpg"))[:LATENCY_IMAGES]]
 
 
 def percentiles(samples: Sequence[float], ps: Sequence[float] = (50.0, 95.0)) -> dict[float, float]:

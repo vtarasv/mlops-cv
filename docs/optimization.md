@@ -31,8 +31,8 @@ flowchart LR
     ncnn --> measure
   end
 
-  subgraph device["edge device (Pi 5)"]
-    bench["mlops_cv.optimize.device_bench"]
+  subgraph device["edge device (Pi 5), see edge.md"]
+    bench["mlops_cv.edge.bench"]
   end
 
   train[("training run<br/>train · val · test readings")]
@@ -48,7 +48,7 @@ flowchart LR
   engines -->|"published + version-tagged"| record
   ncnn -->|"published + version-tagged"| record
   record -->|"pull NCNN by version tag"| bench
-  bench -->|"optimize/&lt;variant&gt;/latency/&lt;device&gt;/*"| record
+  bench -->|"optimize/&lt;variant&gt;/device/&lt;label&gt;/*"| record
 ```
 
 ## The variant ladder
@@ -84,40 +84,7 @@ record goes to a standalone `optimize-*` run. `--variants` filters the ladder; `
 `--device` mirror the evaluation harness (the dataset is always `DATA__SUBSET_DIR`, so accuracy
 and latency are measured on the same subset).
 
-### On the edge device
-
-Accuracy is device-independent — the desktop measures it once. Latency is not: the Pi's numbers
-can only come from the Pi. The on-device harness pulls each published NCNN artifact by the model
-version's tags, times a predict loop over a small local image set, and logs onto the **same
-record run** — found by following the artifact URI, so the device's latency lands beside the
-accuracy it belongs with — under a device-labeled namespace:
-
-```bash
-python -m mlops_cv.optimize.device_bench --images bench-images   # champion, every NCNN variant
-python -m mlops_cv.optimize.device_bench --model-version 2 --variants ncnn-fp16-320 \
-    --device-label pi5 --images bench-images
-```
-
-It needs only `MLFLOW_TRACKING_URI` pointing at the tracking server and a directory of ~16
-frames (copy once; any frames work). It records evidence and sets an
-`optimize.measured.<device-label>` tag.
-
-#### Raspberry Pi 5 setup
-
-The uv lock is platform-specific (CUDA-13 torch pins), so the Pi runs a plain-pip venv:
-
-```bash
-python3 -m venv ~/.venvs/mlops-cv && source ~/.venvs/mlops-cv/bin/activate
-pip install ultralytics==8.4.72 ncnn==1.0.20260526 mlflow-skinny==3.14.0
-git clone <this repo> && pip install --no-deps -e mlops-cv
-export MLFLOW_TRACKING_URI=http://<desktop-LAN-IP>:5000
-```
-
-`pip install torch` on aarch64 resolves a CPU wheel automatically (ultralytics drags it in).
-Two LAN prerequisites, both already handled on the desktop side: port 5000 is published on all
-interfaces, and the MLflow server's Host-header allowlist includes the private ranges —
-`MLFLOW_SERVER_ALLOWED_HOSTS` *replaces* MLflow's default allowlist to add
-`192.168.*,10.*`; without that, LAN calls fail with 403 "Invalid Host header".
+The NCNN variants are re-measured on the device itself: see [edge.md](edge.md).
 
 ## Every artifact is published
 
@@ -147,12 +114,13 @@ The record goes to a **child run** of the model version's training run, named `o
 linked by MLflow's parent tag (the UI nests it under the parent).
 
 Practically, a ladder produces about a dozen readings per rung — roughly 70 keys for six rungs,
-plus 5 more per device label, and they accumulate forever: a rung retired today leaves its keys
-behind. On the training run those would bury the two dozen readings that describe the model
-itself (`train/*`, `val/*`, `test/*`, per-epoch `metrics/*`).
+plus 10 more per device label ([edge.md](edge.md)), and they accumulate forever: a rung retired
+today leaves its keys behind. On the training run those would bury the two dozen readings that
+describe the model itself (`train/*`, `val/*`, `test/*`, per-epoch `metrics/*`).
 
 Within the record run every reading is namespaced: `optimize/<variant>/mAP50-95`,
-`optimize/<variant>/latency/p50_ms`, `optimize/<variant>/speed/inference_ms`.
+`optimize/<variant>/latency/p50_ms`, `optimize/<variant>/speed/inference_ms`. A device's
+readings, accuracy and latency alike, sit under `optimize/<variant>/device/<label>/`.
 
 ## How it is measured
 
@@ -163,7 +131,7 @@ Within the record run every reading is namespaced: `optimize/<variant>/mAP50-95`
   number so the gap between them is visible.
 - **Edge-rung latency on the desktop is relative only.** It ranks the NCNN rungs against each
   other on the producing host's CPU; it says nothing about the deployment device. The device's
-  numbers come from the on-device harness.
+  numbers come from the [on-device harness](edge.md).
 - **Memory** is read per-process through NVIDIA's management library, GPU rungs only (CPU rungs
   never touch the GPU and get no reading). The table reports what each variant **added**, not the
   process total.

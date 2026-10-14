@@ -50,9 +50,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Images cycled through the latency benchmark. Every variant sees the same ones.
-LATENCY_IMAGES = 16
-
 # Stages of the export library's own timing breakdown, recorded next to end-to-end latency.
 SPEED_STAGES = ("preprocess", "inference", "postprocess")
 
@@ -188,12 +185,7 @@ def main(argv: list[str] | None = None) -> int:
             f"{uri} maps to no registered '{settings.mlflow.registered_model}' version — "
             "artifacts will publish on the run but no model-version tags will be set"
         )
-    images = [
-        str(p)
-        for p in sorted((settings.data.subset_dir / "images" / args.split).glob("*.jpg"))[
-            :LATENCY_IMAGES
-        ]
-    ]
+    images = benchmark_mod.latency_frames(settings.data.subset_dir / "images" / args.split)
 
     logger.info(
         f"optimizing {model_ref} (version {version or 'unregistered'}, "

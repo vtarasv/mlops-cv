@@ -152,16 +152,16 @@ def test_benchmark_model_emits_the_requested_percentiles_under_the_prefix() -> N
         ["a.jpg"],
         imgsz=640,
         device="0",
-        prefix="optimize/ncnn-fp16-320/latency/pi5",
+        prefix="optimize/ncnn-fp16-320/device/pi5/latency",
         warmup=0,
         iterations=2,
         ps=(50.0, 95.0),
     )
     assert set(out) == {
-        "optimize/ncnn-fp16-320/latency/pi5/p50_ms",
-        "optimize/ncnn-fp16-320/latency/pi5/p95_ms",
-        "optimize/ncnn-fp16-320/latency/pi5/mean_ms",
-        "optimize/ncnn-fp16-320/latency/pi5/n",
+        "optimize/ncnn-fp16-320/device/pi5/latency/p50_ms",
+        "optimize/ncnn-fp16-320/device/pi5/latency/p95_ms",
+        "optimize/ncnn-fp16-320/device/pi5/latency/mean_ms",
+        "optimize/ncnn-fp16-320/device/pi5/latency/n",
     }
 
 

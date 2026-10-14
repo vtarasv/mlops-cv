@@ -29,7 +29,7 @@ def calls(monkeypatch: pytest.MonkeyPatch) -> dict:
             recorded["version"] = (name, version)
             return _FakeVersion()
 
-    def _download(artifact_uri: str) -> str:
+    def _download(artifact_uri: str, dst_path: str | None = None) -> str:
         recorded["download_uri"] = artifact_uri
         return "/tmp/dl/best.pt"
 

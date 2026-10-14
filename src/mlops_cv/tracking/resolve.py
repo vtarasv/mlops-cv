@@ -24,14 +24,14 @@ def slug(text: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "-", text).strip("-")
 
 
-def download(uri: str) -> Path:
-    """Pull a published artifact — a file or a directory — to local disk.
+def download(uri: str, dst: Path | None = None) -> Path:
+    """Pull a published artifact — a file or a directory — to local disk (``dst``, else a temp dir).
 
     Proxied through the tracking server, so the only thing a client needs is the tracking URI.
     """
     from mlflow.artifacts import download_artifacts
 
-    return Path(download_artifacts(artifact_uri=uri))
+    return Path(download_artifacts(artifact_uri=uri, dst_path=dst and str(dst)))
 
 
 def resolve_model(model_ref: str) -> tuple[Path, str]:

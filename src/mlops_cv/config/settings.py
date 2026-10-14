@@ -80,6 +80,7 @@ class OptimizeSettings(BaseModel):
     server_imgsz: int = 640
     edge_imgsz: int = 320  # the low-resolution rung of the edge (NCNN) ladder
     workspace_gb: int = 4  # compiler workspace ceiling
+    device_tolerance_pt: float = 0.5  # max |device - desktop| mAP gap, in percentage points
 
 
 class ServingSettings(BaseModel):

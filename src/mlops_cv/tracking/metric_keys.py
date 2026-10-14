@@ -57,9 +57,14 @@ def variant_latency_prefix(variant: str) -> str:
 
 
 def variant_device_latency_prefix(variant: str, device_label: str) -> str:
-    """Where an on-device harness's latency readings live:
-    ``optimize/<variant>/latency/<label>``."""
-    return metric_key(variant_latency_prefix(variant), device_label)
+    """Where an on-device harness's latency readings live, beside its accuracy:
+    ``optimize/<variant>/device/<label>/latency``."""
+    return metric_key(variant_device_prefix(variant, device_label), "latency")
+
+
+def variant_device_prefix(variant: str, device_label: str) -> str:
+    """Where on-device accuracy readings live: ``optimize/<variant>/device/<label>``."""
+    return metric_key(metric_key(variant_prefix(variant), "device"), device_label)
 
 
 def variant_speed_prefix(variant: str) -> str:

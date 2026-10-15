@@ -1,5 +1,5 @@
 .PHONY: setup lint fmt typecheck test test-all ci clean gpu-smoke \
-	train eval ingest profile optimize serve \
+	train eval ingest profile optimize edge-gate serve \
 	beam-image train-image optimize-image serve-image stream-image monitor-image \
     mlflow-up mlflow-down mlflow-logs \
 	airflow-up airflow-down airflow-logs airflow-env \
@@ -95,6 +95,15 @@ eval: mlflow-up
 optimize: mlflow-up
 	uv run python -m mlops_cv.optimize $(if $(MODEL),--model "$(MODEL)") \
 		$(if $(RUN_ID),--run-id "$(RUN_ID)") $(if $(VARIANTS),--variants "$(VARIANTS)")
+
+# Score the edge device's detections dumps on this machine's test split and gate them against
+# the desktop readings -> optimize.measured.<label> on a pass. Run after `python -m
+# mlops_cv.edge.bench` on the device. Pass MODEL_VERSION=<n> (default: the champion) and
+# DEVICE_LABEL=<label> (default: pi5).
+edge-gate: mlflow-up
+	uv run python -m mlops_cv.optimize.edge_gate \
+		$(if $(MODEL_VERSION),--model-version "$(MODEL_VERSION)") \
+		$(if $(DEVICE_LABEL),--device-label "$(DEVICE_LABEL)")
 
 # onnxruntime-gpu finds the CUDA runtime through the system loader; in the serving container
 # that is the CUDA base image, on the host it is the venv's nvidia wheels (torch's).

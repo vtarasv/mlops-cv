@@ -23,7 +23,7 @@ page here as it lands.
   runtime + compiled FP16 engine; Raspberry Pi 5 edge: NCNN), every artifact published, the
   accuracy-vs-latency record.
 - [Edge device](edge.md) — Raspberry Pi 5: on-device mAP50-95 and latency, checked against the
-  desktop's mAP50-95, per-device report, Pi setup, live camera view.
+  desktop's mAP50-95, per-device report, torch-free NCNN runtime, Pi setup, live camera view.
 - [Containers & Compose stacks](containers.md) — image inventory, the group-opt-in build
   pattern, stack topology, GPU policy.
 - [Serving](serving.md) — the HTTP detection service: champion's published ONNX graph on

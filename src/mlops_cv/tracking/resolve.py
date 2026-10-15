@@ -9,9 +9,11 @@ imports stay lazy so the module is importable under CI's CPU-only sync.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from mlops_cv.optimize.variants import NCNN, parse_artifact_tag
 from mlops_cv.startup import StartupError
 from mlops_cv.tracking import client
 
@@ -54,6 +56,39 @@ def run_id_from_uri(uri: str) -> str | None:
     if not uri.startswith("runs:/"):
         return None
     return uri.removeprefix("runs:/").split("/", 1)[0]
+
+
+def ncnn_artifacts(tags: Mapping[str, str], names: Iterable[str] | None) -> dict[str, str]:
+    """A version's published NCNN artifacts, ``{variant name: artifact URI}``, all or ``names``."""
+    published = {
+        variant.name: uri
+        for key, uri in tags.items()
+        if (variant := parse_artifact_tag(key)) is not None and variant.runtime == NCNN
+    }
+    if names is None:
+        return published
+    wanted = set(names)
+    if unknown := wanted - set(published):
+        raise ValueError(
+            f"not published on this version: {', '.join(sorted(unknown))}. "
+            f"Published: {', '.join(sorted(published)) or 'none'}"
+        )
+    return {name: uri for name, uri in published.items() if name in wanted}
+
+
+def record_run_id(artifact_uris: Iterable[str]) -> str:
+    """The run holding the published artifacts, read out of the URIs the version tags carry.
+
+    Not the version's own training run: the desktop logs its record to a *child* of that run, so
+    following the artifact URI is what puts the device's readings beside the desktop's.
+    """
+    run_ids = {run_id for uri in artifact_uris if (run_id := run_id_from_uri(uri))}
+    if len(run_ids) != 1:
+        raise ValueError(
+            f"expected one record run across the published artifacts, found {sorted(run_ids)} — "
+            "re-run the optimization so every artifact comes from one ladder"
+        )
+    return run_ids.pop()
 
 
 def _lookup(spec: str, registry: Any | None) -> ModelVersion:

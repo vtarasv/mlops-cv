@@ -9,21 +9,20 @@ import urllib.request
 from collections.abc import Iterator
 from http.server import ThreadingHTTPServer
 from pathlib import Path
-from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
 from mlops_cv.edge import live_view
 
+NAMES = {0: "car", 1: "person"}
+DETS = np.array(
+    [[10, 10, 40, 30, 0.9, 0], [50, 20, 60, 50, 0.5, 0], [5, 40, 20, 60, 0.4, 1]], np.float32
+)
+
 
 def test_stats_count_boxes_per_class_name() -> None:
-    boxes = [0.0, 0.0, 1.0]
-
-    class Boxes(list):
-        cls = boxes
-
-    stub = SimpleNamespace(names={0: "car", 1: "person"}, boxes=Boxes(boxes))
-    s = live_view.frame_stats(stub, "m", 5.66, 171.4, 240.6)
+    s = live_view.frame_stats(DETS, NAMES, "m", 5.66, 171.4, 240.6)
     assert s == {
         "model": "m",
         "fps": 5.7,
@@ -32,6 +31,14 @@ def test_stats_count_boxes_per_class_name() -> None:
         "counts": {"car": 2, "person": 1},
         "total": 3,
     }
+
+
+def test_draw_boxes_a_copy_in_the_class_colour() -> None:
+    frame = np.zeros((80, 80, 3), np.uint8)
+    out = live_view.draw(frame, DETS, NAMES)
+    assert not frame.any()  # the camera frame is left untouched
+    assert tuple(out[20, 10]) == live_view.COLORS[0]  # left edge of the first box
+    assert tuple(out[50, 5]) == live_view.COLORS[1]
 
 
 def test_imgsz_comes_from_the_export_dir_name() -> None:

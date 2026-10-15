@@ -34,6 +34,7 @@ flowchart LR
   subgraph device["edge device (Pi 5), see edge.md"]
     bench["mlops_cv.edge.bench"]
   end
+  edgegate["mlops_cv.optimize.edge_gate<br/>(desktop, make edge-gate)"]
 
   train[("training run<br/>train · val · test readings")]
   record[("optimize child run<br/>optimize/* + artifacts")]
@@ -48,7 +49,9 @@ flowchart LR
   engines -->|"published + version-tagged"| record
   ncnn -->|"published + version-tagged"| record
   record -->|"pull NCNN by version tag"| bench
-  bench -->|"optimize/&lt;variant&gt;/device/&lt;label&gt;/*"| record
+  bench -->|"device latency · detections.json"| record
+  record -->|"dumps"| edgegate
+  edgegate -->|"optimize/&lt;variant&gt;/device/&lt;label&gt;/*"| record
 ```
 
 ## The variant ladder
@@ -84,7 +87,8 @@ record goes to a standalone `optimize-*` run. `--variants` filters the ladder; `
 `--device` mirror the evaluation harness (the dataset is always `DATA__SUBSET_DIR`, so accuracy
 and latency are measured on the same subset).
 
-The NCNN variants are re-measured on the device itself: see [edge.md](edge.md).
+The NCNN variants are re-measured on the device itself: the device dumps its detections and
+`make edge-gate` scores them here, see [edge.md](edge.md).
 
 ## Every artifact is published
 

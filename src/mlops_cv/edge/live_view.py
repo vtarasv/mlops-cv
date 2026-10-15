@@ -15,12 +15,19 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
+import cv2
+import numpy as np
+
 from mlops_cv.config import get_settings
 from mlops_cv.edge.bench import pull_model
+from mlops_cv.edge.runtime import NcnnDetector
 from mlops_cv.optimize.variants import Variant
 from mlops_cv.startup import StartupError, exits_on_startup_error
 
 logger = logging.getLogger(__name__)
+
+# BGR box colours, cycled by class index.
+COLORS = ((56, 56, 255), (151, 157, 255), (31, 112, 255))
 
 # The newest annotated JPEG and its stats, shared between the loop and the web handler.
 latest_jpeg: bytes = b""
@@ -48,7 +55,12 @@ def imgsz_of(model_dir: Path) -> int:
 
 
 def frame_stats(
-    result: Any, model: str, fps: float, infer_ms: float, frame_age_ms: float
+    dets: np.ndarray,
+    names: dict[int, str],
+    model: str,
+    fps: float,
+    infer_ms: float,
+    frame_age_ms: float,
 ) -> dict[str, Any]:
     """What the page's side panel and the screen overlay show for one annotated frame."""
     return {
@@ -56,9 +68,20 @@ def frame_stats(
         "fps": round(fps, 1),
         "infer_ms": round(infer_ms),
         "frame_age_ms": round(frame_age_ms),
-        "counts": dict(Counter(result.names[int(c)] for c in result.boxes.cls)),
-        "total": len(result.boxes),
+        "counts": dict(Counter(names[int(c)] for c in dets[:, 5])),
+        "total": len(dets),
     }
+
+
+def draw(frame_bgr: np.ndarray, dets: np.ndarray, names: dict[int, str]) -> np.ndarray:
+    """A copy of the frame with each ``x1 y1 x2 y2 conf cls`` row boxed and labelled."""
+    out = frame_bgr.copy()
+    for x1, y1, x2, y2, conf, cls in dets:
+        color = COLORS[int(cls) % len(COLORS)]
+        cv2.rectangle(out, (int(x1), int(y1)), (int(x2), int(y2)), color, 2)
+        label = f"{names[int(cls)]} {conf:.2f}"
+        cv2.putText(out, label, (int(x1), int(y1) - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+    return out
 
 
 def fatal_on_error(target: Callable[[], None]) -> None:
@@ -74,8 +97,8 @@ def fatal_on_error(target: Callable[[], None]) -> None:
     threading.Thread(target=run, daemon=True).start()
 
 
-def run_loop(cam: Any, model: Any, imgsz: int, conf: float, label: str, show: Callable) -> None:
-    """Newest frame → predict → plot → ``show(annotated, stats)``, until ``show`` returns False."""
+def run_loop(cam: Any, detector: NcnnDetector, conf: float, label: str, show: Callable) -> None:
+    """Newest frame → predict → draw → ``show(annotated, stats)``, until ``show`` returns False."""
     latest: list[tuple[float, Any]] = []
 
     def capture() -> None:
@@ -90,20 +113,19 @@ def run_loop(cam: Any, model: Any, imgsz: int, conf: float, label: str, show: Ca
             continue
         seen, frame = latest[0]
         t0 = time.time()
-        result = model.predict(frame, imgsz=imgsz, conf=conf, verbose=False)[0]
+        dets = detector.predict(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), conf=conf)
         infer_ms = (time.time() - t0) * 1000
-        annotated = result.plot()
+        annotated = draw(frame, dets, detector.names)
         now = time.time()
         fps = 0.8 * fps + 0.2 / max(now - t_prev, 1e-6)
         t_prev = now
-        if not show(annotated, frame_stats(result, label, fps, infer_ms, (now - seen) * 1000)):
+        frame_info = frame_stats(dets, detector.names, label, fps, infer_ms, (now - seen) * 1000)
+        if not show(annotated, frame_info):
             return
 
 
 def publish(annotated: Any, frame: dict[str, Any]) -> bool:
     """The web output: JPEG-encode the frame and wake every stream reader."""
-    import cv2
-
     global latest_jpeg, stats
     _, buf = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 80])
     with frame_ready:
@@ -114,8 +136,6 @@ def publish(annotated: Any, frame: dict[str, Any]) -> bool:
 
 def on_screen(annotated: Any, frame: dict[str, Any]) -> bool:
     """The screen output: the frame with a stats overlay; ``q`` quits."""
-    import cv2
-
     counts = " ".join(f"{k}:{n}" for k, n in frame["counts"].items())
     lines = [
         frame["model"],
@@ -206,7 +226,7 @@ def open_camera(size: str) -> Any:
         )
     width, height = (int(v) for v in size.split("x"))
     cam = Picamera2()
-    # RGB888 lands in memory as BGR, exactly what OpenCV and ultralytics expect.
+    # RGB888 lands in memory as BGR, what OpenCV draws and encodes.
     cam.configure(
         cam.create_preview_configuration(main={"size": (width, height), "format": "RGB888"})
     )
@@ -223,12 +243,10 @@ def main(argv: list[str] | None = None) -> int:
         print(model_dir)
         return 0
 
+    detector = NcnnDetector(model_dir, imgsz_of(model_dir))
     cam = open_camera(args.size)
-    from ultralytics import YOLO
-
-    model = YOLO(str(model_dir), task="detect")
     label = args.label or model_dir.name
-    loop = (cam, model, imgsz_of(model_dir), args.conf, label)
+    loop = (cam, detector, args.conf, label)
     try:
         if args.show == "screen":
             run_loop(*loop, on_screen)

@@ -247,12 +247,14 @@ recording path — on a throwaway consumer group, and delete the polluted record
 
 ## Step-ups: named, not shipped
 
-- **A drift library** (Evidently). Its dependency cost was measured and found
-  harmless; it was dropped because the statistic it would compute — a two-sample distribution
-  test — is not one this reference can support, and the statistic that survives is ~20 lines of
-  numpy. The moment the training distribution is a **narrow, single-scene** one (a fixed
-  installation, one production line), the two-sample test becomes the right instrument and the
-  library becomes worth its keep.
+- **A drift library** (Evidently). Considered at 0.7.23 and rejected. Its drift tests are all
+  two-sample, and a window of one sequence never matches the drift baseline's per-sequence
+  means, so they flag normal traffic. Our drift score fits only as a custom test under
+  `evidently.legacy`, and the bars, episodes and evidence would all stay ours. It has no
+  streaming or Prometheus support, and its open-source UI has no alerts or auth. It adds 56
+  packages (about 0.8 GB) to the 544 MB monitor image. The moment the training distribution is a **narrow, single-scene** one
+  (a fixed installation, one production line), the two-sample test becomes the right instrument
+  and the library becomes worth its keep.
 - **Embedding-based drift** (an autoencoder or CLIP encoder plus an MMD test). It detects
   semantic shift the photometric statistics are blind to — and it needs a model and a reference
   embedding set inside a monitor whose entire structural claim is that it runs neither.

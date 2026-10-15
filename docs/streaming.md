@@ -187,6 +187,9 @@ consumer group) is a step-up for long-lived services.
 - **Video-native ingestion** — at real camera-fleet scale, pixels stop transiting Kafka
   entirely (RTSP/GStreamer straight into the GPU pipeline) and Kafka carries only
   detection metadata; the detections/alerts topology here survives that swap unchanged.
+- **Batched inference** — ruled "later": no backlog at the paced rate, decode costs more than
+  the GPU pass, and a batch axis changes the published graph. Triggers in
+  [optimization.md](optimization.md#production-step-ups).
 - **Exactly-once** — only if downstream consumers appear for which a duplicate event has
   real cost.
 

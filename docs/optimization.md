@@ -189,8 +189,13 @@ container chain.
   that is what a service gets by default. Its memory-pattern planner and arena growth strategy
   are the two levers that matter, and neither is exposed through the export library's session
   construction.
-- **Dynamic batching.** Everything here is fixed-shape, single-image. Batched serving is a
-  throughput decision that needs throughput evidence, which belongs with a real service.
+- **Batched inference.** Ruled "later". Everything here is fixed-shape, single-image, and at
+  this load there is nothing to batch: the inference consumer reads one paced stream, requests
+  carry one image each, and CPU JPEG decode costs more than the GPU pass. A batch axis is costly
+  too: the export becomes dynamic in height and width as well, and the runtimes rebuild or retune
+  per batch size. Revisit on sustained consumer lag at the paced rate (several live feeds), or
+  when a stage split shows `session.run` dominating. Threaded decode comes before batching, since
+  it changes no graph.
 - **A dedicated inference server.** Compiled engines are what such a server consumes; it would
   pull them from the registry and validate the fingerprint on startup.
 - **Quantization (int8), by any route.** NCNN has its own offline table tooling

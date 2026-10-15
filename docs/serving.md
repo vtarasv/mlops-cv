@@ -121,6 +121,9 @@ GPU name, SM). A Triton model repository would be assembled from those artifacts
 deploy time, **checking the fingerprint against the target GPU before loading an
 engine** — a compiled engine is only valid on the stack it was built for.
 
-**What it buys:** dynamic batching (batching concurrent requests into one GPU pass),
-concurrent model execution (several models or instances on one GPU with explicit VRAM
-control), per-model versioned rollout, and server-grade Prometheus metrics for free.
+**What it buys:** concurrent model execution (several models or instances on one GPU with
+explicit VRAM control), per-model versioned rollout, and server-grade Prometheus metrics for
+free. Its dynamic batcher (concurrent requests in one GPU pass) needs a model with a batch-first
+dimension, and the published graph and engine are static batch 1, so batching would mean
+re-exporting with a batch axis first. Batched inference is ruled "later"; the reasons and
+re-entry triggers are in [optimization.md](optimization.md#production-step-ups).

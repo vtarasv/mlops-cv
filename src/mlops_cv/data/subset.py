@@ -99,10 +99,19 @@ def manifest_rows(lines: Iterable[str]) -> list[dict[str, str]]:
     return list(reader)
 
 
-def stamp_dataset_yaml(template: Path, out_dir: Path) -> Path:
-    """Copy the template YAML next to the data with ``path`` stamped to the absolute subset dir."""
+def _stamp(template: Path, out_dir: Path, dest: Path, **overrides: str) -> Path:
     data = yaml.safe_load(Path(template).read_text(encoding="utf-8"))
-    data["path"] = str(out_dir.resolve())
-    dest = out_dir / Path(template).name
+    data |= {"path": str(out_dir.resolve()), **overrides}
     dest.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
     return dest
+
+
+def stamp_dataset_yaml(template: Path, out_dir: Path) -> Path:
+    """Copy the template YAML next to the data with ``path`` stamped to the absolute subset dir."""
+    return _stamp(template, out_dir, out_dir / Path(template).name)
+
+
+def stamp_split_yaml(template: Path, out_dir: Path, split: str) -> Path:
+    """A stamped YAML naming only ``split``: ultralytics' check needs ``val:`` to exist."""
+    dest = out_dir / f"{Path(template).stem}-{split}.yaml"
+    return _stamp(template, out_dir, dest, **dict.fromkeys(SPLITS, f"{IMAGES_DIRNAME}/{split}"))

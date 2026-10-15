@@ -18,7 +18,7 @@ flowchart LR
 |---------|-------|------|------|
 | `mlflow` | `ghcr.io/mlflow/mlflow:v3.14.0` (+ psycopg2/boto3) | `5000` | tracking server + UI + registry |
 | `postgres` | `postgres:15.18` | `5432` | backend store (registry needs a DB) |
-| `storage` | `rustfs/rustfs:1.0.0-beta.8` | `9000` / `9001` | S3 artifact store / web console |
+| `storage` | `rustfs/rustfs:1.0.1` | `9000` / `9001` | S3 artifact store / web console |
 | `create-bucket` | `amazon/aws-cli:2.35.10` | — | one-shot: creates the `mlflow` bucket, then exits |
 
 ## Bring it up

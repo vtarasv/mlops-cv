@@ -98,7 +98,7 @@ for accuracy and latency on the same test split, every file is published to MLfl
 is attached to the model version. No winner is picked automatically. The report is evidence, and
 the choice depends on the target device.
 
-Details: [docs/optimization.md](docs/optimization.md).
+Details: [docs/optimization.md](docs/optimization.md); on the Pi: [docs/edge.md](docs/edge.md).
 
 ### 5. Serving: HTTP and streaming, one inference path
 

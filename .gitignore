@@ -17,6 +17,9 @@
 /data/
 /runs/
 
+# Other artifacts
+requirements-edge.txt
+
 # Python
 __pycache__/
 *.py[codz]

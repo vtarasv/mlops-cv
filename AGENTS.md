@@ -83,6 +83,8 @@ and payloads through the module, never by hand at a call site.
 - `tracking/data_version.py`: the dataset profile published as a data version.
 - `optimize/variants.py`: variant names and registry tag grammar (the Pi decodes these).
 - `orchestration/handoff.py`: DAG ↔ container argv and last-stdout-line JSON.
+- `tracking/edge_record.py`: the edge device's detections dump, package-version tags and the
+  gate's measured tag on the record run.
 - `streaming/messages.py`, `serving/schemas.py`: bus and HTTP schemas.
 - `data/subset.py`: subset on-disk layout and CSV rows.
 - `pipelines/profiling.py`: drift-baseline columns.
@@ -100,7 +102,9 @@ pydantic + yaml: the Airflow and serving images import them.
 - A container task's last stdout line is its JSON result (the Airflow XCom). Print nothing after it.
 - Airflow `@task`s are thin wrappers around `src/mlops_cv`. Pass small values via XCom and large
   artifacts via MLflow URIs.
-- Metrics come only from ultralytics `model.val()`. Never hand-roll AP math.
+- Metrics come only from ultralytics' metric code: `model.val()`, or
+  `evaluation.score_detections` feeding stored detections through its validator. Never hand-roll
+  AP math.
 - Thresholds (anomaly, drift bars, `--shift` defaults) are measured values. Remeasure them when the
   champion, the demo clips or the inference path change. Trust `Settings` over numbers in prose.
 - `serving/prepost.py` matches ultralytics' pre/post byte-for-byte against golden fixtures. Keep

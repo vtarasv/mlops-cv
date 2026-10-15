@@ -125,7 +125,16 @@ Each pick is a padded, annotated crop (the box drawn with its class + confidence
 `segments.csv`. Predictions are labelled TP/FP by a greedy **per-class IoU matcher**: each prediction
 (highest confidence first) claims the unused same-class ground-truth box of greatest IoU; `IoU ≥ 0.5`
 is a TP (that GT is consumed), otherwise an FP. The matcher is qualitative **crop selection only** —
-never AP math (metrics come exclusively from `model.val()`).
+never AP math (metrics come only from ultralytics' metric code: `model.val()`, or
+`evaluation.score_detections` for stored detections).
+
+## Scoring stored detections
+
+`evaluation.score_detections.score(detections, data_yaml, split)` scores detections produced
+elsewhere (`{frame file name: (n, 6) x1 y1 x2 y2 conf cls}` in source pixels) by feeding them
+through ultralytics' own validator; it has no AP code. The edge gate uses it
+([edge.md](edge.md)). It reads about 0.1 pt off `model.val` on the same model, because val
+resizes some frames one row differently from predict.
 
 ## Latency
 

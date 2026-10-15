@@ -71,6 +71,12 @@ optimize = [
     "tensorrt-cu13==10.16.1.11",
 ]
 
+edge = [
+    "ncnn==1.0.20260526",
+    "opencv-python==4.13.0.92",
+    "mlflow-skinny==3.14.0",
+]
+
 [tool.uv]
 default-groups = [
     "dev",
@@ -81,6 +87,7 @@ default-groups = [
     "monitoring",
     "optimize",
     "serving",
+    "edge",
 ]
 
 [tool.uv.sources]

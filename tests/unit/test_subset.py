@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import yaml
 
 from mlops_cv.data.subset import (
     MANIFEST_FIELDS,
@@ -18,6 +19,7 @@ from mlops_cv.data.subset import (
     label_relpath,
     manifest_rows,
     raw_split_dir,
+    stamp_split_yaml,
 )
 
 
@@ -82,3 +84,14 @@ def test_demo_store_present(tmp_path: Path) -> None:
     assert not demo_store_present(tmp_path)  # empty sequence dir
     frame.write_bytes(b"\xff\xd8\xff")
     assert demo_store_present(tmp_path)
+
+
+def test_split_yaml_points_every_split_at_one(tmp_path: Path) -> None:
+    template = tmp_path / "tmpl.yaml"
+    template.write_text("path: /desktop/subset\ntrain: images/train\nnames:\n  0: person\n")
+    out = stamp_split_yaml(template, tmp_path, "test")
+    assert out.name == "tmpl-test.yaml"
+    data = yaml.safe_load(out.read_text())
+    assert data["path"] == str(tmp_path.resolve())
+    assert {data[s] for s in SPLITS} == {"images/test"}
+    assert data["names"] == {0: "person"}

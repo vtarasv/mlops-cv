@@ -1,4 +1,4 @@
-"""Unit tests for ``tracking.resolve.resolve_model`` URI/branch/slug logic, mlflow faked."""
+"""``tracking.resolve``: ``resolve_model`` URI/branch/slug logic (mlflow faked), NCNN selection."""
 
 from __future__ import annotations
 
@@ -7,7 +7,8 @@ import types
 
 import pytest
 
-from mlops_cv.tracking.resolve import resolve_model
+from mlops_cv.optimize.variants import artifact_tag
+from mlops_cv.tracking.resolve import ncnn_artifacts, record_run_id, resolve_model
 
 
 class _FakeVersion:
@@ -29,7 +30,7 @@ def calls(monkeypatch: pytest.MonkeyPatch) -> dict:
             recorded["version"] = (name, version)
             return _FakeVersion()
 
-    def _download(artifact_uri: str) -> str:
+    def _download(artifact_uri: str, dst_path: str | None = None) -> str:
         recorded["download_uri"] = artifact_uri
         return "/tmp/dl/best.pt"
 
@@ -62,3 +63,59 @@ def test_run_uri_passes_through_without_registry_lookup(calls: dict) -> None:
     assert calls["download_uri"] == "runs:/abc123/weights/best.pt"
     assert "alias" not in calls and "version" not in calls
     assert slug == "abc123-weights-best.pt"
+
+
+# A model version's tags as the optimize driver writes them.
+TAGS = {
+    "optimize.ncnn_fp32_640": "runs:/abc/ncnn/ncnn-fp32-640_ncnn_model",
+    "optimize.ncnn_fp16_640": "runs:/abc/ncnn/ncnn-fp16-640_ncnn_model",
+    "optimize.ncnn_fp16_320": "runs:/abc/ncnn/ncnn-fp16-320_ncnn_model",
+    "optimize.onnx_640": "runs:/abc/onnx/best_640.onnx",
+    "optimize.trt_fp16_640": "runs:/abc/engines/trt-fp16-640.engine",
+    "optimize.trt_fp16_640_fingerprint": "runs:/abc/engines/trt-fp16-640.fingerprint.json",
+    "optimize.recommended": "should-never-exist-but-must-not-match-either",
+}
+
+
+def test_selects_only_ncnn_artifacts_by_default() -> None:
+    """Engines and graphs are advertised under the same scheme but can't run on the device."""
+    selected = ncnn_artifacts(TAGS, None)
+    assert sorted(selected) == ["ncnn-fp16-320", "ncnn-fp16-640", "ncnn-fp32-640"]
+    assert selected["ncnn-fp16-320"] == "runs:/abc/ncnn/ncnn-fp16-320_ncnn_model"
+
+
+def test_tag_keys_round_trip_to_variant_slugs() -> None:
+    """The device recovers exactly the slug the driver's tag encoder started from."""
+    assert "ncnn-fp16-320" in ncnn_artifacts({artifact_tag("ncnn-fp16-320"): "u"}, None)
+
+
+def test_names_filter_selects_a_subset() -> None:
+    assert list(ncnn_artifacts(TAGS, ["ncnn-fp16-320"])) == ["ncnn-fp16-320"]
+
+
+def test_unpublished_names_error_and_list_what_exists() -> None:
+    with pytest.raises(ValueError) as exc:
+        ncnn_artifacts(TAGS, ["ncnn-int8-320"])
+    assert "ncnn-int8-320" in str(exc.value)
+    assert "ncnn-fp16-320" in str(exc.value)
+
+
+def test_no_published_artifacts_selects_nothing() -> None:
+    assert ncnn_artifacts({"optimize.onnx_640": "u"}, None) == {}
+
+
+def test_record_run_is_followed_from_the_artifact_uri() -> None:
+    """Not the version's training run: the record lives on a child of it, and the artifact URI
+    is what says which one — so the device's readings land beside the desktop's."""
+    assert record_run_id(ncnn_artifacts(TAGS, None).values()) == "abc"
+
+
+def test_artifacts_from_different_runs_are_refused() -> None:
+    """A half-refreshed set of tags would scatter one device's readings across two ladders."""
+    with pytest.raises(ValueError, match="one record run"):
+        record_run_id(["runs:/abc/optimize/ncnn/a", "runs:/def/optimize/ncnn/b"])
+
+
+def test_no_resolvable_run_is_refused() -> None:
+    with pytest.raises(ValueError, match="one record run"):
+        record_run_id(["s3://bucket/some/path"])

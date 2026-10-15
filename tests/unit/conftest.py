@@ -8,7 +8,8 @@ it through HTTP, both on the same fake session.
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
+from contextlib import contextmanager
 from types import SimpleNamespace
 
 import numpy as np
@@ -68,6 +69,7 @@ class FakeRegistry:
         self.aliases: dict[str, str] = {}
         self.history: dict[tuple[str, str], list[SimpleNamespace]] = {}
         self.texts: list[tuple[str, str, str]] = []
+        self.artifacts: set[tuple[str, str]] = set()
         self.asked: list[tuple] = []
         self._counter = 0
 
@@ -163,11 +165,61 @@ class FakeRegistry:
     def log_text(self, run_id: str, text: str, artifact_file: str) -> None:
         self.texts.append((run_id, text, artifact_file))
 
+    def list_artifacts(self, run_id: str, path: str) -> list[SimpleNamespace]:
+        return [
+            SimpleNamespace(path=p)
+            for r, p in self.artifacts
+            if r == run_id and p.rsplit("/", 1)[0] == path
+        ]
+
+
+class FakeMlflow:
+    """The fluent ``mlflow`` module as the edge bench and gate drive it, writes recorded."""
+
+    def __init__(self, registry: FakeRegistry) -> None:
+        self.registry = registry
+        self.dicts: dict[str, dict] = {}
+        self.texts: dict[str, str] = {}
+        self.metrics: dict[str, float] = {}
+        self.tags: dict[str, str] = {}
+        self.deleted: list[str] = []
+
+    def get_run(self, run_id: str) -> FakeRun:
+        return self.registry.get_run(run_id)
+
+    @contextmanager
+    def start_run(self, run_id: str) -> Iterator[None]:
+        yield
+
+    def delete_tag(self, key: str) -> None:
+        self.deleted.append(key)
+
+    def set_tags(self, tags: Mapping[str, str]) -> None:
+        self.tags |= tags
+
+    def set_tag(self, key: str, value: str) -> None:
+        self.tags[key] = value
+
+    def log_dict(self, payload: dict, artifact_file: str) -> None:
+        self.dicts[artifact_file] = payload
+
+    def log_text(self, text: str, artifact_file: str) -> None:
+        self.texts[artifact_file] = text
+
+    def log_metrics(self, metrics: Mapping[str, float]) -> None:
+        self.metrics |= metrics
+
 
 @pytest.fixture
 def registry() -> FakeRegistry:
     """An empty in-memory registry — promote a version into it, or leave it empty."""
     return FakeRegistry()
+
+
+@pytest.fixture
+def fake_mlflow(registry: FakeRegistry) -> FakeMlflow:
+    """The fluent ``mlflow`` module over ``registry``."""
+    return FakeMlflow(registry)
 
 
 # --- the onnxruntime session -----------------------------------------------------------------

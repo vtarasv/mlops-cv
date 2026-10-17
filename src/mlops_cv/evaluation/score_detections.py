@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import tempfile
+from collections import Counter
 from collections.abc import Mapping
 from pathlib import Path
 from types import SimpleNamespace
@@ -32,7 +33,13 @@ def score(detections: Mapping[str, np.ndarray], data_yaml: Path, split: str) -> 
         validator.data = check_det_dataset(str(data_yaml), autodownload=False)
         validator.stride = 32
         labels = validator.build_dataset(validator.data[split]).labels  # type: ignore[attr-defined]
-        if missing := sorted({Path(lb["im_file"]).name for lb in labels} - set(detections)):
+        names = Counter(Path(lb["im_file"]).name for lb in labels)
+        if dupes := sorted(n for n, c in names.items() if c > 1):
+            raise ValueError(
+                f"{len(dupes)} {split} file names repeat across directories, and detections are "
+                f"keyed by bare file name: {', '.join(dupes[:5])}"
+            )
+        if missing := sorted(names.keys() - set(detections)):
             raise ValueError(
                 f"{len(missing)} {split} frames have no detections (an empty prediction is an "
                 f"empty array, not an absent frame): {', '.join(missing[:5])}"

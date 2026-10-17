@@ -60,3 +60,15 @@ def test_empty_predictions_score_zero(data_yaml: Path) -> None:
 def test_a_missing_frame_is_an_error_not_an_empty_prediction(data_yaml: Path) -> None:
     with pytest.raises(ValueError, match="b.jpg"):
         score({"a.jpg": ground_truth()["a.jpg"]}, data_yaml, "test")
+
+
+def test_a_file_name_repeated_across_split_directories_is_an_error(data_yaml: Path) -> None:
+    import shutil
+
+    root = data_yaml.parent
+    for kind in ("images", "labels"):
+        shutil.copytree(root / kind / "test", root / kind / "test2")
+    cfg = yaml.safe_load(data_yaml.read_text())
+    data_yaml.write_text(yaml.safe_dump({**cfg, "test": ["images/test", "images/test2"]}))
+    with pytest.raises(ValueError, match="repeat"):
+        score(ground_truth(), data_yaml, "test")

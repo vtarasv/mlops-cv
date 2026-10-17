@@ -135,6 +135,8 @@ elsewhere (`{frame file name: (n, 6) x1 y1 x2 y2 conf cls}` in source pixels) by
 through ultralytics' own validator; it has no AP code. The edge gate uses it
 ([edge.md](edge.md)). It reads about 0.1 pt off `model.val` on the same model, because val
 resizes some frames one row differently from predict.
+Detections are keyed by bare file name, so a split whose file names repeat across directories (the
+demo store's `<seq>/0000001.jpg`) is rejected rather than scored with crossed detections.
 
 ## Latency
 

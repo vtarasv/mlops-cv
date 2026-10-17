@@ -1767,16 +1767,6 @@ edge = [
     { name = "ncnn" },
     { name = "opencv-python" },
 ]
-gpu = [
-    { name = "imageio" },
-    { name = "imageio-ffmpeg" },
-    { name = "mlflow" },
-    { name = "torch", version = "2.12.1", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux'" },
-    { name = "torch", version = "2.12.1+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'linux'" },
-    { name = "torchvision", version = "0.27.1", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux'" },
-    { name = "torchvision", version = "0.27.1+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'linux'" },
-    { name = "ultralytics" },
-]
 monitoring = [
     { name = "confluent-kafka" },
     { name = "mlflow-skinny" },
@@ -1794,6 +1784,12 @@ optimize = [
 serving = [
     { name = "fastapi" },
     { name = "mlflow-skinny" },
+    { name = "nvidia-cublas", marker = "sys_platform == 'linux'" },
+    { name = "nvidia-cuda-nvrtc", marker = "sys_platform == 'linux'" },
+    { name = "nvidia-cuda-runtime", marker = "sys_platform == 'linux'" },
+    { name = "nvidia-cudnn-cu13", marker = "sys_platform == 'linux'" },
+    { name = "nvidia-cufft", marker = "sys_platform == 'linux'" },
+    { name = "nvidia-curand", marker = "sys_platform == 'linux'" },
     { name = "onnxruntime-gpu" },
     { name = "opencv-python-headless" },
     { name = "prometheus-fastapi-instrumentator" },
@@ -1802,6 +1798,16 @@ serving = [
 ]
 streaming = [
     { name = "confluent-kafka" },
+]
+training = [
+    { name = "imageio" },
+    { name = "imageio-ffmpeg" },
+    { name = "mlflow" },
+    { name = "torch", version = "2.12.1", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux'" },
+    { name = "torch", version = "2.12.1+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'linux'" },
+    { name = "torchvision", version = "0.27.1", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux'" },
+    { name = "torchvision", version = "0.27.1+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'linux'" },
+    { name = "ultralytics" },
 ]
 
 [package.metadata]
@@ -1835,16 +1841,6 @@ edge = [
     { name = "ncnn", specifier = "==1.0.20260526" },
     { name = "opencv-python", specifier = "==4.13.0.92" },
 ]
-gpu = [
-    { name = "imageio", specifier = "==2.37.3" },
-    { name = "imageio-ffmpeg", specifier = "==0.6.0" },
-    { name = "mlflow", specifier = "==3.14.0" },
-    { name = "torch", marker = "sys_platform != 'linux'", specifier = "==2.12.1" },
-    { name = "torch", marker = "sys_platform == 'linux'", specifier = "==2.12.1", index = "https://download.pytorch.org/whl/cu130" },
-    { name = "torchvision", marker = "sys_platform != 'linux'", specifier = "==0.27.1" },
-    { name = "torchvision", marker = "sys_platform == 'linux'", specifier = "==0.27.1", index = "https://download.pytorch.org/whl/cu130" },
-    { name = "ultralytics", specifier = "==8.4.72" },
-]
 monitoring = [
     { name = "confluent-kafka", specifier = "==2.15.0" },
     { name = "mlflow-skinny", specifier = "==3.14.0" },
@@ -1862,6 +1858,12 @@ optimize = [
 serving = [
     { name = "fastapi", specifier = "==0.141.1" },
     { name = "mlflow-skinny", specifier = "==3.14.0" },
+    { name = "nvidia-cublas", marker = "sys_platform == 'linux'", specifier = "==13.1.1.3" },
+    { name = "nvidia-cuda-nvrtc", marker = "sys_platform == 'linux'", specifier = "==13.0.88" },
+    { name = "nvidia-cuda-runtime", marker = "sys_platform == 'linux'", specifier = "==13.0.96" },
+    { name = "nvidia-cudnn-cu13", marker = "sys_platform == 'linux'", specifier = "==9.20.0.48" },
+    { name = "nvidia-cufft", marker = "sys_platform == 'linux'", specifier = "==12.0.0.61" },
+    { name = "nvidia-curand", marker = "sys_platform == 'linux'", specifier = "==10.4.0.35" },
     { name = "onnxruntime-gpu", specifier = "==1.27.0" },
     { name = "opencv-python-headless", specifier = "==4.13.0.92" },
     { name = "prometheus-fastapi-instrumentator", specifier = "==8.1.0" },
@@ -1869,6 +1871,16 @@ serving = [
     { name = "uvicorn", specifier = "==0.52.1" },
 ]
 streaming = [{ name = "confluent-kafka", specifier = "==2.15.0" }]
+training = [
+    { name = "imageio", specifier = "==2.37.3" },
+    { name = "imageio-ffmpeg", specifier = "==0.6.0" },
+    { name = "mlflow", specifier = "==3.14.0" },
+    { name = "torch", marker = "sys_platform != 'linux'", specifier = "==2.12.1" },
+    { name = "torch", marker = "sys_platform == 'linux'", specifier = "==2.12.1", index = "https://download.pytorch.org/whl/cu130" },
+    { name = "torchvision", marker = "sys_platform != 'linux'", specifier = "==0.27.1" },
+    { name = "torchvision", marker = "sys_platform == 'linux'", specifier = "==0.27.1", index = "https://download.pytorch.org/whl/cu130" },
+    { name = "ultralytics", specifier = "==8.4.72" },
+]
 
 [[package]]
 name = "more-itertools"

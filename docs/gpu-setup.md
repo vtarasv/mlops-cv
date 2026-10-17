@@ -17,7 +17,8 @@ make gpu-smoke    # proves the installed torch actually runs on your GPU
 wheel also passes) and prints e.g. `OK: real GPU matmul correct on … (sm_120)`.
 
 torch comes from a CUDA-matched wheel index, not PyPI — wired in [pyproject.toml](../pyproject.toml).
-For a different GPU, point that index at the `cuXXX` matching your driver's CUDA (`nvidia-smi`) and re-pin torch/torchvision.
+For a different GPU, point that index at the `cuXXX` matching your driver's CUDA (`nvidia-smi`), re-pin
+torch/torchvision, and move the serving group's `nvidia-*` pins to the versions torch then locks.
 
 ## Containers — NVIDIA Container Toolkit
 
@@ -29,8 +30,11 @@ sudo dnf install -y nvidia-container-toolkit-1.19.1
 sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker
 ```
 
-Validate the boundary with the stock CUDA image (its tag should match your driver's CUDA):
+Validate the boundary with plain ubuntu; the toolkit injects the driver and `nvidia-smi`:
 
 ```bash
-docker run --rm --gpus all nvidia/cuda:13.2.0-cudnn-runtime-ubuntu24.04 nvidia-smi
+docker run --rm --gpus all ubuntu:noble-20260930.1 nvidia-smi
 ```
+
+The GPU images take CUDA from the venv's wheels ([containers.md](containers.md)), so the driver only
+needs to support the lock's CUDA 13; their `NVIDIA_DRIVER_CAPABILITIES` is for legacy-hook hosts.

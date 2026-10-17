@@ -11,14 +11,21 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates libgl1 libglib2.0-0 libxcb1 \
     && rm -rf /var/lib/apt/lists/*
 
+# The cache dir pins uv to the build's cache mount; it would follow HOME otherwise.
 ENV UV_LINK_MODE=copy \
     UV_COMPILE_BYTECODE=1 \
-    UV_PYTHON_INSTALL_DIR=/opt/python
+    UV_PYTHON_INSTALL_DIR=/opt/python \
+    UV_CACHE_DIR=/root/.cache/uv
 
 # CDI ignores it; a legacy-hook host mounts only the driver libs it names
 ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
 
+RUN mkdir -m 1777 /home/app
+ENV HOME=/home/app USER=app
+
 WORKDIR /app
+# ultralytics' runs dir is cwd-relative, and the cwd stays /app for the relative configs/ paths
+RUN mkdir -m 1777 /app/runs
 
 COPY .python-version pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \

@@ -44,6 +44,8 @@ x-airflow-common: &airflow-common
     BEAM_IMAGE: ${BEAM_IMAGE:?run via make airflow-up (or export BEAM_IMAGE)}
     TRAIN_IMAGE: ${TRAIN_IMAGE:?run via make airflow-up (or export TRAIN_IMAGE)}
     OPTIMIZE_IMAGE: ${OPTIMIZE_IMAGE:?run via make airflow-up (or export OPTIMIZE_IMAGE)}
+    HOST_USER: ${HOST_USER:?run via make airflow-up (or export HOST_USER)}
+    HOST_USERNAME: ${HOST_USERNAME:?run via make airflow-up (or export HOST_USERNAME)}
     MLFLOW__TRACKING_URI: http://mlflow:${MLFLOW_PORT}
   volumes:
     - ../dags:/opt/airflow/dags:ro,z

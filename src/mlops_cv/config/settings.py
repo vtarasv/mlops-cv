@@ -1,6 +1,7 @@
 """Application settings from a single ``.env`` file plus the OS environment (which wins).
 
 Precedence (lowest first): ``.env``  <  OS environment.
+Defaults the compose env files repeat are pinned by ``tests/unit/test_stack_constants.py``.
 """
 
 from __future__ import annotations
@@ -23,7 +24,6 @@ class DataSettings(BaseModel):
 class MlflowSettings(BaseModel):
     """MLflow tracking + registry coordinates."""
 
-    # Port MUST match MLFLOW_PORT in docker-compose/.env.mlflow (server publishes there).
     tracking_uri: str = "http://localhost:5000"
     experiment: str = "aerial-object-detection"
     registered_model: str = "aerial-object-detector"
@@ -48,9 +48,7 @@ class TrainingSettings(BaseModel):
 class StreamingSettings(BaseModel):
     """Streaming-inference coordinates: broker, topics, consumer groups, pacing, anomaly rule."""
 
-    # Port MUST match KAFKA_HOST_PORT in docker-compose/.env.streaming (broker publishes there).
     bootstrap_servers: str = "localhost:19092"
-    # Topics MUST match *_TOPIC in docker-compose/.env.streaming
     raw_frames_topic: str = "raw-frames"
     detections_topic: str = "detections"
     alerts_topic: str = "alerts"
@@ -71,7 +69,7 @@ class MonitoringSettings(BaseModel):
     window_frames: int = Field(default=100, ge=1)  # sampled frames per tumbling window
     consecutive_windows: int = Field(default=2, ge=1)  # drifted windows that open an episode
     threshold_margin: float = Field(default=1.0, gt=0)  # multiplies the derived thresholds
-    metrics_port: int = 9101  # scraped in-network; MUST match MONITOR_METRICS_PORT in .env.serving
+    metrics_port: int = 9101  # scraped in-network
 
 
 class OptimizeSettings(BaseModel):

@@ -30,6 +30,22 @@ Local setup (optional — runs on defaults without it):
 cp .env.example .env
 ```
 
+`.env.example` lists a key only if it has no usable default (the absolute paths) or local dev wants
+a different value (`LOG_LEVEL`). A key that repeats its default would freeze into every copied
+`.env` and shadow later changes to that default.
+
+## Compose stacks
+
+Each stack under `docker-compose/` has one env file (`.env.mlflow`, `.env.airflow`,
+`.env.streaming`, `.env.serving`), passed by the Makefile as `--env-file`. It only feeds `${…}`
+interpolation in the compose file; containers never read it directly.
+
+Processes on the host use the `Settings` defaults (`localhost:5000`, `localhost:19092`).
+Containers get the in-network addresses (`mlflow:${MLFLOW_PORT}`, `redpanda:9092`) through each
+service's `environment:` map. Values that both the env files and Python carry (topics, the frame
+byte cap, the MLflow, Kafka, serving and monitor ports) are pinned by
+[`tests/unit/test_stack_constants.py`](../tests/unit/test_stack_constants.py).
+
 ## Usage
 
 ```python

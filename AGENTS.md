@@ -69,6 +69,9 @@ Every change ships its unit tests and updates the matching `docs/*.md`.
 - Entry points read `mlops_cv.config.get_settings()`. Never hard-code URIs or credentials.
 - One `.env` (copied from `.env.example`) plus the OS env, which wins. Nested keys use `__`
   (`DATA__RAW_DIR`). See `docs/config.md`.
+- A value that a compose env file or `prometheus.yml` repeats from Python keeps both copies, pinned
+  by a golden test (`tests/unit/test_stack_constants.py`, `test_observability_config.py`). Add each
+  new pair there.
 
 ## Owned contracts
 

@@ -24,5 +24,4 @@ RUN useradd --create-home --uid 1000 monitor
 ENV HOME=/home/monitor
 USER monitor
 
-EXPOSE 9101
 CMD ["python", "-m", "mlops_cv.monitoring"]

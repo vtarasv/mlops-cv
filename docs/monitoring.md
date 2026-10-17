@@ -240,7 +240,7 @@ the asset event's only producer; the manual `POST` recipe in
 | `MONITORING__WINDOW_FRAMES` | `100` | sampled frames per tumbling window |
 | `MONITORING__CONSECUTIVE_WINDOWS` | `2` | drifted windows that open an episode |
 | `MONITORING__THRESHOLD_MARGIN` | `1.0` | multiplies the **derived** bars; there is no threshold to set |
-| `MONITORING__METRICS_PORT` | `9101` | scraped in-network; must match the serving stack's env file |
+| `MONITORING__METRICS_PORT` | `9101` | scraped in-network; pinned to the serving stack's env file by `test_stack_constants.py` |
 
 Lowering the margin forces episodes on normal traffic, which is a quick way to exercise the
 recording path — on a throwaway consumer group, and delete the polluted record afterwards.

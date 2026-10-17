@@ -11,14 +11,19 @@ committed `uv.lock`:
 
 | Image | Dockerfile (target) | Base | uv groups | Runs |
 |---|---|---|---|---|
-| `mlops-cv-train` | `Dockerfile.cudnn-devel` (`train`) | CUDA 13.2 cudnn-**devel** | `gpu` | training + evaluation (the CT DAG's GPU tasks) |
-| `mlops-cv-optimize` | `Dockerfile.cudnn-devel` (`optimize`) | CUDA 13.2 cudnn-**devel** | `gpu` + `optimize` | serving-variant export, compilation, benchmarking |
-| `mlops-cv-serve` | `Dockerfile.cudnn-runtime` (`serve`) | CUDA 13.2 cudnn-**runtime** | `serving` | the HTTP detection service |
-| `mlops-cv-stream` | `Dockerfile.cudnn-runtime` (`stream`) | CUDA 13.2 cudnn-**runtime** | `serving` + `streaming` | streaming consumers (command override) |
+| `mlops-cv-train` | `Dockerfile.training` (`train`) | `ubuntu:noble-20260930.1` | `training` | training + evaluation (the CT DAG's GPU tasks) |
+| `mlops-cv-optimize` | `Dockerfile.training` (`optimize`) | `ubuntu:noble-20260930.1` | `training` + `optimize` | serving-variant export, compilation, benchmarking |
+| `mlops-cv-serve` | `Dockerfile.serving` (`serve`) | `ubuntu:noble-20260930.1` | `serving` | the HTTP detection service |
+| `mlops-cv-stream` | `Dockerfile.serving` (`stream`) | `ubuntu:noble-20260930.1` | `serving` + `streaming` | streaming consumers (command override) |
 | `mlops-cv-beam` | `Dockerfile.beam` | `python:3.12-slim` | `beam` | Beam data pipelines (ingest, profile) |
 | `mlops-cv-monitor` | `Dockerfile.monitor` | `python:3.12-slim` | `monitoring` | the drift monitor (no torch, no CUDA, no ONNX) |
 | airflow image | `Dockerfile.airflow` | `apache/airflow:3.2.2-python3.12` | base deps + providers-docker + mlflow-skinny (pip) | scheduler / api-server / dag-processor / triggerer |
 | mlflow image | `Dockerfile.mlflow` | `ghcr.io/mlflow/mlflow:v3.14.0` | — (adds psycopg2 + boto3) | the tracking server |
+
+The GPU images carry no CUDA base: CUDA, cuDNN and TensorRT come from the venv's wheels, and the
+ORT images register `nvidia/*/lib` with `ldconfig` so a torch-free process finds them. The
+`nvidia/cuda` runtime/devel bases were dropped: they install a second copy of the wheels' libraries
+(+4.5 GB on train and optimize even with the runtime base).
 
 Third-party services (Postgres, RustFS, Redpanda + Console, Prometheus, Grafana, the DCGM
 exporter) run their upstream images, tag-pinned in the compose files.

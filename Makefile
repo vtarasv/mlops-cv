@@ -130,11 +130,11 @@ beam-image:
 
 # Build the GPU train/eval image the CT DAG's DockerOperator tasks run.
 train-image:
-	docker build -f docker/Dockerfile.cudnn-devel --target train -t $(TRAIN_IMAGE) .
+	docker build -f docker/Dockerfile.training --target train -t $(TRAIN_IMAGE) .
 
 # Build the GPU serving-variant image the CT DAG's optimize task runs.
 optimize-image:
-	docker build -f docker/Dockerfile.cudnn-devel --target optimize -t $(OPTIMIZE_IMAGE) .
+	docker build -f docker/Dockerfile.training --target optimize -t $(OPTIMIZE_IMAGE) .
 
 # Print the derived host wiring the Airflow stack resolves ([brackets] surface stray whitespace).
 airflow-env:
@@ -170,11 +170,11 @@ streaming-logs:
 
 # Build the GPU serving image the serving stack runs.
 serve-image:
-	docker build -f docker/Dockerfile.cudnn-runtime --target serve -t $(SERVE_IMAGE) .
+	docker build -f docker/Dockerfile.serving --target serve -t $(SERVE_IMAGE) .
 
 # Build the streaming-consumers image (all consumers run it).
 stream-image:
-	docker build -f docker/Dockerfile.cudnn-runtime --target stream -t $(STREAM_IMAGE) .
+	docker build -f docker/Dockerfile.serving --target stream -t $(STREAM_IMAGE) .
 
 # Build the slim CPU drift-monitor image the serving stack runs.
 monitor-image:

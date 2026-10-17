@@ -2,7 +2,7 @@
 
 The committed fixture is the serving pre/post contract: CI pins
 ``mlops_cv.serving.prepost`` against it without installing ultralytics (the fixture is
-the contract, like the emit<->parse pins). Run this locally, where the ``gpu`` group is
+the contract, like the emit<->parse pins). Run this locally, where the ``training`` group is
 installed, only when ultralytics itself changes the math being mirrored:
 
     uv run python tests/unit/fixtures/generate_prepost_golden.py

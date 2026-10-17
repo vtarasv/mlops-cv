@@ -3,7 +3,7 @@
 Registration produces the file-source versions that ``resolve_model`` consumes, so this exercises
 the full register → resolve round-trip — including that the weight bytes survive the object-store
 round-trip byte-for-byte — plus dataset-lineage logging. Requires the MLflow stack up and the
-``gpu`` uv group.
+``training`` uv group.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ import pytest
 from mlops_cv.tracking.resolve import resolve_model
 from mlops_cv.training.train import _log_dataset, _register_model
 
-mlflow = pytest.importorskip("mlflow")  # absent under CI's --no-group gpu -> skip the module
+mlflow = pytest.importorskip("mlflow")  # absent under CI's --no-group training -> skip the module
 
 pytestmark = pytest.mark.docker
 

@@ -17,7 +17,7 @@ _TIMEOUT = 5
 def registry():
     """A configured ``MlflowClient`` pointed at the live stack.
 
-    Skips the test when ``mlflow`` is absent (CI's ``--no-group gpu``) or the stack isn't reachable.
+    Skips the test when ``mlflow`` is absent (CI's ``--no-group training``) or the stack is down.
     """
     mlflow = pytest.importorskip("mlflow")
     client.configure()

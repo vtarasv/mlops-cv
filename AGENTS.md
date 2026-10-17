@@ -38,7 +38,7 @@ Single-context: root `GLOSSARY.md` + `docs/adr/`, created lazily. See `docs/agen
 1. Run the `ponytail:ponytail-review` skill on the diff and apply its cuts.
 2. Run `make ci` (ruff check, ruff format check, pytest) and `make typecheck` (pyright). Done means
    zero findings, zero errors, all tests green. Pyright is local only: CI's sync skips the
-   gpu/optimize groups its imports need.
+   training/optimize groups its imports need.
 
 Every change ships its unit tests and updates the matching `docs/*.md`.
 
@@ -60,7 +60,7 @@ Every change ships its unit tests and updates the matching `docs/*.md`.
 - Lazy-import heavy deps (torch, ultralytics, tensorrt, …) inside functions, so every module
   imports in CI's CPU-only sync.
 - Docker images opt into groups (`--no-default-groups --group <x>`). CI subtracts them
-  (`--no-group gpu`), so a new group's tests run in CI by default.
+  (`--no-group training`), so a new group's tests run in CI by default.
 - Beam caps numpy, pyarrow, pillow and cryptography lock-wide. Expect downgrades on `uv lock`, and
   rebuild the images after relocking.
 
@@ -125,7 +125,7 @@ pydantic + yaml: the Airflow and serving images import them.
 - MLflow checks the `Host` header. A container calling `http://mlflow:5000` gets 403 unless
   `MLFLOW_SERVER_ALLOWED_HOSTS` lists it.
 - onnxruntime finds CUDA through the system loader. On the host, `make serve` puts the venv's
-  `nvidia/*/lib` on `LD_LIBRARY_PATH`.
+  `nvidia/*/lib` on `LD_LIBRARY_PATH`; the images register them with `ldconfig`.
 - Airflow DockerOperator mount sources are host paths. Mount them at the same absolute path inside
   the container, so the dataset YAML's absolute `path:` resolves.
 - Start consumers before the producer: with `--offset-reset latest`, messages on never-read

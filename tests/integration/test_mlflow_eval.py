@@ -1,7 +1,7 @@
 """Integration tests for the eval MLflow glue against the live stack: ``resolve_model`` (download)
 and ``registered_version`` (which registered version ``--promote`` aliases).
 
-Requires the MLflow stack up and the ``gpu`` uv group.
+Requires the MLflow stack up and the ``training`` uv group.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ import pytest
 
 from mlops_cv.tracking.resolve import registered_version, resolve_model
 
-mlflow = pytest.importorskip("mlflow")  # absent under CI's --no-group gpu -> skip the module
+mlflow = pytest.importorskip("mlflow")  # absent under CI's --no-group training -> skip the module
 
 pytestmark = pytest.mark.docker
 

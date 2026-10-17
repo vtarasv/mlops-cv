@@ -55,6 +55,8 @@ BEAM_IMAGE = os.environ["BEAM_IMAGE"]
 TRAIN_IMAGE = os.environ["TRAIN_IMAGE"]
 OPTIMIZE_IMAGE = os.environ["OPTIMIZE_IMAGE"]
 MLFLOW_URI = os.environ["MLFLOW__TRACKING_URI"]
+HOST_USER = os.environ["HOST_USER"]  # uid:gid, so bind-mounted outputs stay host-user-owned
+HOST_USERNAME = os.environ["HOST_USERNAME"]
 
 # Host paths are bind-mounted at identical container paths ("path parity") so the absolute
 # `path:` stamped into the generated dataset YAML resolves inside the task containers too.
@@ -69,6 +71,7 @@ _TASK_ENV = {
     "MLFLOW__TRACKING_URI": MLFLOW_URI,
     "DATA__SUBSET_DIR": SUBSET_DIR,
     "TRAINING__WEIGHTS": WEIGHTS,
+    "USER": HOST_USERNAME,  # getpass reads it before passwd, where the host uid has no entry
 }
 # rw: the ingest/profile tasks write the dataset here; ultralytics `cache=disk` writes .npy files.
 _MOUNTS = [
@@ -84,6 +87,7 @@ _INGEST_MOUNTS = _MOUNTS + (
 
 _DOCKER_BASE = {
     "docker_url": "unix://var/run/docker.sock",
+    "user": HOST_USER,
     "network_mode": "mlops-cv-network",  # reach the MLflow server as http://mlflow:5000
     "mounts": _MOUNTS,
     "auto_remove": "success",  # keep failed containers around for debugging

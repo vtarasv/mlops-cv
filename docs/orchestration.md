@@ -79,6 +79,9 @@ Notable wiring (all in `docker-compose/docker-compose.airflow.yml` + `.env.airfl
   the container user isn't in that group). This lets `DockerOperator` launch **sibling** containers
   on the host daemon with GPU access — a **local-only** pattern; production swaps the operator for
   `KubernetesPodOperator` (or Cloud Composer's equivalent) without touching the surrounding DAG.
+- **Task user.** The siblings run as the host uid:gid (`user=HOST_USER`) with `USER=HOST_USERNAME`,
+  so what they write into the bind mounts is yours and `mlflow.user` names you. The images give any
+  uid a writable `HOME` (and `/app/runs`), which a pod's `runAsUser` needs too.
 
 ## The CT DAG
 
@@ -149,8 +152,8 @@ mount whose source path is missing.
 
 The machine-specific values — `HOST_SUBSET_DIR` (reused from `DATA__SUBSET_DIR` in your local
 `.env`; **required**), `HOST_WEIGHTS` (reused from `TRAINING__WEIGHTS`; **required**),
-`HOST_RAW_DIR` (reused from `DATA__RAW_DIR`), and `DOCKER_GID`
-(the host `docker` group) — are **derived and exported by `make airflow-up`**, so none is
+`HOST_RAW_DIR` (reused from `DATA__RAW_DIR`), `DOCKER_GID` (the host `docker` group), and
+`HOST_USER` / `HOST_USERNAME` (your uid:gid and login) — are **derived and exported by `make airflow-up`**, so none is
 committed. The image tags `TRAIN_IMAGE`/`BEAM_IMAGE` are exported from the same place — the
 Makefile is their **single source**.
 `make airflow-env` prints all resolved values. Invoking `docker compose`

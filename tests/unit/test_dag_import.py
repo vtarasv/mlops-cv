@@ -35,6 +35,8 @@ def dagbag():
         mp.setenv("BEAM_IMAGE", "mlops-cv-beam:test")
         mp.setenv("OPTIMIZE_IMAGE", "mlops-cv-optimize:test")
         mp.setenv("MLFLOW__TRACKING_URI", "http://mlflow:5000")
+        mp.setenv("HOST_USER", "1234:5678")
+        mp.setenv("HOST_USERNAME", "alice")
         return DagBag(dag_folder=str(DAGS_DIR), include_examples=False)
 
 
@@ -103,3 +105,20 @@ def test_optimize_task_needs_no_host_store(dagbag) -> None:
     train_task = dagbag.dags[CT_DAG].get_task("train")
     optimize_task = dagbag.dags[CT_DAG].get_task("optimize")
     assert optimize_task.mounts == train_task.mounts
+
+
+def test_task_containers_run_as_the_host_user(dagbag) -> None:
+    """Root in a task container writes root-owned files into the host's bind-mounted datasets."""
+    from airflow.providers.docker.operators.docker import DockerOperator
+
+    containers = [t for t in dagbag.dags[CT_DAG].tasks if isinstance(t, DockerOperator)]
+    assert {t.task_id for t in containers} == {
+        "build_subset",
+        "profile",
+        "train",
+        "evaluate",
+        "optimize",
+    }
+    for task in containers:
+        assert task.user == "1234:5678"
+        assert task.environment["USER"] == "alice"  # MLflow's `mlflow.user` tag names the person

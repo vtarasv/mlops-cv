@@ -19,8 +19,13 @@ COPY configs/ configs/
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-default-groups --group beam
 
-# Beam's local runner (Prism) downloads a Go service binary on first use.
+# The DAG runs this as the host uid: any uid gets a HOME, and a USER so getpass skips passwd.
+RUN mkdir -m 1777 /home/app
+ENV HOME=/home/app USER=app
+
+# Beam's local runner (Prism) downloads a Go service binary on first use; any uid must exec it.
 RUN /app/.venv/bin/python -c "import apache_beam as beam; p = beam.Pipeline(); \
-_ = p | beam.Create([1]); p.run().wait_until_finish()"
+_ = p | beam.Create([1]); p.run().wait_until_finish()" \
+    && chmod -R a+rX "$HOME/.apache_beam"
 
 ENV PATH="/app/.venv/bin:$PATH"

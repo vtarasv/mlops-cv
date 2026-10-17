@@ -6,6 +6,9 @@ An NVIDIA GPU must work in two independent places: **host Python** (torch built 
 > Validated on: RTX 5070 (Blackwell `sm_120`, 8 GB), driver 595.71.05 / CUDA 13.2, Fedora 44,
 > **rootful** Docker. Values tied to that box are noted below.
 
+Rootless Docker and Podman were considered, rejected because the DAG's root-owned outputs are fixed
+by running its task containers as the host uid ([orchestration.md](orchestration.md)).
+
 ## Host torch
 
 ```bash
@@ -26,7 +29,7 @@ torch/torchvision, and move the serving group's `nvidia-*` pins to the versions 
 # Add NVIDIA's repo, install, register with Docker (Fedora example).
 curl -fsSL https://nvidia.github.io/libnvidia-container/stable/rpm/nvidia-container-toolkit.repo \
   | sudo tee /etc/yum.repos.d/nvidia-container-toolkit.repo
-sudo dnf install -y nvidia-container-toolkit-1.19.1
+sudo dnf install -y nvidia-container-toolkit-1.20.1
 sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker
 ```
 

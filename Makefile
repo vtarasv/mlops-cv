@@ -18,6 +18,8 @@ SERVING_COMPOSE := docker compose -f docker-compose/docker-compose.serving.yml -
 #   HOST_SUBSET_DIR   : reuses DATA__SUBSET_DIR from the root .env (the training subset the DAG mounts)
 #   HOST_WEIGHTS      : reuses TRAINING__WEIGHTS from the root .env (pretrained-weights cache)
 #   DOCKER_GID        : host docker group id — the scheduler needs it to use the mounted socket
+#   HOST_USER         : host uid:gid — the DAG's task containers run as it, so their outputs stay yours
+#   HOST_USERNAME     : host login — the task containers' USER, so `mlflow.user` names you
 export BEAM_IMAGE := mlops-cv-beam:0.1.0
 export TRAIN_IMAGE := mlops-cv-train:0.1.0
 export OPTIMIZE_IMAGE := mlops-cv-optimize:0.1.0
@@ -28,6 +30,8 @@ export HOST_RAW_DIR := $(shell sed -n 's/^DATA__RAW_DIR=//p' .env 2>/dev/null)
 export HOST_SUBSET_DIR := $(shell sed -n 's/^DATA__SUBSET_DIR=//p' .env 2>/dev/null)
 export HOST_WEIGHTS := $(shell sed -n 's/^TRAINING__WEIGHTS=//p' .env 2>/dev/null)
 export DOCKER_GID := $(shell getent group docker | cut -d: -f3)
+export HOST_USER := $(shell id -u):$(shell id -g)
+export HOST_USERNAME := $(shell id -un)
 
 # Create the venv (from .python-version) and install all default groups.
 setup:
@@ -145,6 +149,8 @@ airflow-env:
 	@echo "HOST_SUBSET_DIR=[$(HOST_SUBSET_DIR)]"
 	@echo "HOST_WEIGHTS=[$(HOST_WEIGHTS)]"
 	@echo "DOCKER_GID=[$(DOCKER_GID)]"
+	@echo "HOST_USER=[$(HOST_USER)]"
+	@echo "HOST_USERNAME=[$(HOST_USERNAME)]"
 
 # Airflow CT stack (Postgres + api-server + scheduler + dag-processor + triggerer).
 airflow-up: mlflow-up beam-image train-image optimize-image airflow-env

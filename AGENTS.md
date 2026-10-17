@@ -132,5 +132,4 @@ pydantic + yaml: the Airflow and serving images import them.
   partitions are skipped.
 - Compare GPU memory as deltas, never absolutes. The CUDA context floor dwarfs the gap between
   variants and ranks them backwards.
-- DAG task containers run as root, so the datasets they write are root-owned on the host.
 - The compose stacks join the MLflow stack's network; the `make *-up` targets start MLflow first.

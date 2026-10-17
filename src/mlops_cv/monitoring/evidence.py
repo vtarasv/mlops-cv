@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import json
 import logging
+import tempfile
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from mlops_cv.tracking import client as tracking_client
@@ -74,13 +76,19 @@ class EpisodeRecorder:
     def __call__(self, window: DriftWindow) -> None:
         """Record one episode: its readings as metrics, its footage as a small artifact."""
         step, self.step = self.step, self.step + 1
+        stem = f"{EPISODES_ARTIFACT_PATH}/episode-{step:04d}"
         for key, value in episode_metrics(window.verdict).items():
             self.client.log_metric(self.run_id, key, value, step=step)
         self.client.log_text(
             self.run_id,
             json.dumps(episode_payload(window, step), indent=2),
-            f"{EPISODES_ARTIFACT_PATH}/episode-{step:04d}.json",
+            f"{stem}.json",
         )
+        if window.evidence:
+            with tempfile.TemporaryDirectory() as tmp:
+                for ref, image in window.evidence:
+                    Path(tmp, f"{ref.sequence}_{ref.frame_index}.jpg").write_bytes(image)
+                self.client.log_artifacts(self.run_id, tmp, stem)
         logger.info(f"episode {step} recorded on run {self.run_id}")
 
 

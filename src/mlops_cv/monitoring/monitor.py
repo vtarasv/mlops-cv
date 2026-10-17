@@ -56,6 +56,7 @@ class DriftWindow:
 
     verdict: WindowVerdict
     frames: tuple[FrameRef, ...]
+    evidence: tuple[tuple[FrameRef, bytes], ...] = ()
 
     def spans(self) -> list[dict[str, Any]]:
         """The window's footage as one index span per clip, in order of first appearance."""
@@ -112,20 +113,28 @@ def prediction_health(events: Sequence[DetectionEvent]) -> PredictionHealth:
 class _Window:
     """The tumbling window under construction: what has been sampled since the last verdict."""
 
+    size: int
     readings: list[dict[str, float]] = field(default_factory=list)
     frames: list[FrameRef] = field(default_factory=list)
+    evidence: list[tuple[FrameRef, bytes]] = field(default_factory=list)
 
-    def add(self, reading: dict[str, float], ref: FrameRef) -> None:
+    def add(self, reading: dict[str, float], ref: FrameRef, image: bytes) -> None:
+        # Evidence frames are the first, middle and last.
+        if len(self.readings) in {0, self.size // 2, self.size - 1}:
+            self.evidence.append((ref, image))
         self.readings.append(reading)
         self.frames.append(ref)
 
     def close(self, reference: DriftReference) -> DriftWindow:
         """Judge the window and start the next one — tumbling, so no frame is judged twice."""
         window = DriftWindow(
-            verdict=reference.judge(window_means(self.readings)), frames=tuple(self.frames)
+            verdict=reference.judge(window_means(self.readings)),
+            frames=tuple(self.frames),
+            evidence=tuple(self.evidence),
         )
         self.readings.clear()
         self.frames.clear()
+        self.evidence.clear()
         return window
 
 
@@ -193,7 +202,7 @@ def run_loop(
     Runs forever unless ``max_messages`` / ``idle_timeout_s`` bounds it (tests, smokes).
     """
     monitoring, streaming = settings.monitoring, settings.streaming
-    window = _Window()
+    window = _Window(size=monitoring.window_frames)
     rule = EpisodeRule(consecutive=monitoring.consecutive_windows)
     health: list[DetectionEvent] = []
     # Prediction health windows over the same stretch of stream a drift window covers, so the
@@ -227,7 +236,7 @@ def run_loop(
             logger.warning(f"skipping unprofilable frame {msg.key!r}: {exc}")
             return
         counts["sampled"] += 1
-        window.add(reading, ref)
+        window.add(reading, ref, msg.value)
         if len(window.readings) < monitoring.window_frames:
             return
 

@@ -158,6 +158,7 @@ parent therefore reads *trained → priced → observed*.
 |---|---|
 | Metrics | `drift/<statistic>/score`, `drift/<statistic>/threshold`, `drift/n_crossed` |
 | Artifact | `episodes/episode-NNNN.json` — the crossing scores, and the window's footage as one index span per clip |
+| Evidence frames | `episodes/episode-NNNN/<sequence>_<frame_index>.jpg` — the window's first, middle and last sampled frame, byte-for-byte as published, nothing drawn. A live feed's frames leave `raw-frames` when its retention expires; these outlive it |
 | Tags | the model, its version, its training run, its data version |
 
 What is stored is the **opening** window: that is what the fire-once rule reports and what the
@@ -263,3 +264,8 @@ recording path — on a throwaway consumer group, and delete the polluted record
   all.
 - **Alert rules.** The readings are shaped for alerting (score beside bar, episodes as a
   counter, an age gauge that reads stalled), but no rules ship.
+- **Frames on alerts.** Considered and rejected: nothing reads alerts but Console, and attaching
+  frames would turn the anomaly consumer into a `raw-frames` reader matching JPEGs to detection
+  events. An alert names its frame by address. Revisit when an alert consumer (operator UI, pager)
+  exists. A frames bucket in the streaming stack goes with it, and so does rendering from frame
+  addresses on demand: a live feed's frames are gone once `raw-frames` retention expires.

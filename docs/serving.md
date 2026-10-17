@@ -66,6 +66,11 @@ way in, and box rescale + confidence filter on the way out — **no NMS**.
 That math lives in one owned pure module (numpy + headless OpenCV) and is pinned
 **byte-for-byte** against golden fixtures generated with real ultralytics preprocessing.
 
+Served detections reproduce the evaluated mAP only when scored the way `model.val` scores: a
+confidence floor near its 0.001 and the same `max_det` cap. Any higher floor, including
+`SERVING__CONF_THRESHOLD`, cuts the PR curve's low-confidence tail and lowers mAP though the model
+is unchanged, so an online-accuracy metric must score at a near-zero floor.
+
 ## API
 
 | Endpoint | Method | Purpose |

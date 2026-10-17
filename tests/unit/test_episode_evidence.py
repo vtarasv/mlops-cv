@@ -177,6 +177,19 @@ def test_the_frames_are_recorded_by_address(client) -> None:
     assert payload["ranges"] == [{"sequence": "seqA", "first": 0, "last": 10, "n_frames": 3}]
 
 
+def test_the_evidence_frames_are_stored_as_published_beside_the_episode(client) -> None:
+    recorder = open_record(_resolved(), client=client)
+    window = _window()
+    evidence = tuple((ref, f"jpeg-{ref.frame_index}".encode()) for ref in window.frames)
+    recorder(DriftWindow(window.verdict, window.frames, evidence))
+
+    assert client.uploads == {
+        (recorder.run_id, f"{EPISODES_ARTIFACT_PATH}/episode-0000/seqA_0.jpg"): b"jpeg-0",
+        (recorder.run_id, f"{EPISODES_ARTIFACT_PATH}/episode-0000/seqA_5.jpg"): b"jpeg-5",
+        (recorder.run_id, f"{EPISODES_ARTIFACT_PATH}/episode-0000/seqA_10.jpg"): b"jpeg-10",
+    }
+
+
 def test_each_episode_gets_its_own_artifact(client) -> None:
     recorder = open_record(_resolved(), client=client)
     recorder(_window())

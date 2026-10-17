@@ -281,9 +281,13 @@ A window in which any single statistic's drift score exceeds its bar.
 _Avoid_: anomalous window, alarm
 
 **Episode evidence**:
-The record of a drift episode's opening window: the crossing scores and the frames the window
-covered. It is stored on the champion's drift record run.
+The record of a drift episode's opening window: the crossing scores, the frames the window
+covered, and its evidence frames. It is stored on the champion's drift record run.
 _Avoid_: drift report, incident log
+
+**Evidence frames**:
+A few of an episode's opening-window frames kept as images, so the footage outlives the stream.
+_Avoid_: snapshots, thumbnails
 
 **Prediction health**:
 Detection-rate, confidence and class-share readings shown next to drift scores. They give

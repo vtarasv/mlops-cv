@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import contextmanager
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -70,6 +71,7 @@ class FakeRegistry:
         self.history: dict[tuple[str, str], list[SimpleNamespace]] = {}
         self.texts: list[tuple[str, str, str]] = []
         self.artifacts: set[tuple[str, str]] = set()
+        self.uploads: dict[tuple[str, str], bytes] = {}
         self.asked: list[tuple] = []
         self._counter = 0
 
@@ -164,6 +166,10 @@ class FakeRegistry:
 
     def log_text(self, run_id: str, text: str, artifact_file: str) -> None:
         self.texts.append((run_id, text, artifact_file))
+
+    def log_artifacts(self, run_id: str, local_dir: str, artifact_path: str) -> None:
+        for file in sorted(Path(local_dir).iterdir()):
+            self.uploads[(run_id, f"{artifact_path}/{file.name}")] = file.read_bytes()
 
     def list_artifacts(self, run_id: str, path: str) -> list[SimpleNamespace]:
         return [

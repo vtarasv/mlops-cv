@@ -257,6 +257,23 @@ def test_the_episode_carries_its_scores_and_the_frames_it_saw(reference, metrics
     assert episode.frames[0].sequence == "uav0000161"
 
 
+def test_the_episode_keeps_the_first_middle_and_last_frame_as_published(reference, metrics) -> None:
+    """The footage outlives the stream's retention: three frames, byte-for-byte."""
+    settings = _settings(sample_every=1, window_frames=5)
+    payloads = [_frame_bytes(30 + i) for i in range(10)]
+    opened: list[DriftWindow] = []
+    frames = [_frame(payload, index=i) for i, payload in enumerate(payloads)]
+
+    _drive(settings, reference, metrics, frames, on_episode=opened.append)
+
+    (episode,) = opened
+    assert [(ref.frame_index, image) for ref, image in episode.evidence] == [
+        (5, payloads[5]),
+        (7, payloads[7]),
+        (9, payloads[9]),
+    ]
+
+
 def test_a_sink_that_fails_does_not_take_the_monitor_down(reference, metrics) -> None:
     """Recording is best effort: an episode is the worst moment to lose the live signal too."""
     settings = _settings(sample_every=1, window_frames=1)

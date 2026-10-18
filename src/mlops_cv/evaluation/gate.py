@@ -15,6 +15,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+GATE_PASSED_TAG = "gate.passed"
+
 
 @dataclass(frozen=True)
 class GateThresholds:
@@ -137,8 +139,29 @@ def fetch_champion_metrics(
     return dict(champion.training_run(version, registry=registry).data.metrics)
 
 
-def promote(model_name: str, version: str | int, alias: str = "champion") -> None:
-    """Point the champion ``alias`` at ``version`` (MLflow 3 aliases replace deprecated stages)."""
-    from mlflow import MlflowClient
+def promote(settings: Settings, version: str | int, *, registry: Any | None = None) -> None:
+    """Point the champion alias at ``version``; only a servable gate winner."""
+    from mlops_cv.optimize.variants import servable_tags
+    from mlops_cv.orchestration.handoff import best_weights_uri
+    from mlops_cv.startup import StartupError
+    from mlops_cv.tracking import champion, client
 
-    MlflowClient().set_registered_model_alias(model_name, alias, str(version))
+    name = settings.mlflow.registered_model
+    reg = client.registry(settings, injected=registry)
+    entity = reg.get_model_version(name, str(version))
+    run = champion.training_run(entity, registry=reg)
+    weights = f"MODEL={best_weights_uri(run.info.run_id)} RUN_ID={run.info.run_id}"
+    if run.data.tags.get(GATE_PASSED_TAG) != "True":
+        raise StartupError(
+            f"not promoting v{version}: its training run carries no passing gate verdict "
+            f"({GATE_PASSED_TAG}={run.data.tags.get(GATE_PASSED_TAG)}). Run `make eval {weights}`."
+        )
+    if missing := [
+        t for t in servable_tags(settings.optimize.server_imgsz) if t not in entity.tags
+    ]:
+        raise StartupError(
+            f"not promoting v{version}: it is not servable (missing {', '.join(missing)}). "
+            f"Run `make optimize {weights}`."
+        )
+    reg.set_registered_model_alias(name, settings.mlflow.champion_alias, str(version))
+    logger.info(f"promoted v{version} -> alias {settings.mlflow.champion_alias!r}")

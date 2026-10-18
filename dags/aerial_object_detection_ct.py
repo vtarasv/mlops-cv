@@ -1,5 +1,5 @@
 """Continuous-training DAG: ensure data -> profile -> validate -> train -> evaluate -> gate ->
-promote/skip.
+optimize -> promote/skip.
 
 Thin orchestration over ``mlops_cv``: decisions run in-process (pure code), the heavy work runs
 in ``DockerOperator`` containers on the shared platform network — GPU train/eval in the train
@@ -10,9 +10,8 @@ Container contract (owned by ``mlops_cv.orchestration.handoff`` — both ends im
 the DAG builds each container's command there, ``train`` replies with a ``TrainHandoff``
 line (its last stdout line = XCom), and ``evaluate`` logs test metrics + report + visuals
 onto the same training run and replies with the ``GateVerdict`` line the branch decides
-on. The challenger is promoted to the ``champion`` registry alias only on a gate pass, and the
-new champion's serving variants are built and benchmarked (``optimize``) — only champions are
-served.
+on. On a gate pass the challenger's serving variants are built and benchmarked (``optimize``),
+then it is promoted to the ``champion`` registry alias — only a servable version is promoted.
 """
 
 from __future__ import annotations
@@ -207,7 +206,7 @@ def aerial_object_detection_ct() -> None:
             f"gate: passed={verdict.passed} candidate={verdict.candidate_primary} "
             f"champion={verdict.champion_primary}"
         )
-        return "promote" if verdict.passed else "skip_promotion"
+        return "optimize" if verdict.passed else "skip_promotion"
 
     optimize = DockerOperator(
         task_id="optimize",
@@ -217,16 +216,11 @@ def aerial_object_detection_ct() -> None:
 
     @task
     def promote(train_info: dict[str, str]) -> None:
-        """Point the champion alias at the challenger version (the gate already passed)."""
+        """Point the champion alias at the challenger version (gate passed, variants published)."""
         from mlops_cv.config import get_settings
         from mlops_cv.evaluation.gate import promote as set_champion_alias
-        from mlops_cv.tracking import client
 
-        settings = get_settings()
-        client.configure(settings)
-        alias = settings.mlflow.champion_alias
-        set_champion_alias(settings.mlflow.registered_model, train_info["version"], alias)
-        logger.info(f"promoted v{train_info['version']} -> alias {alias!r}")
+        set_champion_alias(get_settings(), train_info["version"])
 
     subset_choice = check_subset()
     profiled_choice = check_profiled()
@@ -242,8 +236,8 @@ def aerial_object_detection_ct() -> None:
     profile >> validated
     validated >> train
     info >> evaluate
-    verdict >> [promoted, skipped]
-    promoted >> optimize
+    verdict >> [optimize, skipped]
+    optimize >> promoted
 
 
 aerial_object_detection_ct()

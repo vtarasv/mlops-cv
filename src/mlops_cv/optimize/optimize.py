@@ -240,6 +240,7 @@ def main(argv: list[str] | None = None) -> int:
                 graphs[variant.imgsz], build_s = artifacts.export_graph(
                     weights, variant.imgsz, work_dir
                 )
+                publish(graphs[variant.imgsz], "onnx", graph_tag(variant.imgsz))
 
             if variant.runtime == TORCH:
                 loadable: Path = Path(weights)
@@ -303,9 +304,6 @@ def main(argv: list[str] | None = None) -> int:
             primary = "—" if latest.primary is None else f"{latest.primary:.4f}"
             p50 = "—" if latest.latency(50) is None else f"{latest.latency(50):.2f}ms"
             logger.info(f"{variant.name}: mAP50-95={primary} p50={p50} ({device})")
-
-        for imgsz, graph in sorted(graphs.items()):
-            publish(graph, "onnx", graph_tag(imgsz))
 
         md_path, csv_path = report_mod.write_report(work_dir, measurements, model_ref=model_ref)
         mlflow.log_artifact(str(md_path))

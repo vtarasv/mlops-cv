@@ -126,6 +126,9 @@ class FakeRegistry:
             raise _missing(f"Model Version (name={name}, version={version}) not found")
         return self.versions[version]
 
+    def set_registered_model_alias(self, name: str, alias: str, version: str) -> None:
+        self.aliases[alias] = version
+
     def search_model_versions(self, filter_string: str) -> list[FakeVersion]:
         self.asked.append(("search", filter_string))
         match = re.fullmatch(r"run_id='(.*)' and name='(.*)'", filter_string)

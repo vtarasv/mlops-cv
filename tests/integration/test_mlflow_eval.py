@@ -1,5 +1,5 @@
 """Integration tests for the eval MLflow glue against the live stack: ``resolve_model`` (download)
-and ``registered_version`` (which registered version ``--promote`` aliases).
+and ``registered_version`` (which registered version ``make promote`` aliases).
 
 Requires the MLflow stack up and the ``training`` uv group.
 """

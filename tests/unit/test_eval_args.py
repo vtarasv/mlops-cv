@@ -20,7 +20,6 @@ def test_defaults_from_settings() -> None:
     assert args.imgsz == s.training.imgsz
     assert args.device == s.training.device
     assert args.batch == 8
-    assert args.promote is False
     assert args.latency_enabled is True
     assert args.demos_enabled is True
     assert args.crops_enabled is True
@@ -42,7 +41,6 @@ def test_flag_overrides() -> None:
             "m",
             "--imgsz",
             "320",
-            "--promote",
             "--no-latency",
             "--no-demos",
             "--no-crops",
@@ -53,7 +51,6 @@ def test_flag_overrides() -> None:
         ]
     )
     assert args.imgsz == 320
-    assert args.promote is True
     assert args.latency_enabled is False
     assert args.demos_enabled is False
     assert args.crops_enabled is False

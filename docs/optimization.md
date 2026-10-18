@@ -14,7 +14,7 @@ There are two deployment targets:
   measures fastest on that hardware.
 
 The harness runs by hand against any model, and automatically in the continuous-training
-pipeline whenever a model is promoted to champion.
+pipeline on every gate winner, before it is promoted to champion.
 
 ```mermaid
 flowchart LR
@@ -80,7 +80,7 @@ uv run python -m mlops_cv.optimize --variants trt-fp16-640
 
 `--model` takes any MLflow model URI; with none, the champion alias is optimized — and if no
 champion has been promoted yet - exits.
-The pipeline passes the promoted version's own `runs:/` weights URI instead. `--run-id`
+The pipeline passes the gate winner's own `runs:/` weights URI instead. `--run-id`
 names the model version's training run — the record lands on a **child** of it, and
 re-optimizing the same version reuses that child rather than adding a sibling. Without it the
 record goes to a standalone `optimize-*` run. `--variants` filters the ladder; `--split` /
@@ -144,8 +144,8 @@ readings, accuracy and latency alike, sit under `optimize/<variant>/device/<labe
 
 ## In the continuous-training pipeline
 
-The pipeline runs optimization **only after a promotion** — the champion is the only model that
-will be served. The task is addressed exactly like evaluation:
+The pipeline runs optimization **only on a gate pass, before promotion**, because promotion
+refuses a version that is not servable. The task is addressed exactly like evaluation:
 by the training run's own weights URI, one identifier keying the whole
 container chain.
 

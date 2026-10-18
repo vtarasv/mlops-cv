@@ -70,7 +70,8 @@ def test_ct_dag_topology(dagbag) -> None:
     assert down["train"] == {"parse_train_output"}
     assert down["parse_train_output"] == {"evaluate", "promote"}  # promote templates the version
     assert down["evaluate"] == {"gate"}
-    assert down["gate"] == {"promote", "skip_promotion"}  # the champion/challenger branch
+    assert down["gate"] == {"optimize", "skip_promotion"}  # the champion/challenger branch
+    assert down["optimize"] == {"promote"}
 
 
 def test_ct_dag_branch_joins_survive_skipped_paths(dagbag) -> None:
@@ -87,10 +88,11 @@ def test_ct_dag_run_policy(dagbag) -> None:
     assert ct.params["epochs"] == 3
 
 
-def test_optimization_runs_only_after_a_promotion(dagbag) -> None:
-    """Only a promoted model is ever served, so only a promoted model earns the GPU minutes."""
+def test_optimize_sits_between_the_gate_and_promotion(dagbag) -> None:
+    """Only a gate winner earns the GPU minutes; only a servable version becomes the champion."""
     ct = dagbag.dags[CT_DAG]
-    assert ct.get_task("optimize").upstream_task_ids == {"promote"}
+    assert ct.get_task("optimize").upstream_task_ids == {"gate"}
+    assert ct.get_task("promote").upstream_task_ids == {"optimize", "parse_train_output"}
     assert "optimize" not in ct.get_task("skip_promotion").downstream_task_ids
 
 

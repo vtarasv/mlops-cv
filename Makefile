@@ -88,10 +88,8 @@ train: mlflow-up
 # Evaluate an MLflow model -> test metrics + report + gate + demo videos + TP/FP crops in MLflow.
 # Pass MODEL=<models:/aerial-object-detector@champion | runs:/<run_id>/weights/best.pt>.
 # Add RUN_ID=<train run id> to log onto that run (one run per model version) instead of a new one.
-# Add PROMOTE=1 to set the champion alias on a gate pass (the DAG promotes from its own task).
 eval: mlflow-up
-	uv run python -m mlops_cv.evaluation --model "$(MODEL)" $(if $(RUN_ID),--run-id "$(RUN_ID)") \
-		$(if $(PROMOTE),--promote)
+	uv run python -m mlops_cv.evaluation --model "$(MODEL)" $(if $(RUN_ID),--run-id "$(RUN_ID)")
 
 # Build a model's serving variants + benchmark them -> optimization report in MLflow.
 # Defaults to the champion; pass MODEL=<uri> for another, RUN_ID=<train run id> to record on a
@@ -99,6 +97,11 @@ eval: mlflow-up
 optimize: mlflow-up
 	uv run python -m mlops_cv.optimize $(if $(MODEL),--model "$(MODEL)") \
 		$(if $(RUN_ID),--run-id "$(RUN_ID)") $(if $(VARIANTS),--variants "$(VARIANTS)")
+
+# Point the champion alias at RUN_ID=<train run>'s model version. Refuses one whose run lacks a
+# passing gate verdict (`make eval ... RUN_ID=<id>`) or that is not servable (`make optimize`).
+promote: mlflow-up
+	uv run python -m mlops_cv.evaluation.promote --run-id "$(RUN_ID)"
 
 # Score the edge device's detections dumps on this machine's test split and gate them against
 # the desktop readings -> optimize.measured.<label> on a pass. Run after `python -m

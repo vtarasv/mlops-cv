@@ -77,3 +77,15 @@ run — training itself never reads the test split.
 The subset is a small, strided slice for fast local iteration. To train on more data, rebuild it
 with a smaller `--frame-stride` (or more sequences) and raise `--epochs`; the recipe and logging are
 unchanged.
+
+Training reads a local subset (another host pulls one, see
+[data.md](data.md#moving-the-data-to-an-object-store)), and it is GPU-bound.
+Sharded reads (WebDataset, LitData, MosaicML Streaming) were
+considered and rejected because they need a custom ultralytics dataset, trainer and validator,
+mosaic's random access defeats shard locality, and they speed up nothing here. Reading straight from
+an object store (which ultralytics can't do without a FUSE mount or a custom dataset) turns each
+image into a GET; data that fits in RAM absorbs that with
+`cache="ram"`, one GET per image per run. Shards are the answer only when the data is too big for
+RAM and for local disk and is read from a bucket with real network latency: then per-object GETs
+dominate and no `cache` mode helps. Start from LitData's `StreamingRawDataset`, which reads the
+existing files without a conversion step.

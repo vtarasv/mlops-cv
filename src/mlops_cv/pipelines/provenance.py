@@ -14,7 +14,12 @@ from pathlib import Path
 
 def manifest_sha256(manifest_path: str | Path) -> str:
     """Content hash of a dataset manifest — the provenance key for artifacts derived from it."""
-    return hashlib.sha256(Path(manifest_path).read_bytes()).hexdigest()
+    return manifest_bytes_sha256(Path(manifest_path).read_bytes())
+
+
+def manifest_bytes_sha256(data: bytes) -> str:
+    """:func:`manifest_sha256` of manifest bytes read some other way (e.g. from an object store)."""
+    return hashlib.sha256(data).hexdigest()
 
 
 def stamp_payload(manifest_sha: str, params: dict) -> str:

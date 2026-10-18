@@ -166,6 +166,17 @@ def test_main_without_demo_clips(raw: Path, tmp_path: Path) -> None:
     assert not demo_store_present(out)
 
 
+def test_a_reingest_drops_stale_frames(raw: Path, tmp_path: Path) -> None:
+    out = tmp_path / "subset"
+    argv = [f"--raw-dir={raw}", f"--output-dir={out}", "--demo-clips=none"]
+    assert main(argv) == 0
+    stale = out / "images" / "train" / "STALE.jpg"
+    stale.write_bytes(b"stale")
+    assert main(argv) == 0
+    assert not stale.exists()
+    validate_dataset(out)
+
+
 def test_main_rejects_unknown_sequence(raw: Path, tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="nope"):
         main([f"--raw-dir={raw}", f"--output-dir={tmp_path / 'x'}", "--sequences", "nope"])
@@ -179,3 +190,14 @@ def test_main_rejects_bad_stride(raw: Path, tmp_path: Path) -> None:
 def test_missing_raw_split_raises_download_hint(tmp_path: Path) -> None:
     with pytest.raises(RuntimeError, match="docs/data.md"):
         main([f"--raw-dir={tmp_path / 'empty'}", f"--output-dir={tmp_path / 'x'}"])
+
+
+@pytest.mark.parametrize(("argv", "expected"), [([], 24 * 3600), (["--job_server_timeout=60"], 60)])
+def test_pipelines_outlast_prisms_default_job_deadline(argv: list[str], expected: int) -> None:
+    """Prism kills a job past --job_server_timeout (300 s); a full bucket ingest took 584 s."""
+    from apache_beam.options.pipeline_options import PipelineOptions, PortableOptions
+
+    from mlops_cv.pipelines import beam_argv
+
+    options = PipelineOptions(beam_argv(argv)).view_as(PortableOptions)
+    assert options.job_server_timeout == expected

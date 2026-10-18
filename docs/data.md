@@ -144,12 +144,13 @@ split,sequence,frame_index,image_relpath,label_relpath,width,height,n_boxes,n_pe
 
 ## Moving the data to an object store
 
-Every reader works on a local directory, and each consumer stamps its own dataset YAML, so a subset
-copied onto another host works there unchanged. Move it when a second compute host needs it (a
-cloud GPU, a second trainer, the Mac), for durability (the store must sit on separate hardware:
-the local RustFS shares this disk, so it is no backup), or when the data outgrows the disk. Compute
-that can't see a local disk (Dataflow workers, managed Airflow or Kubernetes tasks) needs native
-object-store paths instead ([batch-pipeline.md](batch-pipeline.md#cloud-migration)).
+The ultralytics consumers read a local directory, and each stamps its own dataset YAML, so a
+subset copied onto another host works there unchanged. Move it when a second compute host needs
+it (a cloud GPU, a second trainer, the Mac), for durability (the store must sit on separate
+hardware: the local RustFS shares this disk, so it is no backup), or when the data outgrows the
+disk. Ingest and profiling can write the store directly
+([batch-pipeline.md](batch-pipeline.md#cloud-migration)); the ultralytics consumers still need the
+pull below.
 
 Any object store with a sync CLI works. Give the data a bucket (or container) of its own, never
 the MLflow artifact one, and keep these rules whichever tool you use:

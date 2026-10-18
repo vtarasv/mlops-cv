@@ -4,8 +4,8 @@ Two [Apache Beam](https://beam.apache.org/) pipelines own the dataset side of th
 training loop: **ingestion** (raw dataset → the training subset + demo store) and
 **profiling** (the subset → a dataset-quality report + the drift baseline). They are Beam
 rather than scripts for **portability**: the identical `run()` executes on DirectRunner locally
-and on a managed Beam runner (Dataflow, Flink, Spark). Today they read and write **local paths**;
-object-store paths need the fixes in [Cloud migration](#cloud-migration).
+and on a managed Beam runner (Dataflow, Flink, Spark). They read and write **local paths or
+object-store URIs** alike ([Cloud migration](#cloud-migration)).
 
 ## Ingestion: raw → subset + demo store
 
@@ -143,21 +143,23 @@ profiling whenever the stamp is stale.
 
 ## Cloud migration
 
-Another host gets the data by syncing the subset with its store's CLI
-([data.md](data.md#moving-the-data-to-an-object-store)); the pipelines keep reading local paths.
-Workers that can't see a local disk (Dataflow, or tasks on managed Airflow or Kubernetes) need
-native object-store paths (`gs://`, `s3://`, `azfs://`) instead. Every file operation already
-goes through `FileSystems`, but those paths also need these fixes:
+Every file operation goes through Beam's `FileSystems`, so `--raw-dir`, `--output-dir` and
+`--input-dir` take a local path or an object-store URI (`s3://`, `gs://`, `azfs://`), in any mix:
+local raw → bucket subset works. Workers that can't see a local disk (Dataflow, tasks on managed
+Airflow or Kubernetes) use that; ultralytics consumers still read a local copy pulled with the
+store's CLI ([data.md](data.md#moving-the-data-to-an-object-store)).
 
-- The store's Beam extra in the lock: `apache-beam[gcp]`, `[aws]` or `[azure]`.
-- `FileSystems.set_options(options)` at the top of `run()`.
-- A stream copy (`FileSystems.open` → `FileSystems.create`): `FileSystems.copy` dispatches on the
-  source scheme, so local → object store fails.
-- A blob-safe output reset: `delete([root + "/"])` on blob stores only (`delete` without the `/`
-  is a silent no-op there, and a trailing `/` breaks the local delete).
-- A raised `--job_server_timeout`: Prism uses it as a gRPC deadline, so a job past 300 s dies.
+- **Stores**: no store's Beam extra is in the lock. Add the one you use to the `beam` group and
+  relock: `apache-beam[aws]` (tested on RustFS), `[gcp]` or `[azure]` (untested). Without it,
+  the first call on that scheme fails with Beam's "dependencies are not installed".
+- **Credentials** come from the store's standard environment, never pipeline flags.
 
-With those in, the cloud promotion is a runner swap plus staging flags, e.g. Dataflow:
+Prism kills any job past `--job_server_timeout` (300 s by default), so both pipelines default it to 24 h; pass the flag to override.
+
+Spread writing to a bucket over processes (Beam builds a store client per call):
+`--runner FnApiRunner --direct_running_mode=multi_processing --direct_num_workers=8`.
+
+The cloud promotion is then a runner swap plus staging flags, e.g. Dataflow:
 
 ```bash
 uv build   # dist/mlops_cv-0.1.0-py3-none-any.whl — ships the DoFn code to the workers

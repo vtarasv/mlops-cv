@@ -54,9 +54,12 @@ typecheck:
 test:
 	uv run pytest -m "not gpu and not docker"
 
-# Run all tests, including GPU and docker-marked ones.
+# The beam group's pin: test-all adds the S3 extra the lock leaves out at this version.
+BEAM_VERSION := $(shell sed -n 's/.*"apache-beam==\([^"]*\)".*/\1/p' pyproject.toml)
+
+# Run all tests, including GPU and docker-marked ones (plus the object-store test's S3 extra).
 test-all:
-	uv run pytest
+	uv run --with "apache-beam[aws]==$(BEAM_VERSION)" pytest
 
 # What CI runs: lint + format-check + tests.
 ci:

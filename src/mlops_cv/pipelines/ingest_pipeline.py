@@ -48,7 +48,7 @@ from mlops_cv.data.subset import (
     raw_split_dir,
 )
 from mlops_cv.evaluation.visualize import ClipSpec, load_demo_clips
-from mlops_cv.pipelines import query_counters
+from mlops_cv.pipelines import beam_argv, delete_tree, query_counters, stream_copy
 
 logger = logging.getLogger(__name__)
 
@@ -158,9 +158,7 @@ class MaterializeFrameDoFn(beam.DoFn):
         self.images_copied = Metrics.counter(COUNTER_NAMESPACE, "images_copied")
 
     def process(self, item: dict) -> Iterator[dict]:
-        FileSystems.copy(
-            [item["src_image"]], [FileSystems.join(self.output_dir, item["image_relpath"])]
-        )
+        stream_copy(item["src_image"], FileSystems.join(self.output_dir, item["image_relpath"]))
         with FileSystems.create(FileSystems.join(self.output_dir, item["label_relpath"])) as fh:
             fh.write(item["label_text"].encode("utf-8"))
         self.images_copied.inc()
@@ -211,9 +209,7 @@ class MaterializeDemoFrameDoFn(beam.DoFn):
         self.demo_frames_copied = Metrics.counter(COUNTER_NAMESPACE, "demo_frames_copied")
 
     def process(self, item: dict) -> None:
-        FileSystems.copy(
-            [item["src_image"]], [FileSystems.join(self.output_dir, item["dest_image"])]
-        )
+        stream_copy(item["src_image"], FileSystems.join(self.output_dir, item["dest_image"]))
         if item["label_text"] is not None:
             with FileSystems.create(FileSystems.join(self.output_dir, item["dest_label"])) as fh:
                 fh.write(item["label_text"].encode("utf-8"))
@@ -234,15 +230,9 @@ def _list_sequences(raw_dir: str, split: str) -> list[str]:
 
 
 def _prepare_output_dirs(output_dir: str, demo_sequences: list[str]) -> None:
-    """Clean rebuild: drop stale outputs, then pre-create every dir the workers write into.
-
-    ``FileSystems.copy`` does not create parent directories (and ``mkdirs`` raises on an
-    existing leaf), so everything is created here up front.
-    """
+    """Clean rebuild: drop stale outputs, then create every split and clip dir, empty or not."""
     for sub in (IMAGES_DIRNAME, LABELS_DIRNAME, DEMO_DIRNAME):
-        root = FileSystems.join(output_dir, sub)
-        if FileSystems.exists(root):
-            FileSystems.delete([root])
+        delete_tree(FileSystems.join(output_dir, sub))
     for sub in (IMAGES_DIRNAME, LABELS_DIRNAME):
         for split in SPLITS:
             FileSystems.mkdirs(FileSystems.join(output_dir, sub, split))
@@ -252,6 +242,7 @@ def _prepare_output_dirs(output_dir: str, demo_sequences: list[str]) -> None:
 
 def run(options: IngestOptions) -> int:
     """Execute the ingestion pipeline; assumes all options are fully resolved (see ``main``)."""
+    FileSystems.set_options(options)  # the reset and listing below run before the pipeline
     raw_dir, output_dir = options.raw_dir, options.output_dir
 
     elements = [
@@ -311,7 +302,7 @@ def run(options: IngestOptions) -> int:
 def main(argv: list[str] | None = None) -> int:
     settings = get_settings()
     logging.basicConfig(level=settings.log_level.upper(), format="%(message)s")
-    options = IngestOptions(argv)
+    options = IngestOptions(beam_argv(argv))
     if options.frame_stride < 1:
         raise ValueError("--frame-stride must be >= 1")
     # Settings-backed defaults, resolved at run time (never at class definition).

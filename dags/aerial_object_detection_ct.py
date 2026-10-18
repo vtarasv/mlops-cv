@@ -72,7 +72,7 @@ _TASK_ENV = {
     "TRAINING__WEIGHTS": WEIGHTS,
     "USER": HOST_USERNAME,  # getpass reads it before passwd, where the host uid has no entry
 }
-# rw: the ingest/profile tasks write the dataset here; ultralytics `cache=disk` writes .npy files.
+# rw: the ingest/profile tasks write the dataset here; ultralytics writes its labels/*.cache.
 _MOUNTS = [
     Mount(source=SUBSET_DIR, target=SUBSET_DIR, type="bind"),
     Mount(source=WEIGHTS_DIR, target=WEIGHTS_DIR, type="bind"),

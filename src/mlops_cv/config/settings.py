@@ -40,7 +40,7 @@ class TrainingSettings(BaseModel):
     nbs: int = 64  # nominal batch size -> accumulate = round(nbs / batch) for the small VRAM budget
     patience: int = 20
     workers: int = 4
-    cache: str = "disk"
+    cache: bool | str = False  # or "ram"/"disk": neither measured faster locally
     amp: bool = True
     device: str = "0"
 

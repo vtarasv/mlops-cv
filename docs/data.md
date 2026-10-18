@@ -163,6 +163,9 @@ the MLflow artifact one, and keep these rules whichever tool you use:
 - **Exclude** `*.npy`, `*.cache` and `*.yaml` both ways: ultralytics' caches and the per-host
   stamped YAMLs. The delete must leave excluded files alone, or a pull wipes that host's caches
   and stamps.
+- **Watch for `.npy` files.** ultralytics loads any `.npy` beside a frame in place of the JPEG,
+  unchecked. Training writes none unless `TRAINING__CACHE=disk`; if a host has some, delete them
+  after a pull that changed frames (a re-ingest clears them).
 
 `manifest.csv` comes along, so training against the same MLflow server finds its data version,
 and `profile/` with its stamp stays current. Pull direction shown; swap the arguments to push:

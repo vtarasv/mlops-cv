@@ -16,6 +16,8 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+import mlops_cv  # noqa: F401  sets YOLO_CONFIG_DIR before any test imports ultralytics
+
 # --- the MLflow registry -------------------------------------------------------------------
 
 

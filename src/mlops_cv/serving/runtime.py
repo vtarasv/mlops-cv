@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import ast
 import logging
+import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, Protocol
@@ -123,6 +124,11 @@ class Detector:
             f"serving {model.name} v{model.version} from {graph.name} "
             f"at imgsz {detector.imgsz} ({len(detector.names)} classes)"
         )
+        # The first run is the slow cold one; pay it here, before the service listens.
+        started = time.perf_counter()
+        warmup = np.zeros((1, 3, detector.imgsz, detector.imgsz), np.float32)
+        detector.session.run(None, {detector._input: warmup})
+        logger.info(f"warmed up the graph in {time.perf_counter() - started:.1f} s")
         return detector
 
     def detect(self, image: bytes, conf_threshold: float) -> list[Box]:

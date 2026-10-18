@@ -105,14 +105,12 @@ def test_convert_sequence_dofn_strides_and_skips_empty(raw: Path, tmp_path: Path
 
 def test_main_end_to_end(raw: Path, demo_yaml: Path, tmp_path: Path) -> None:
     out = tmp_path / "subset"
-    template = Path("configs/datasets/VisDrone-VID-merged.yaml").resolve()
     assert (
         main(
             [
                 f"--raw-dir={raw}",
                 f"--output-dir={out}",
                 f"--frame-stride={STRIDE}",
-                f"--template-yaml={template}",
                 f"--demo-clips={demo_yaml}",
                 "--runner=DirectRunner",
             ]
@@ -153,20 +151,13 @@ def test_main_end_to_end(raw: Path, demo_yaml: Path, tmp_path: Path) -> None:
     src = raw / RAW_SPLIT_DIRS["test"] / "sequences" / "seqC" / "0000002.jpg"
     assert (demo / "images" / "seqC" / "0000002.jpg").read_bytes() == src.read_bytes()
 
-    # Stamped dataset YAML with an absolute path.
-    yaml = pytest.importorskip("yaml")
-    stamped = yaml.safe_load((out / template.name).read_text(encoding="utf-8"))
-    assert stamped["path"] == str(out.resolve())
-
 
 def test_main_without_demo_clips(raw: Path, tmp_path: Path) -> None:
     out = tmp_path / "subset"
-    template = Path("configs/datasets/VisDrone-VID-merged.yaml").resolve()
     argv = [
         f"--raw-dir={raw}",
         f"--output-dir={out}",
         f"--frame-stride={STRIDE}",
-        f"--template-yaml={template}",
         "--demo-clips=none",
         "--runner=DirectRunner",
     ]

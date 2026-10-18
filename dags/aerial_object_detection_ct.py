@@ -57,8 +57,8 @@ MLFLOW_URI = os.environ["MLFLOW__TRACKING_URI"]
 HOST_USER = os.environ["HOST_USER"]  # uid:gid, so bind-mounted outputs stay host-user-owned
 HOST_USERNAME = os.environ["HOST_USERNAME"]
 
-# Host paths are bind-mounted at identical container paths ("path parity") so the absolute
-# `path:` stamped into the generated dataset YAML resolves inside the task containers too.
+# Host paths are bind-mounted at identical container paths ("path parity") so tasks and the
+# scheduler-side checks share one subset path, the one each task stamps into its dataset YAML.
 WEIGHTS_DIR = str(Path(WEIGHTS).parent)  # mount the dir: the file only exists after 1st download
 
 NEW_DATA_ASSET = Asset("new-training-data")

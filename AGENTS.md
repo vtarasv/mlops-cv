@@ -117,7 +117,7 @@ pydantic + yaml: the Airflow and serving images import them.
 ## Gotchas
 
 - ultralytics resolves a relative dataset-YAML `path:` against its global `datasets_dir`, not the
-  repo. Use the YAML the ingest pipeline generates (absolute `path:`).
+  repo. Use `data.subset.dataset_yaml(settings)`, which stamps an absolute `path:`.
 - ultralytics settings are repo-local via `YOLO_CONFIG_DIR=.ultralytics/`: `.envrc` (direnv)
   exports it and the `mlops_cv` package `__init__` defaults it. Containers don't care where it
   lands.

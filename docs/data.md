@@ -6,9 +6,9 @@ detection) benchmark: drone-captured video frames with the 10 raw object categor
 ```mermaid
 flowchart LR
   raw["VisDrone2019-VID-{train,val,test-dev}/<br/>sequences/ + annotations/"]
-  raw -->|"ingest pipeline<br/>(frame-stride, 3-class merge)"| subset["&lt;DATA__SUBSET_DIR&gt;/<br/>images/ · labels/ · demo/ · manifest.csv · YAML"]
+  raw -->|"ingest pipeline<br/>(frame-stride, 3-class merge)"| subset["&lt;DATA__SUBSET_DIR&gt;/<br/>images/ · labels/ · demo/ · manifest.csv"]
   subset -->|validate| gate["pass / fail-fast"]
-  subset -->|absolute-path YAML| yolo["ultralytics train / val"]
+  subset -->|"dataset YAML stamped by the consumer"| yolo["ultralytics train / val"]
 ```
 
 ## Download
@@ -91,7 +91,7 @@ consecutive frames of a video. Flags:
 - `--sequences NAME ...` — restrict to specific sequences (default: all) for a quick smoke.
 - `--demo-clips PATH` — demo-clips YAML for the demo store (default
   `configs/demo_clips.yaml`; `none` disables).
-- `--raw-dir / --output-dir / --template-yaml` — override the `Settings.data.*` defaults.
+- `--raw-dir / --output-dir` — override the `Settings.data.*` defaults.
 
 It writes a self-contained YOLO tree to `DATA__SUBSET_DIR` (default: `data/visdrone-vid-small`
 inside the repo; any absolute path works — training, validation, evaluation, and the CT DAG all
@@ -104,12 +104,17 @@ read the same setting, and the directory's basename becomes the MLflow dataset n
   demo/{images,labels}/<sequence>/<NNNNNNN>.{jpg,txt}   # full-rate demo-clip store (evaluation)
   profile/{profile.json,quality_report.csv}             # written by the profiling pipeline
   manifest.csv
-  VisDrone-VID-merged.yaml
+  VisDrone-VID-merged.yaml                              # stamped by each consumer, see below
 ```
 
-Point training/validation at generated YAML file:
+Ingest writes no dataset YAML. Each ultralytics consumer (training, evaluation, optimize; the edge
+gate writes a test-only `-test.yaml`) stamps the committed template next to the data with `path:`
+set to its own absolute `DATA__SUBSET_DIR`, so the YAML always names the reading machine's copy.
+For an ad-hoc `yolo` run, stamp it first:
 
 ```bash
+uv run python -c "from mlops_cv.config import get_settings; \
+from mlops_cv.data.subset import dataset_yaml; print(dataset_yaml(get_settings()))"
 yolo val model=yolo26s.pt data=<DATA__SUBSET_DIR>/VisDrone-VID-merged.yaml
 ```
 
@@ -136,3 +141,34 @@ class-distribution check:
 ```
 split,sequence,frame_index,image_relpath,label_relpath,width,height,n_boxes,n_person,n_vehicle,n_two_three_wheeler
 ```
+
+## Moving the data to an object store
+
+Every reader works on a local directory, and each consumer stamps its own dataset YAML, so a subset
+copied onto another host works there unchanged. Move it when a second compute host needs it (a
+cloud GPU, a second trainer, the Mac), for durability (the store must sit on separate hardware:
+the local RustFS shares this disk, so it is no backup), or when the data outgrows the disk. Compute
+that can't see a local disk (Dataflow workers, managed Airflow or Kubernetes tasks) needs native
+object-store paths instead ([batch-pipeline.md](batch-pipeline.md#cloud-migration)).
+
+Any object store with a sync CLI works. Give the data a bucket (or container) of its own, never
+the MLflow artifact one, and keep these rules whichever tool you use:
+
+- **Push** `DATA__SUBSET_DIR` from the host that ran ingest, again after each re-ingest, deleting
+  remote files the subset no longer has. Push the raw dataset the same way if another host must
+  re-ingest.
+- **Pull** into the other host's `DATA__SUBSET_DIR`, deleting local files the store doesn't have.
+  Keep the basename: it is the MLflow dataset name.
+- **Exclude** `*.npy`, `*.cache` and `*.yaml` both ways: ultralytics' caches and the per-host
+  stamped YAMLs. The delete must leave excluded files alone, or a pull wipes that host's caches
+  and stamps.
+
+`manifest.csv` comes along, so training against the same MLflow server finds its data version,
+and `profile/` with its stamp stays current. Pull direction shown; swap the arguments to push:
+
+| Store | Command |
+|---|---|
+| S3 or S3-compatible | `aws s3 sync <uri> <dir> --delete --exclude '*.npy' --exclude '*.cache' --exclude '*.yaml'` |
+| GCS | `gcloud storage rsync -r --delete-unmatched-destination-objects --exclude '.*\.(npy\|cache\|yaml)$' <uri> <dir>` |
+| Azure Blob | `azcopy sync <url> <dir> --delete-destination=true --exclude-pattern '*.npy;*.cache;*.yaml'` |
+| Any (one tool) | `rclone sync <remote:path> <dir> --exclude '*.{npy,cache,yaml}'` |

@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 
 from mlops_cv import benchmark as benchmark_mod
 from mlops_cv.config import Settings, get_settings
+from mlops_cv.data.subset import dataset_yaml
 from mlops_cv.optimize import artifacts
 from mlops_cv.optimize import report as report_mod
 from mlops_cv.optimize.report import VariantMeasurement
@@ -159,7 +160,7 @@ def main(argv: list[str] | None = None) -> int:
         torch.zeros(1, device="cuda")
 
     opt = settings.optimize
-    data_yaml = (settings.data.subset_dir / settings.data.dataset_yaml.name).resolve()
+    data_yaml = dataset_yaml(settings)
     chosen = select(
         ladder(opt.server_imgsz, opt.edge_imgsz),
         args.variants.split(",") if args.variants else None,

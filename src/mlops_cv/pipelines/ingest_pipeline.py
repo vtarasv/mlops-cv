@@ -3,8 +3,8 @@
 Keeps **every** train/val/test sequence (max scene diversity) and shrinks the set by
 ``--frame-stride`` (keep every Nth 1-based frame), which removes near-duplicate consecutive
 video frames. Kept frames land as flattened ``images|labels/{split}/<seq>_<NNNNNNN>.{jpg,txt}``
-plus a ``manifest.csv`` and an absolute-path copy of the dataset YAML. Only frames with at least
-one surviving box are materialized.
+plus a ``manifest.csv``; each consumer stamps its own dataset YAML. Only frames with at least one
+surviving box are materialized.
 
 The pipeline also materializes the **demo store**: for the clips in ``configs/demo_clips.yaml``
 it copies ALL frames (full frame rate, empties included) to ``demo/images/<seq>/`` with
@@ -46,7 +46,6 @@ from mlops_cv.data.subset import (
     image_relpath,
     label_relpath,
     raw_split_dir,
-    stamp_dataset_yaml,
 )
 from mlops_cv.evaluation.visualize import ClipSpec, load_demo_clips
 from mlops_cv.pipelines import query_counters
@@ -75,11 +74,6 @@ class IngestOptions(PipelineOptions):
         )
         parser.add_argument(
             "--sequences", nargs="+", default=None, help="restrict to these sequences"
-        )
-        parser.add_argument(
-            "--template-yaml",
-            default=None,
-            help="dataset YAML template to stamp (default: settings.data.dataset_yaml)",
         )
         parser.add_argument(
             "--demo-clips",
@@ -306,11 +300,10 @@ def run(options: IngestOptions) -> int:
     kept, copied = counters.get("frames_kept", 0), counters.get("images_copied", 0)
     if kept != copied:
         logger.warning(f"frame count mismatch: {kept} converted vs {copied} copied")
-    yaml_path = stamp_dataset_yaml(Path(options.template_yaml), Path(output_dir))
     logger.info(
         f"ingested {counters.get('sequences_processed', 0)} sequences -> {copied} frames "
         f"| demo store: {counters.get('demo_frames_copied', 0)} frames "
-        f"across {len(demo_sequences)} clips | wrote {yaml_path.name}"
+        f"across {len(demo_sequences)} clips"
     )
     return 0
 
@@ -324,7 +317,6 @@ def main(argv: list[str] | None = None) -> int:
     # Settings-backed defaults, resolved at run time (never at class definition).
     options.raw_dir = options.raw_dir or str(settings.data.raw_dir)
     options.output_dir = options.output_dir or str(settings.data.subset_dir)
-    options.template_yaml = options.template_yaml or str(settings.data.dataset_yaml)
     options.demo_clips = options.demo_clips or "configs/demo_clips.yaml"
     return run(options)
 

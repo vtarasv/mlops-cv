@@ -13,8 +13,12 @@ import csv
 import io
 from collections.abc import Iterable, Sequence
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import yaml
+
+if TYPE_CHECKING:
+    from mlops_cv.config import Settings
 
 MANIFEST_FIELDS = [
     "split",
@@ -109,6 +113,11 @@ def _stamp(template: Path, out_dir: Path, dest: Path, **overrides: str) -> Path:
 def stamp_dataset_yaml(template: Path, out_dir: Path) -> Path:
     """Copy the template YAML next to the data with ``path`` stamped to the absolute subset dir."""
     return _stamp(template, out_dir, out_dir / Path(template).name)
+
+
+def dataset_yaml(settings: Settings) -> Path:
+    """The consumer's own stamp of the dataset YAML: ``path`` is this host's subset dir."""
+    return stamp_dataset_yaml(settings.data.dataset_yaml, settings.data.subset_dir.resolve())
 
 
 def stamp_split_yaml(template: Path, out_dir: Path, split: str) -> Path:

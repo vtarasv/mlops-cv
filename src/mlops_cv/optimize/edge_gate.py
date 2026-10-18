@@ -8,7 +8,7 @@ import posixpath
 from collections.abc import Iterable, Mapping
 
 from mlops_cv.config import Settings, get_settings
-from mlops_cv.data.subset import stamp_split_yaml
+from mlops_cv.data.subset import IMAGES_DIRNAME, stamp_split_yaml
 from mlops_cv.optimize.report import _fmt
 from mlops_cv.startup import StartupError, exits_on_startup_error
 from mlops_cv.tracking import champion, client, edge_record
@@ -91,10 +91,11 @@ def main(argv: list[str] | None = None) -> int:
     tolerance = settings.optimize.device_tolerance_pt
 
     subset = settings.data.subset_dir
-    template = subset / settings.data.dataset_yaml.name
-    if not template.is_file():
-        raise StartupError(f"no dataset YAML at {template} (DATA__SUBSET_DIR) — run `make ingest`")
-    data_yaml = stamp_split_yaml(template, subset, SPLIT)
+    if not (subset / IMAGES_DIRNAME / SPLIT).is_dir():
+        raise StartupError(
+            f"no {SPLIT} split under {subset} (DATA__SUBSET_DIR) — run `make ingest`"
+        )
+    data_yaml = stamp_split_yaml(settings.data.dataset_yaml, subset, SPLIT)
 
     mlflow = client.connect(settings, experiment=False)
     from mlflow.artifacts import load_dict

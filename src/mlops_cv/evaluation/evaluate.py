@@ -21,6 +21,7 @@ from mlops_cv.data.subset import (
     DEMO_DIRNAME,
     IMAGES_DIRNAME,
     LABELS_DIRNAME,
+    dataset_yaml,
     demo_store_present,
 )
 from mlops_cv.evaluation import gate as gate_mod
@@ -90,7 +91,7 @@ def main(argv: list[str] | None = None) -> int:
 
     from ultralytics import YOLO
 
-    data_yaml = (settings.data.subset_dir / settings.data.dataset_yaml.name).resolve()
+    data_yaml = dataset_yaml(settings)
     weights, model_ref = resolve_model(args.model)
     images_dir = settings.data.subset_dir / IMAGES_DIRNAME / args.split
 

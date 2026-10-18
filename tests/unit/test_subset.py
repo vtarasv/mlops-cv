@@ -7,10 +7,12 @@ from pathlib import Path
 import pytest
 import yaml
 
+from mlops_cv.config.settings import DataSettings, Settings
 from mlops_cv.data.subset import (
     MANIFEST_FIELDS,
     SPLITS,
     csv_line,
+    dataset_yaml,
     demo_image_relpath,
     demo_label_relpath,
     demo_store_present,
@@ -95,3 +97,11 @@ def test_split_yaml_points_every_split_at_one(tmp_path: Path) -> None:
     assert data["path"] == str(tmp_path.resolve())
     assert {data[s] for s in SPLITS} == {"images/test"}
     assert data["names"] == {0: "person"}
+
+
+def test_dataset_yaml_stamps_the_template_next_to_the_data(tmp_path: Path) -> None:
+    out = dataset_yaml(Settings(data=DataSettings(subset_dir=tmp_path)))
+    assert out == tmp_path.resolve() / "VisDrone-VID-merged.yaml"
+    data = yaml.safe_load(out.read_text())
+    assert data["path"] == str(tmp_path.resolve())
+    assert data["names"] == {0: "person", 1: "vehicle", 2: "two-three-wheeler"}

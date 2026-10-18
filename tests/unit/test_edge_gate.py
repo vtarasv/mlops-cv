@@ -46,7 +46,7 @@ def test_gate_fails_either_way_past_the_tolerance(device: float) -> None:
 def gate(tmp_path, monkeypatch, fake_mlflow):
     """``edge_gate.main`` over a subset in ``tmp_path`` and a record run ``abc``."""
     settings = Settings(data=DataSettings(subset_dir=tmp_path))
-    (tmp_path / settings.data.dataset_yaml.name).write_text("names: {0: person}\n")
+    (tmp_path / "images" / "test").mkdir(parents=True)
     monkeypatch.setattr(edge_gate, "get_settings", lambda: settings)
     monkeypatch.setattr(edge_gate.client, "connect", lambda settings, experiment: fake_mlflow)
     monkeypatch.setattr(edge_gate.client, "registry", lambda settings: fake_mlflow.registry)
@@ -94,6 +94,13 @@ def test_a_missing_dump_names_the_device_bench(gate, caplog) -> None:
     with caplog.at_level("ERROR"):
         assert gate(0.2207, {DESKTOP: 0.2218}, dumped=False) == 2
     assert "python -m mlops_cv.edge.bench" in caplog.text
+
+
+def test_a_missing_subset_names_make_ingest(gate, tmp_path, caplog) -> None:
+    (tmp_path / "images" / "test").rmdir()
+    with caplog.at_level("ERROR"):
+        assert gate(0.2207, {DESKTOP: 0.2218}) == 2
+    assert "make ingest" in caplog.text
 
 
 def test_device_report_rows_carry_both_readings_latency_and_verdict() -> None:

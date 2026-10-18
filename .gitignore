@@ -1,6 +1,7 @@
 # Secrets: only the committed examples and the stack env files are tracked
 .env*
 !.env.example
+!.envrc
 !docker-compose/.env.mlflow
 !docker-compose/.env.airflow
 !docker-compose/.env.streaming
@@ -14,6 +15,8 @@
 
 # Data, weights, and training outputs
 *.pt
+/.ultralytics/*
+!/.ultralytics/.gitkeep
 /data/
 /runs/
 
@@ -29,3 +32,6 @@ __pycache__/
 .ruff_cache/
 .mypy_cache/
 .ipynb_checkpoints
+
+# OS
+.DS_Store

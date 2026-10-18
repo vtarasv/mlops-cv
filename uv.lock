@@ -6,6 +6,16 @@ resolution-markers = [
     "sys_platform == 'win32'",
     "sys_platform != 'linux' and sys_platform != 'win32'",
 ]
+required-markers = [
+    "platform_machine == 'x86_64' and sys_platform == 'linux'",
+    "platform_machine == 'arm64' and sys_platform == 'darwin'",
+]
+
+[manifest]
+
+[[manifest.dependency-metadata]]
+name = "tensorrt-cu13-libs"
+version = "10.16.1.11"
 
 [[package]]
 name = "a2wsgi"
@@ -1776,10 +1786,10 @@ optimize = [
     { name = "ncnn" },
     { name = "nvidia-ml-py" },
     { name = "onnx" },
-    { name = "onnxruntime-gpu" },
+    { name = "onnxruntime-gpu", marker = "sys_platform == 'linux'" },
     { name = "onnxslim" },
     { name = "pnnx" },
-    { name = "tensorrt-cu13" },
+    { name = "tensorrt-cu13", marker = "sys_platform == 'linux'" },
 ]
 serving = [
     { name = "fastapi" },
@@ -1790,7 +1800,7 @@ serving = [
     { name = "nvidia-cudnn-cu13", marker = "sys_platform == 'linux'" },
     { name = "nvidia-cufft", marker = "sys_platform == 'linux'" },
     { name = "nvidia-curand", marker = "sys_platform == 'linux'" },
-    { name = "onnxruntime-gpu" },
+    { name = "onnxruntime-gpu", marker = "sys_platform == 'linux'" },
     { name = "opencv-python-headless" },
     { name = "prometheus-fastapi-instrumentator" },
     { name = "python-multipart" },
@@ -1850,10 +1860,10 @@ optimize = [
     { name = "ncnn", specifier = "==1.0.20260526" },
     { name = "nvidia-ml-py", specifier = "==13.610.43" },
     { name = "onnx", specifier = "==1.22.0" },
-    { name = "onnxruntime-gpu", specifier = "==1.27.0" },
+    { name = "onnxruntime-gpu", marker = "sys_platform == 'linux'", specifier = "==1.27.0" },
     { name = "onnxslim", specifier = "==0.1.94" },
     { name = "pnnx", specifier = "==20260526" },
-    { name = "tensorrt-cu13", specifier = "==10.16.1.11" },
+    { name = "tensorrt-cu13", marker = "sys_platform == 'linux'", specifier = "==10.16.1.11" },
 ]
 serving = [
     { name = "fastapi", specifier = "==0.141.1" },
@@ -1864,7 +1874,7 @@ serving = [
     { name = "nvidia-cudnn-cu13", marker = "sys_platform == 'linux'", specifier = "==9.20.0.48" },
     { name = "nvidia-cufft", marker = "sys_platform == 'linux'", specifier = "==12.0.0.61" },
     { name = "nvidia-curand", marker = "sys_platform == 'linux'", specifier = "==10.4.0.35" },
-    { name = "onnxruntime-gpu", specifier = "==1.27.0" },
+    { name = "onnxruntime-gpu", marker = "sys_platform == 'linux'", specifier = "==1.27.0" },
     { name = "opencv-python-headless", specifier = "==4.13.0.92" },
     { name = "prometheus-fastapi-instrumentator", specifier = "==8.1.0" },
     { name = "python-multipart", specifier = "==0.0.32" },
@@ -2231,7 +2241,6 @@ dependencies = [
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/23/9b/2f31fa1d95dbe4e16522d76ec4d6db7f05ae7fb2c59f40bac414203aa0f8/onnxruntime_gpu-1.27.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:b2b8d6afabf3c23c2c698639a16388816dc7298f388a9ddddf504b283990ea01", size = 220305746, upload-time = "2026-06-18T18:27:22.319Z" },
-    { url = "https://files.pythonhosted.org/packages/91/65/cf76bd5b261a295f2257a39d9cd89876e5544531bc97f45732d9cb9ddff2/onnxruntime_gpu-1.27.0-cp312-cp312-win_amd64.whl", hash = "sha256:9f92c12578433cffa6017ec843f4b4c500b9ebaf65f6c4497ddec01af5cd5396", size = 213631079, upload-time = "2026-06-15T22:43:01.35Z" },
 ]
 
 [[package]]
@@ -3347,7 +3356,6 @@ source = { registry = "https://pypi.org/simple" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/76/6d/d46fd241895091d11d0e55a389abc5711c71892e8e63b03e272e61ca880a/tensorrt_cu13_bindings-10.16.1.11-cp312-none-manylinux_2_28_x86_64.whl", hash = "sha256:2fb87ac24a5e5f42e43f283c16d1b661dc72ef18568fd847ce2080b7db9ca232", size = 1341248, upload-time = "2026-04-07T19:42:10.807Z" },
     { url = "https://files.pythonhosted.org/packages/ee/bb/3513236bc1b69fc6b88722f0f1f62ae4afd74b9f417ad3abf9a2bf971f22/tensorrt_cu13_bindings-10.16.1.11-cp312-none-manylinux_2_35_aarch64.whl", hash = "sha256:80d0cea41cb695e73a442ab5a0c1fb023730c488caa93ee3ca9c49d57314821d", size = 1329585, upload-time = "2026-04-07T19:42:35.412Z" },
-    { url = "https://files.pythonhosted.org/packages/e9/a8/dfda48ab992050f40d0b2da7a795f16db403f48ee89e6a526cbd00133445/tensorrt_cu13_bindings-10.16.1.11-cp312-none-win_amd64.whl", hash = "sha256:70ca2d73301ff427104d7986c26d5fa56f6a91578242d20e82b37c139be14ec0", size = 964883, upload-time = "2026-04-07T19:44:07.702Z" },
 ]
 
 [[package]]

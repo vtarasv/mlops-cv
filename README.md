@@ -133,7 +133,9 @@ Details: [docs/monitoring.md](docs/monitoring.md).
   8 GB RTX 5070. The data pipelines, the drift monitor, and the tests run on CPU.
 - The VisDrone-VID dataset, downloaded and unzipped (see [docs/data.md](docs/data.md)).
 
-Host GPU and Docker GPU setup: [docs/gpu-setup.md](docs/gpu-setup.md).
+Host GPU and Docker GPU setup: [docs/gpu-setup.md](docs/gpu-setup.md). On an Apple Silicon Mac you
+can run the tests, the data pipelines and the MLflow and streaming stacks, but not training or
+serving: [docs/macos.md](docs/macos.md).
 
 ### Quickstart
 

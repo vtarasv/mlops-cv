@@ -8,6 +8,7 @@ page here as it lands.
 - [Configuration & environment switch](config.md) — layered `.env` settings,
   `local`/`dev`/`stage`/`prod`, precedence rules.
 - [GPU setup](gpu-setup.md) — CUDA torch install, NVIDIA Container Toolkit.
+- [macOS dev box](macos.md) — what runs on Apple Silicon + Docker Desktop.
 - [VisDrone-VID dataset](data.md) — download, frame/label conversion, 3-class merge, validation.
 - [MLflow tracking & registry](mlflow.md) — Postgres + RustFS + MLflow Compose stack.
 - [Training](training.md) — YOLO26s transfer-learning recipe, MLflow logging.

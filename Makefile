@@ -29,7 +29,7 @@ export MONITOR_IMAGE := mlops-cv-monitor:0.1.0
 export HOST_RAW_DIR := $(shell sed -n 's/^DATA__RAW_DIR=//p' .env 2>/dev/null)
 export HOST_SUBSET_DIR := $(shell sed -n 's/^DATA__SUBSET_DIR=//p' .env 2>/dev/null)
 export HOST_WEIGHTS := $(shell sed -n 's/^TRAINING__WEIGHTS=//p' .env 2>/dev/null)
-export DOCKER_GID := $(shell getent group docker | cut -d: -f3)
+export DOCKER_GID := $(shell getent group docker 2>/dev/null | cut -d: -f3)
 export HOST_USER := $(shell id -u):$(shell id -g)
 export HOST_USERNAME := $(shell id -un)
 

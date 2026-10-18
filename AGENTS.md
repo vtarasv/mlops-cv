@@ -38,7 +38,8 @@ Single-context: root `GLOSSARY.md` + `docs/adr/`, created lazily. See `docs/agen
 1. Run the `ponytail:ponytail-review` skill on the diff and apply its cuts.
 2. Run `make ci` (ruff check, ruff format check, pytest) and `make typecheck` (pyright). Done means
    zero findings, zero errors, all tests green. Pyright is local only: CI's sync skips the
-   training/optimize groups its imports need.
+   training/optimize groups its imports need. On a Mac, its only allowed errors are the two
+   Linux-only imports (`tensorrt`, `onnxruntime`); don't silence them.
 
 Every change ships its unit tests and updates the matching `docs/*.md`.
 
@@ -117,6 +118,9 @@ pydantic + yaml: the Airflow and serving images import them.
 
 - ultralytics resolves a relative dataset-YAML `path:` against its global `datasets_dir`, not the
   repo. Use the YAML the ingest pipeline generates (absolute `path:`).
+- ultralytics settings are repo-local via `YOLO_CONFIG_DIR=.ultralytics/`: `.envrc` (direnv)
+  exports it and the `mlops_cv` package `__init__` defaults it. Containers don't care where it
+  lands.
 - MLflow 3: register a raw `.pt` with `MlflowClient.create_model_version(source=…)`; fluent
   `register_model` errors on a bare artifact. Open `mlflow.start_run()` before `model.train()` so
   ultralytics' callback reuses the run.

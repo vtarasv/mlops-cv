@@ -95,6 +95,14 @@ Boxes reuse the streaming wire contract's `Box`/`ModelInfo` models — merged cl
 confidence, and normalized center-xywh — so HTTP and Kafka consumers share one detection
 vocabulary.
 
+## Concurrency
+
+Detect runs in a worker thread, at most `SERVING__MAX_INFLIGHT` (default 2) in flight, so
+`/health` and `/metrics` never wait on inference. `latency_ms` is detect-only: queue wait is the
+request-latency histogram minus it. The graph is warmed once at startup, before the service
+listens. The limit is a measured, deployment-specific value: remeasure on a new GPU, champion or
+inference path.
+
 ## Observability
 
 The serving stack ships a provisioned observability trio (see

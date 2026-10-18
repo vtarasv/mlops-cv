@@ -7,14 +7,19 @@ here is the one a client actually receives.
 
 from __future__ import annotations
 
+import queue
 import subprocess
 import sys
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
 from mlops_cv.config import Settings
+from mlops_cv.config.settings import ServingSettings
 from mlops_cv.serving.app import create_app
 from mlops_cv.serving.runtime import Detector
 from mlops_cv.serving.schemas import Detections, Health
@@ -105,6 +110,37 @@ def test_a_wrong_graph_is_not_blamed_on_the_client(fake_session, upload) -> None
     app = create_app(Detector(fake_session(wrong_shape), MODEL), Settings())
     with pytest.raises(ValueError, match="max_det, 6"):
         TestClient(app).post("/predict", files=upload)
+
+
+def test_inference_runs_off_the_event_loop_at_most_max_inflight_at_once(
+    fake_session, upload
+) -> None:
+    """A slow detect never stalls /health, and only ``max_inflight`` detects run at once.
+
+    One shared-loop client: a TestClient without ``with`` gives each request its own event
+    loop, which would hide a handler that blocks the loop.
+    """
+    gate, entered = threading.Event(), queue.Queue()
+
+    class GatedSession(fake_session):
+        def run(self, output_names, feed):
+            entered.put(None)
+            gate.wait(timeout=10)
+            return super().run(output_names, feed)
+
+    settings = Settings(serving=ServingSettings(max_inflight=2))
+    app = create_app(Detector(GatedSession(OUTPUT), MODEL), settings)
+    with TestClient(app) as client, ThreadPoolExecutor(4) as pool:
+        try:
+            calls = [pool.submit(client.post, "/predict", files=upload) for _ in range(3)]
+            for _ in range(2):
+                entered.get(timeout=5)
+            assert pool.submit(client.get, "/health").result(timeout=5).status_code == 200
+            time.sleep(0.3)
+            assert entered.empty(), "a third detect ran past max_inflight"
+        finally:
+            gate.set()
+        assert [call.result(timeout=10).status_code for call in calls] == [200] * 3
 
 
 def test_metrics_are_exposed_in_prometheus_format(client: TestClient, upload) -> None:

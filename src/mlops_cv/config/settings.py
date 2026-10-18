@@ -87,6 +87,7 @@ class ServingSettings(BaseModel):
     host: str = "0.0.0.0"
     port: int = 8000
     conf_threshold: float = 0.25  # default detection confidence floor
+    max_inflight: int = Field(default=2, ge=1)  # detects running at once
 
 
 class Settings(BaseSettings):

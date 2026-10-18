@@ -35,7 +35,7 @@ from mlops_cv.tracking.metric_keys import (
     metric_key,
     per_class_metrics,
 )
-from mlops_cv.tracking.resolve import registered_version, resolve_model
+from mlops_cv.tracking.resolve import resolve_model
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +64,6 @@ def build_parser(settings: Settings) -> argparse.ArgumentParser:
     p.add_argument(
         "--min-improvement", type=float, default=0.01, help="challenger margin over the champion"
     )
-    p.add_argument("--promote", action="store_true", help="on a gate pass, set the champion alias")
     p.add_argument(
         "--run-id",
         default=None,
@@ -128,7 +127,9 @@ def main(argv: list[str] | None = None) -> int:
             min_improvement=args.min_improvement,
         )
         gate = gate_mod.evaluate_gate(candidate, thresholds, champion, prefix=args.split)
-        mlflow.set_tags({"gate.passed": gate.passed, "gate.challenger_win": gate.is_challenger_win})
+        mlflow.set_tags(
+            {gate_mod.GATE_PASSED_TAG: gate.passed, "gate.challenger_win": gate.is_challenger_win}
+        )
         mlflow.log_metric("gate/passed", float(gate.passed))
 
         latency = None
@@ -200,18 +201,6 @@ def main(argv: list[str] | None = None) -> int:
 
         mlflow.log_artifact(str(md), artifact_path="eval")
         mlflow.log_artifact(str(csv_path), artifact_path="eval")
-
-        if args.promote and gate.passed:
-            version = registered_version(args.model, settings.mlflow.registered_model)
-            if version is None:
-                logger.warning(f"not promoting: {args.model} has no registered model version")
-            else:
-                gate_mod.promote(
-                    settings.mlflow.registered_model, version, settings.mlflow.champion_alias
-                )
-                logger.info(f"promoted v{version} -> alias '{settings.mlflow.champion_alias}'")
-        elif args.promote:
-            logger.warning("not promoting: gate did not pass")
 
         logger.info(gate.summary())
 

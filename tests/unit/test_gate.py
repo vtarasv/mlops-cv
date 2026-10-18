@@ -5,7 +5,12 @@ from __future__ import annotations
 import pytest
 
 from mlops_cv.config import Settings
-from mlops_cv.evaluation.gate import GateThresholds, evaluate_gate, fetch_champion_metrics
+from mlops_cv.evaluation.gate import (
+    GateThresholds,
+    evaluate_gate,
+    fetch_champion_metrics,
+    promote,
+)
 from mlops_cv.startup import StartupError
 
 
@@ -107,3 +112,46 @@ def test_a_champion_whose_training_run_is_gone_is_not_mistaken_for_no_champion(r
 
     with pytest.raises(StartupError, match="train-7"):
         fetch_champion_metrics(Settings(), registry=registry)
+
+
+# --- promotion ---
+
+SERVABLE = {
+    "optimize.onnx_640": "runs:/record-run/onnx/best_640.onnx",
+    "optimize.ncnn_fp16_640": "runs:/record-run/ncnn/ncnn-fp16-640_ncnn_model",
+}
+
+
+def _challenger(registry, tags=SERVABLE, gate: str | None = "True") -> None:
+    """v7 on its own training run, which evaluation tagged with ``gate``; v6 is the champion."""
+    registry.promote(version="6")
+    registry.add_run("train-7", tags={} if gate is None else {"gate.passed": gate})
+    registry.add_version(version="7", run_id="train-7", tags=tags)
+
+
+@pytest.mark.parametrize("missing", sorted(SERVABLE))
+def test_promotion_refuses_a_version_that_is_not_servable(registry, missing: str) -> None:
+    """A champion without its published graph or edge model would stop the services starting."""
+    _challenger(registry, tags={k: v for k, v in SERVABLE.items() if k != missing})
+
+    with pytest.raises(StartupError, match=missing):
+        promote(Settings(), "7", registry=registry)
+    assert registry.aliases["champion"] == "6"
+
+
+@pytest.mark.parametrize("gate", ["False", None])
+def test_promotion_refuses_a_version_without_a_passing_gate(registry, gate: str | None) -> None:
+    """The verdict evaluation left on the training run is what promotion acts on."""
+    _challenger(registry, gate=gate)
+
+    with pytest.raises(StartupError, match="gate"):
+        promote(Settings(), "7", registry=registry)
+    assert registry.aliases["champion"] == "6"
+
+
+def test_promotion_moves_the_alias_to_a_servable_gate_winner(registry) -> None:
+    _challenger(registry)
+
+    promote(Settings(), "7", registry=registry)
+
+    assert registry.aliases["champion"] == "7"

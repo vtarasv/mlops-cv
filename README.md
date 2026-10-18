@@ -4,7 +4,7 @@
 
 A small, complete **MLOps platform for detecting objects in drone video**, that can be run on one machine with one GPU.
 It follows Google's [MLOps level 2](https://docs.cloud.google.com/architecture/mlops-continuous-delivery-and-automation-pipelines-in-machine-learning)
-pattern: models are retrained, tested, promoted, optimized, served, and watched **automatically**,
+pattern: models are retrained, tested, optimized, promoted, served, and watched **automatically**,
 with a human deciding only what new data to admit.
 
 The model is [YOLO26s](https://github.com/ultralytics/ultralytics) fine-tuned on the
@@ -26,8 +26,8 @@ flowchart LR
   subgraph ct["continuous training (Airflow)"]
     train["train challenger"] --> eval["evaluate on test split"]
     eval --> gate{"beats the<br/>champion?"}
-    gate -->|yes| promote["promote to champion"]
-    promote --> optimize["build serving variants<br/>ONNX · TensorRT · NCNN"]
+    gate -->|yes| optimize["build serving variants<br/>ONNX · TensorRT · NCNN"]
+    optimize --> promote["promote to champion"]
   end
   mlflow[("MLflow<br/>runs · registry · artifacts")]
   subgraph live["live system"]
@@ -82,11 +82,11 @@ its own Docker container with GPU access:
 flowchart LR
   a["check subset<br/>(rebuild if missing)"] --> b["profile<br/>(skip if current)"]
   b --> c["validate data"] --> d["train"] --> e["evaluate + gate"]
-  e -->|won| f["promote"] --> g["optimize"]
+  e -->|won| g["optimize"] --> f["promote"]
   e -->|lost| h["skip"]
 ```
 
-Optimization runs **only after a promotion**, because only the champion is ever served.
+Optimization runs **only on a win**, before promotion: only a servable version becomes the champion.
 
 Details: [docs/orchestration.md](docs/orchestration.md).
 
@@ -151,8 +151,9 @@ cp .env.example .env       # then set DATA__RAW_DIR, DATA__SUBSET_DIR, TRAINING_
 make ingest                # raw frames -> training subset + demo clips
 make profile               # subset -> quality report + drift baseline (starts MLflow)
 make train                 # train YOLO26s -> MLflow run + registered model version
-make eval MODEL=runs:/<run_id>/weights/best.pt RUN_ID=<run_id> PROMOTE=1   # test metrics + gate + videos; promote on a pass
-make optimize              # export + benchmark serving variants for the champion
+make eval MODEL=runs:/<run_id>/weights/best.pt RUN_ID=<run_id>       # test metrics + gate + videos
+make optimize MODEL=runs:/<run_id>/weights/best.pt RUN_ID=<run_id>   # on a pass: export + benchmark serving variants
+make promote RUN_ID=<run_id>   # champion alias -> this version (needs a passing gate + servable)
 make serving-up            # detection service, consumers, drift monitor, Prometheus, Grafana
 uv run python -m mlops_cv.streaming.producer --loops 1            # replay the demo clips
 curl -F image=@frame.jpg 'localhost:8000/predict?conf=0.3'

@@ -99,7 +99,7 @@ _Avoid_: reference distribution, training stats
 
 **Continuous training**:
 The scheduled or data-triggered loop that ensures the subset exists, profiles it, trains a
-challenger, gates it, and promotes and optimizes it on a win.
+challenger, gates it, and optimizes and promotes it on a win.
 _Avoid_: retraining, CT pipeline (as a synonym for the whole loop)
 
 **New-data event**:
@@ -117,8 +117,8 @@ too.
 _Avoid_: experiment (in tracking, an experiment holds many runs)
 
 **Champion**:
-The model version that the champion alias currently points at, and the only one that is served,
-optimized automatically and monitored.
+The model version that the champion alias currently points at, and the only one that is served
+and monitored.
 _Avoid_: production model, best model, latest model
 
 **Challenger**:
@@ -143,8 +143,13 @@ A gate outcome when there is no champion yet: only the gate floors apply.
 _Avoid_: first promotion, default pass
 
 **Promotion**:
-Pointing the champion alias at a challenger that passed the gate.
+Pointing the champion alias at a challenger that passed the gate and is servable.
 _Avoid_: deploy, release
+
+**Servable**:
+A model version that has the default serving variant of every deployment target published. Only
+a servable model version can be promoted.
+_Avoid_: deployable, ready
 
 **Rollout**:
 A service picking up a new champion. This happens only on restart, because every service
@@ -185,8 +190,8 @@ device.
 _Avoid_: backend, host
 
 **Published graph**:
-The champion's portable ONNX graph as published by optimization. Both the detection service and
-the inference consumer serve it.
+A model version's portable ONNX graph as published by optimization. Both the detection service
+and the inference consumer serve the champion's.
 _Avoid_: ONNX model, portable graph, exported model
 
 **Engine fingerprint**:

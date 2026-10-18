@@ -20,7 +20,6 @@ flowchart LR
   metrics -->|"&lt;split&gt;/* metrics"| mlflow[("MLflow")]
   vis -->|"demo/ · error_analysis/"| mlflow
   gate -->|"report.md · metrics.csv · gate tag"| mlflow
-  gate -->|"on --promote + pass"| champ
 ```
 
 ## Run it
@@ -34,9 +33,9 @@ uv run python -m mlops_cv.evaluation --model models:/aerial-object-detector@cham
 # Evaluate a fresh training run ONTO that run (one run = one model version's full record):
 make eval MODEL=runs:/<run_id>/weights/best.pt RUN_ID=<run_id>
 
-# Promote the candidate to the champion alias if it passes the gate:
-make eval MODEL=runs:/<run_id>/weights/best.pt RUN_ID=<run_id> PROMOTE=1
-uv run python -m mlops_cv.evaluation --model runs:/<run_id>/weights/best.pt --min-improvement 0.03 --promote
+# Promote it once it passed the gate and is servable (`make optimize` publishes its variants):
+make optimize MODEL=runs:/<run_id>/weights/best.pt RUN_ID=<run_id>
+make promote RUN_ID=<run_id>
 ```
 
 `--model` is an MLflow URI: a registry ref (`models:/<name>@<alias>`, `models:/<name>/<version>`) or a
@@ -50,7 +49,7 @@ next to the training curves and the registered version's source.
 
 Useful flags: `--split` (default `test`), gate floors `--min-map/--min-map50/--min-precision/
 --min-recall` (default `0.0`) + `--min-improvement` (challenger margin on `mAP50-95`, default
-`0.01`), `--promote`, and `--no-latency` / `--no-demos` / `--no-crops`. The process exits `0` on a
+`0.01`), and `--no-latency` / `--no-demos` / `--no-crops`. The process exits `0` on a
 gate pass and `1` on a fail; `--exit-zero` forces `0` so an orchestrator can treat a challenger
 loss as a branch, not a failure, and decide on the **verdict line** instead — the last stdout line
 is machine-readable JSON: `{"passed": …, "candidate_primary": …, "champion_primary": …}`. The
@@ -87,8 +86,9 @@ The gate returns a single pass/fail from two parts:
 
 `passed` is *all floors AND the challenger comparison*. The decision logic is a pure function, so a
 continuous-training orchestrator can call it directly or branch on the verdict line / `gate.passed`
-tag; the eval process also mirrors it in its exit code (unless `--exit-zero`). `--promote` sets the
-`champion` alias to the candidate on a pass.
+tag; the eval process also mirrors it in its exit code (unless `--exit-zero`). Evaluation never moves the
+alias: `make promote` (and the DAG's `promote` task) acts on the `gate.passed` tag left on the
+training run, so evaluate with `RUN_ID` to make a version promotable.
 
 ## Demo videos
 

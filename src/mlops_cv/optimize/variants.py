@@ -102,6 +102,11 @@ def graph_tag(imgsz: int) -> str:
     return f"{ARTIFACT_TAG_PREFIX}onnx_{imgsz}"
 
 
+def servable_tags(server_imgsz: int) -> tuple[str, ...]:
+    """The tags a servable version carries: each deployment target's default serving variant."""
+    return graph_tag(server_imgsz), artifact_tag(Variant.of(NCNN, FP16, server_imgsz).name)
+
+
 def select(variants: Sequence[Variant], names: Iterable[str] | None) -> tuple[Variant, ...]:
     """Filter to ``names`` (ladder order preserved); ``None`` keeps the whole ladder."""
     if names is None:

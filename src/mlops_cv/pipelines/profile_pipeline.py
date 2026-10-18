@@ -31,6 +31,7 @@ import io
 import json
 import logging
 import math
+import tempfile
 from collections.abc import Callable, Iterator
 from functools import partial
 from pathlib import Path
@@ -38,6 +39,7 @@ from pathlib import Path
 import apache_beam as beam
 from apache_beam import pvalue
 from apache_beam.io.filesystems import FileSystems
+from apache_beam.io.localfilesystem import LocalFileSystem
 from apache_beam.io.textio import WriteToText
 from apache_beam.metrics.metric import Metrics
 from apache_beam.options.pipeline_options import PipelineOptions
@@ -45,7 +47,14 @@ from apache_beam.options.pipeline_options import PipelineOptions
 from mlops_cv.config import get_settings
 from mlops_cv.data.convert_visdrone_vid import YOLO_NAMES, labels_from_text
 from mlops_cv.data.subset import MANIFEST_FILENAME, SPLITS, csv_line, manifest_rows
-from mlops_cv.pipelines import profiling, provenance, query_counters
+from mlops_cv.pipelines import (
+    beam_argv,
+    delete_tree,
+    profiling,
+    provenance,
+    query_counters,
+    stream_copy,
+)
 from mlops_cv.tracking import data_version
 
 logger = logging.getLogger(__name__)
@@ -262,21 +271,35 @@ def _write_csv[Row](
     )
 
 
-def _read_manifest(input_dir: str) -> list[dict[str, str]]:
+def _read_manifest(input_dir: str) -> tuple[list[dict[str, str]], str]:
+    """The manifest's rows and provenance hash, from one read."""
     with FileSystems.open(FileSystems.join(input_dir, MANIFEST_FILENAME)) as fh:
-        return manifest_rows(io.TextIOWrapper(fh, encoding="utf-8"))
+        data = fh.read()
+    rows = manifest_rows(io.StringIO(data.decode("utf-8"), newline=""))
+    return rows, provenance.manifest_bytes_sha256(data)
+
+
+def _publish_from_local(publish: Publisher, input_dir: str, profile_dir: str, stamp: str) -> str:
+    """Publish the profile dir, through a local copy when it lives on a remote filesystem."""
+    if isinstance(FileSystems.get_filesystem(profile_dir), LocalFileSystem):
+        return publish(Path(profile_dir), stamp)
+    with tempfile.TemporaryDirectory() as tmp:
+        # Under the subset's own name: the data version is named after the profile's parent.
+        staged = Path(tmp, FileSystems.split(input_dir.rstrip("/"))[1], profiling.PROFILE_DIRNAME)
+        for match in FileSystems.match([FileSystems.join(profile_dir, "*")])[0].metadata_list:
+            stream_copy(match.path, str(staged / FileSystems.split(match.path)[1]))
+        return publish(staged, stamp)
 
 
 def run(options: ProfileOptions, publish: Publisher = data_version.publish_profile) -> int:
     """Execute the profiling pipeline; assumes all options are fully resolved (see ``main``)."""
+    FileSystems.set_options(options)  # the reset and manifest read below run before the pipeline
     input_dir = options.input_dir
     profile_dir = FileSystems.join(input_dir, profiling.PROFILE_DIRNAME)
-    if FileSystems.exists(profile_dir):
-        FileSystems.delete([profile_dir])
+    delete_tree(profile_dir)
     FileSystems.mkdirs(profile_dir)
 
-    rows = _read_manifest(input_dir)
-    manifest_sha = provenance.manifest_sha256(Path(input_dir) / MANIFEST_FILENAME)
+    rows, manifest_sha = _read_manifest(input_dir)
 
     with beam.Pipeline(options=options) as p:
         outputs = (
@@ -368,7 +391,7 @@ def run(options: ProfileOptions, publish: Publisher = data_version.publish_profi
     # Publish BEFORE stamping: the stamp means "profiled and published".
     stamp = provenance.stamp_payload(manifest_sha, profiling.PROFILE_PARAMS)
     try:
-        run_id = publish(Path(profile_dir), stamp)
+        run_id = _publish_from_local(publish, input_dir, profile_dir, stamp)
     except Exception as exc:  # any publishing failure: report it and leave the profile stale
         logger.error(f"publishing the profile failed ({exc}) — stamp withheld, so this reruns")
         return 1
@@ -382,7 +405,7 @@ def run(options: ProfileOptions, publish: Publisher = data_version.publish_profi
 def main(argv: list[str] | None = None, publish: Publisher = data_version.publish_profile) -> int:
     settings = get_settings()
     logging.basicConfig(level=settings.log_level.upper(), format="%(message)s")
-    options = ProfileOptions(argv)
+    options = ProfileOptions(beam_argv(argv))
     # Settings-backed default, resolved at run time (never at class definition).
     options.input_dir = options.input_dir or str(settings.data.subset_dir)
     return run(options, publish)

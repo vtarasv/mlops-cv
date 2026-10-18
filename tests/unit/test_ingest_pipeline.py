@@ -105,14 +105,12 @@ def test_convert_sequence_dofn_strides_and_skips_empty(raw: Path, tmp_path: Path
 
 def test_main_end_to_end(raw: Path, demo_yaml: Path, tmp_path: Path) -> None:
     out = tmp_path / "subset"
-    template = Path("configs/datasets/VisDrone-VID-merged.yaml").resolve()
     assert (
         main(
             [
                 f"--raw-dir={raw}",
                 f"--output-dir={out}",
                 f"--frame-stride={STRIDE}",
-                f"--template-yaml={template}",
                 f"--demo-clips={demo_yaml}",
                 "--runner=DirectRunner",
             ]
@@ -153,26 +151,30 @@ def test_main_end_to_end(raw: Path, demo_yaml: Path, tmp_path: Path) -> None:
     src = raw / RAW_SPLIT_DIRS["test"] / "sequences" / "seqC" / "0000002.jpg"
     assert (demo / "images" / "seqC" / "0000002.jpg").read_bytes() == src.read_bytes()
 
-    # Stamped dataset YAML with an absolute path.
-    yaml = pytest.importorskip("yaml")
-    stamped = yaml.safe_load((out / template.name).read_text(encoding="utf-8"))
-    assert stamped["path"] == str(out.resolve())
-
 
 def test_main_without_demo_clips(raw: Path, tmp_path: Path) -> None:
     out = tmp_path / "subset"
-    template = Path("configs/datasets/VisDrone-VID-merged.yaml").resolve()
     argv = [
         f"--raw-dir={raw}",
         f"--output-dir={out}",
         f"--frame-stride={STRIDE}",
-        f"--template-yaml={template}",
         "--demo-clips=none",
         "--runner=DirectRunner",
     ]
     assert main(argv) == 0
     assert not (out / DEMO_DIRNAME / "images").exists()
     assert not demo_store_present(out)
+
+
+def test_a_reingest_drops_stale_frames(raw: Path, tmp_path: Path) -> None:
+    out = tmp_path / "subset"
+    argv = [f"--raw-dir={raw}", f"--output-dir={out}", "--demo-clips=none"]
+    assert main(argv) == 0
+    stale = out / "images" / "train" / "STALE.jpg"
+    stale.write_bytes(b"stale")
+    assert main(argv) == 0
+    assert not stale.exists()
+    validate_dataset(out)
 
 
 def test_main_rejects_unknown_sequence(raw: Path, tmp_path: Path) -> None:
@@ -188,3 +190,14 @@ def test_main_rejects_bad_stride(raw: Path, tmp_path: Path) -> None:
 def test_missing_raw_split_raises_download_hint(tmp_path: Path) -> None:
     with pytest.raises(RuntimeError, match="docs/data.md"):
         main([f"--raw-dir={tmp_path / 'empty'}", f"--output-dir={tmp_path / 'x'}"])
+
+
+@pytest.mark.parametrize(("argv", "expected"), [([], 24 * 3600), (["--job_server_timeout=60"], 60)])
+def test_pipelines_outlast_prisms_default_job_deadline(argv: list[str], expected: int) -> None:
+    """Prism kills a job past --job_server_timeout (300 s); a full bucket ingest took 584 s."""
+    from apache_beam.options.pipeline_options import PipelineOptions, PortableOptions
+
+    from mlops_cv.pipelines import beam_argv
+
+    options = PipelineOptions(beam_argv(argv)).view_as(PortableOptions)
+    assert options.job_server_timeout == expected

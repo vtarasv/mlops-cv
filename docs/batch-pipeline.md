@@ -4,9 +4,8 @@ Two [Apache Beam](https://beam.apache.org/) pipelines own the dataset side of th
 training loop: **ingestion** (raw dataset → the training subset + demo store) and
 **profiling** (the subset → a dataset-quality report + the drift baseline). They are Beam
 rather than scripts for **portability**: the identical `run()` executes on DirectRunner locally
-and on any managed Beam runner in cloud (e.g. Dataflow on GCP, or a Flink/Spark cluster), and
-every file operation goes through `apache_beam.io.filesystems.FileSystems`, so object-store
-paths (`gs://`, `s3://`) work transparently.
+and on a managed Beam runner (Dataflow, Flink, Spark). They read and write **local paths or
+object-store URIs** alike ([Cloud migration](#cloud-migration)).
 
 ## Ingestion: raw → subset + demo store
 
@@ -23,13 +22,13 @@ flowchart LR
   raw --> ex
   ex --> rs2["Reshuffle"] --> md["MaterializeDemoFrameDoFn"]
   md --> demo["demo/images|labels/&lt;seq&gt;/"]
-  man --> y["stamped dataset YAML"]
 ```
 
 Keeps **every** sequence and shrinks by `--frame-stride` (default 20 — drops near-duplicate
 consecutive video frames); only frames with at least one surviving box are materialized. The
 annotation conversion (10→3 class merge, ignored-region dropping, box clipping) is the same
-pure code the repo has always used ([data.md](data.md)).
+pure code the repo has always used ([data.md](data.md)). It writes no dataset YAML: each
+consumer stamps its own next to the data.
 
 Sequence length can and heavily skewed, so the pipeline converts
 per-sequence, then **`Reshuffle()`** breaks fusion and redistributes the per-frame copy work
@@ -144,9 +143,23 @@ profiling whenever the stamp is stale.
 
 ## Cloud migration
 
-The cloud promotion is a **runner swap plus staging flags** — the same pipeline submits to any
-managed Beam runner (`--runner DataflowRunner | FlinkRunner | SparkRunner`); nothing in the
-pipeline bodies changes. Documented, not run locally — e.g. for a GCP-managed runner:
+Every file operation goes through Beam's `FileSystems`, so `--raw-dir`, `--output-dir` and
+`--input-dir` take a local path or an object-store URI (`s3://`, `gs://`, `azfs://`), in any mix:
+local raw → bucket subset works. Workers that can't see a local disk (Dataflow, tasks on managed
+Airflow or Kubernetes) use that; ultralytics consumers still read a local copy pulled with the
+store's CLI ([data.md](data.md#moving-the-data-to-an-object-store)).
+
+- **Stores**: no store's Beam extra is in the lock. Add the one you use to the `beam` group and
+  relock: `apache-beam[aws]` (tested on RustFS), `[gcp]` or `[azure]` (untested). Without it,
+  the first call on that scheme fails with Beam's "dependencies are not installed".
+- **Credentials** come from the store's standard environment, never pipeline flags.
+
+Prism kills any job past `--job_server_timeout` (300 s by default), so both pipelines default it to 24 h; pass the flag to override.
+
+Spread writing to a bucket over processes (Beam builds a store client per call):
+`--runner FnApiRunner --direct_running_mode=multi_processing --direct_num_workers=8`.
+
+The cloud promotion is then a runner swap plus staging flags, e.g. Dataflow:
 
 ```bash
 uv build   # dist/mlops_cv-0.1.0-py3-none-any.whl — ships the DoFn code to the workers
@@ -159,7 +172,5 @@ python -m mlops_cv.pipelines.ingest_pipeline \
   --output-dir gs://<bucket>/datasets/visdrone-vid-small
 ```
 
-Sequence matching, frame copies, the demo store, manifests, and stamps all go through
-`FileSystems`, which resolves whatever scheme the paths carry (`gs://` above; `s3://` or HDFS
-the same way) on the cloud runner. In managed Airflow the tasks are *submitted* via the
-deferrable `BeamRunPythonPipelineOperator` instead of running a local container.
+In managed Airflow the tasks are *submitted* via the deferrable `BeamRunPythonPipelineOperator`
+instead of running a local container.

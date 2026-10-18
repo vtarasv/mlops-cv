@@ -3,8 +3,8 @@
 Keeps **every** train/val/test sequence (max scene diversity) and shrinks the set by
 ``--frame-stride`` (keep every Nth 1-based frame), which removes near-duplicate consecutive
 video frames. Kept frames land as flattened ``images|labels/{split}/<seq>_<NNNNNNN>.{jpg,txt}``
-plus a ``manifest.csv`` and an absolute-path copy of the dataset YAML. Only frames with at least
-one surviving box are materialized.
+plus a ``manifest.csv``; each consumer stamps its own dataset YAML. Only frames with at least one
+surviving box are materialized.
 
 The pipeline also materializes the **demo store**: for the clips in ``configs/demo_clips.yaml``
 it copies ALL frames (full frame rate, empties included) to ``demo/images/<seq>/`` with
@@ -46,10 +46,9 @@ from mlops_cv.data.subset import (
     image_relpath,
     label_relpath,
     raw_split_dir,
-    stamp_dataset_yaml,
 )
 from mlops_cv.evaluation.visualize import ClipSpec, load_demo_clips
-from mlops_cv.pipelines import query_counters
+from mlops_cv.pipelines import beam_argv, delete_tree, query_counters, stream_copy
 
 logger = logging.getLogger(__name__)
 
@@ -75,11 +74,6 @@ class IngestOptions(PipelineOptions):
         )
         parser.add_argument(
             "--sequences", nargs="+", default=None, help="restrict to these sequences"
-        )
-        parser.add_argument(
-            "--template-yaml",
-            default=None,
-            help="dataset YAML template to stamp (default: settings.data.dataset_yaml)",
         )
         parser.add_argument(
             "--demo-clips",
@@ -164,9 +158,7 @@ class MaterializeFrameDoFn(beam.DoFn):
         self.images_copied = Metrics.counter(COUNTER_NAMESPACE, "images_copied")
 
     def process(self, item: dict) -> Iterator[dict]:
-        FileSystems.copy(
-            [item["src_image"]], [FileSystems.join(self.output_dir, item["image_relpath"])]
-        )
+        stream_copy(item["src_image"], FileSystems.join(self.output_dir, item["image_relpath"]))
         with FileSystems.create(FileSystems.join(self.output_dir, item["label_relpath"])) as fh:
             fh.write(item["label_text"].encode("utf-8"))
         self.images_copied.inc()
@@ -217,9 +209,7 @@ class MaterializeDemoFrameDoFn(beam.DoFn):
         self.demo_frames_copied = Metrics.counter(COUNTER_NAMESPACE, "demo_frames_copied")
 
     def process(self, item: dict) -> None:
-        FileSystems.copy(
-            [item["src_image"]], [FileSystems.join(self.output_dir, item["dest_image"])]
-        )
+        stream_copy(item["src_image"], FileSystems.join(self.output_dir, item["dest_image"]))
         if item["label_text"] is not None:
             with FileSystems.create(FileSystems.join(self.output_dir, item["dest_label"])) as fh:
                 fh.write(item["label_text"].encode("utf-8"))
@@ -240,15 +230,9 @@ def _list_sequences(raw_dir: str, split: str) -> list[str]:
 
 
 def _prepare_output_dirs(output_dir: str, demo_sequences: list[str]) -> None:
-    """Clean rebuild: drop stale outputs, then pre-create every dir the workers write into.
-
-    ``FileSystems.copy`` does not create parent directories (and ``mkdirs`` raises on an
-    existing leaf), so everything is created here up front.
-    """
+    """Clean rebuild: drop stale outputs, then create every split and clip dir, empty or not."""
     for sub in (IMAGES_DIRNAME, LABELS_DIRNAME, DEMO_DIRNAME):
-        root = FileSystems.join(output_dir, sub)
-        if FileSystems.exists(root):
-            FileSystems.delete([root])
+        delete_tree(FileSystems.join(output_dir, sub))
     for sub in (IMAGES_DIRNAME, LABELS_DIRNAME):
         for split in SPLITS:
             FileSystems.mkdirs(FileSystems.join(output_dir, sub, split))
@@ -258,6 +242,7 @@ def _prepare_output_dirs(output_dir: str, demo_sequences: list[str]) -> None:
 
 def run(options: IngestOptions) -> int:
     """Execute the ingestion pipeline; assumes all options are fully resolved (see ``main``)."""
+    FileSystems.set_options(options)  # the reset and listing below run before the pipeline
     raw_dir, output_dir = options.raw_dir, options.output_dir
 
     elements = [
@@ -306,11 +291,10 @@ def run(options: IngestOptions) -> int:
     kept, copied = counters.get("frames_kept", 0), counters.get("images_copied", 0)
     if kept != copied:
         logger.warning(f"frame count mismatch: {kept} converted vs {copied} copied")
-    yaml_path = stamp_dataset_yaml(Path(options.template_yaml), Path(output_dir))
     logger.info(
         f"ingested {counters.get('sequences_processed', 0)} sequences -> {copied} frames "
         f"| demo store: {counters.get('demo_frames_copied', 0)} frames "
-        f"across {len(demo_sequences)} clips | wrote {yaml_path.name}"
+        f"across {len(demo_sequences)} clips"
     )
     return 0
 
@@ -318,13 +302,12 @@ def run(options: IngestOptions) -> int:
 def main(argv: list[str] | None = None) -> int:
     settings = get_settings()
     logging.basicConfig(level=settings.log_level.upper(), format="%(message)s")
-    options = IngestOptions(argv)
+    options = IngestOptions(beam_argv(argv))
     if options.frame_stride < 1:
         raise ValueError("--frame-stride must be >= 1")
     # Settings-backed defaults, resolved at run time (never at class definition).
     options.raw_dir = options.raw_dir or str(settings.data.raw_dir)
     options.output_dir = options.output_dir or str(settings.data.subset_dir)
-    options.template_yaml = options.template_yaml or str(settings.data.dataset_yaml)
     options.demo_clips = options.demo_clips or "configs/demo_clips.yaml"
     return run(options)
 

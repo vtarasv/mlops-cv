@@ -143,8 +143,8 @@ upstream path (subset already valid, profile already current) would cascade the 
 rest of the DAG.
 
 Task containers get the host's dataset directories bind-mounted **at the same absolute path**
-("path parity"), so the absolute `path:` stamped into the generated dataset YAML resolves
-in-container unchanged: the subset directory (`HOST_SUBSET_DIR` — including its `demo/` store
+("path parity"), so the absolute `path:` each task stamps into its dataset YAML is the same path
+the scheduler-side checks read: the subset directory (`HOST_SUBSET_DIR` — including its `demo/` store
 and `profile/` outputs) and the pretrained-weights directory (`HOST_WEIGHTS`'s parent)
 read-write, and the raw dataset directory (`HOST_RAW_DIR`) read-only **into the `build_subset`
 task only** — leave it empty if the subset (with demo store) already exists; the self-heal

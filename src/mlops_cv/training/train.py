@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from mlops_cv.config import Settings, get_settings
+from mlops_cv.data.subset import dataset_yaml
 from mlops_cv.orchestration.handoff import BEST_WEIGHTS_RELPATH, TrainHandoff
 from mlops_cv.tracking import client, data_version
 from mlops_cv.training.callbacks import log_batch_params, log_per_class
@@ -104,7 +105,7 @@ def main(argv: list[str] | None = None) -> int:
     from ultralytics import settings as yolo_settings
 
     t = settings.training
-    data_yaml = (settings.data.subset_dir / settings.data.dataset_yaml.name).resolve()
+    data_yaml = dataset_yaml(settings)
 
     yolo_settings.update({"mlflow": True})  # enable the built-in MLflow callback
     os.environ["MLFLOW_EXPERIMENT_NAME"] = settings.mlflow.experiment

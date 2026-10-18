@@ -42,6 +42,7 @@ def test_topics_exist_with_expected_partitions(topics: dict) -> None:
     assert len(topics[streaming.alerts_topic].partitions) == 1
 
 
+@pytest.mark.usefixtures("topics")  # skips with the broker down, like its siblings
 def test_raw_frames_topic_has_raised_message_cap() -> None:
     from confluent_kafka.admin import AdminClient
     from confluent_kafka.admin._config import ConfigResource

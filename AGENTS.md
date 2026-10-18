@@ -130,6 +130,10 @@ pydantic + yaml: the Airflow and serving images import them.
   `MLFLOW_SERVER_ALLOWED_HOSTS` lists it.
 - onnxruntime finds CUDA through the system loader. On the host, `make serve` puts the venv's
   `nvidia/*/lib` on `LD_LIBRARY_PATH`; the images register them with `ldconfig`.
+- The full local venv holds both `opencv-python` (ultralytics, ncnn, `edge`) and
+  `opencv-python-headless` (`serving`). They share `cv2/`, so the last installed loads, and a sync
+  that removes one breaks `import cv2`: `uv sync --reinstall-package opencv-python-headless`.
+  Images, CI and the Pi export each get one wheel.
 - Airflow DockerOperator mount sources are host paths. Mount them at the same absolute path inside
   the container, so the dataset YAML's absolute `path:` resolves.
 - Start consumers before the producer: with `--offset-reset latest`, messages on never-read

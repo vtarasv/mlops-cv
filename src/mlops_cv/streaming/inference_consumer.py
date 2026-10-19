@@ -20,7 +20,9 @@ from __future__ import annotations
 import argparse
 import logging
 import time
+from collections import deque
 from collections.abc import Callable
+from concurrent.futures import Future, ThreadPoolExecutor
 from functools import partial
 from typing import TYPE_CHECKING
 
@@ -43,6 +45,8 @@ logger = logging.getLogger(__name__)
 
 # The frame's decoded answer: a list of boxes (the loop owns the timing around the call).
 InferenceFn = Callable[[bytes], list[Box]]
+# What a worker hands back: the boxes and the detect-only latency_ms.
+Timed = tuple[list[Box], float]
 
 # Producer-queue watermarks for pause/resume back-pressure: pause frame intake when this
 # many events await delivery, resume once the queue drains below the low mark.
@@ -132,12 +136,57 @@ def run_loop(
             return
         store_frame_offset(source)
 
+    def timed_infer(payload: bytes | None) -> Timed:
+        """Run in a worker thread; ``latency_ms`` counts ``infer`` only, not queue wait."""
+        if payload is None:  # a tombstone carries no JPEG — treat it as poison
+            raise ValueError("frame message has no value")
+        started = time.perf_counter()
+        boxes = infer(payload)
+        return boxes, (time.perf_counter() - started) * 1000.0
+
+    def emit(msg: Message, result: Future[Timed]) -> None:
+        try:
+            ref = parse_frame(msg.key(), msg.headers())
+            boxes, latency_ms = result.result()
+        except Exception as exc:
+            # Poison frame: record it, keep the partition moving (offset still stored).
+            counts["skipped"] += 1
+            logger.warning(f"skipping undecodable frame {msg.key()}: {exc}")
+            store_frame_offset(msg)
+            return
+
+        event = DetectionEvent(
+            sequence=ref.sequence,
+            frame_index=ref.frame_index,
+            ts_frame_ms=ref.ts_ms,
+            ts_infer_ms=time.time_ns() // 1_000_000,
+            latency_ms=latency_ms,
+            model=model,
+            boxes=boxes,
+        )
+        producer.produce(
+            settings.streaming.detections_topic,
+            event.to_value(),
+            key=event.kafka_key(),
+            on_delivery=lambda err, event_msg, source=msg: on_delivery(err, event_msg, source),
+        )
+        counts["events"] += 1
+        if counts["events"] % LOG_EVERY == 0:
+            logger.info(f"published {counts['events']} detection events")
+
+    # Detects overlap decode with the GPU; emitting oldest-first keeps poll order.
+    max_inflight = settings.serving.max_inflight
+    pool = ThreadPoolExecutor(max_workers=max_inflight)
+    inflight: deque[tuple[Message, Future[Timed]]] = deque()
     try:
         idle_since = time.monotonic()
         while max_messages is None or counts["consumed"] < max_messages:
             if counts["delivery_failures"]:
                 logger.error("stopping after a detection-event delivery failure")
                 break
+            while inflight and (len(inflight) >= max_inflight or inflight[0][1].done()):
+                emit(*inflight[0])
+                inflight.popleft()  # only once emitted: a Ctrl-C mid-wait must not lose the frame
             # Back-pressure: stop taking frames while too many events await delivery.
             if not paused and len(producer) >= PAUSE_AT_PENDING:
                 consumer.pause(consumer.assignment())
@@ -159,43 +208,15 @@ def run_loop(
                 continue
             idle_since = time.monotonic()
             counts["consumed"] += 1
-
-            try:
-                ref = parse_frame(msg.key(), msg.headers())
-                payload = msg.value()
-                if payload is None:  # a tombstone carries no JPEG — treat it as poison
-                    raise ValueError("frame message has no value")
-                started = time.perf_counter()
-                boxes = infer(payload)
-                latency_ms = (time.perf_counter() - started) * 1000.0
-            except Exception as exc:
-                # Poison frame: record it, keep the partition moving (offset still stored).
-                counts["skipped"] += 1
-                logger.warning(f"skipping undecodable frame {msg.key()}: {exc}")
-                store_frame_offset(msg)
-                continue
-
-            event = DetectionEvent(
-                sequence=ref.sequence,
-                frame_index=ref.frame_index,
-                ts_frame_ms=ref.ts_ms,
-                ts_infer_ms=time.time_ns() // 1_000_000,
-                latency_ms=latency_ms,
-                model=model,
-                boxes=boxes,
-            )
-            producer.produce(
-                settings.streaming.detections_topic,
-                event.to_value(),
-                key=event.kafka_key(),
-                on_delivery=lambda err, event_msg, source=msg: on_delivery(err, event_msg, source),
-            )
-            counts["events"] += 1
-            if counts["events"] % LOG_EVERY == 0:
-                logger.info(f"published {counts['events']} detection events")
+            inflight.append((msg, pool.submit(timed_infer, msg.value())))
     except KeyboardInterrupt:
         logger.info("interrupted; flushing")
     finally:
+        # After a delivery failure, emitting more could store an offset past the lost frame.
+        while inflight and not counts["delivery_failures"]:
+            emit(*inflight[0])
+            inflight.popleft()
+        pool.shutdown()
         producer.flush(10)
         consumer.close()  # final auto-commit of stored offsets
     logger.info(f"done: {counts}")

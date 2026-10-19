@@ -4,6 +4,7 @@
     mlflow-up mlflow-down mlflow-logs \
 	airflow-up airflow-down airflow-logs airflow-env \
 	streaming-up streaming-down streaming-logs \
+	link-sim link-produce stream-view \
 	serving-up serving-down serving-logs \
 	stack-up stack-down
 
@@ -179,6 +180,22 @@ streaming-down:
 
 streaming-logs:
 	$(STREAMING_COMPOSE) logs -f
+
+# The fake drone: a demo clip looped as OpenHD-like H.264 RTP.
+# Override LINK_SEQ, LINK_BITRATE, LINK_BUFSIZE, LINK_GOP or LINK_PORT, e.g. `make link-sim LINK_PORT=5602`.
+LINK_PORT ?= 5600
+
+link-sim:
+	scripts/link_sim.sh
+
+# Receive the fake drone: run beside `make link-sim` with the same LINK_PORT (LINK_NAME: uav1).
+link-produce: streaming-up
+	uv run python -m mlops_cv.streaming.producer --link data/link-sim/link-$(LINK_PORT).sdp \
+		--link-name $(or $(LINK_NAME),uav1)
+
+# Watch the stream: each frame with the champion's detections, on http://localhost:8091 (read-only).
+stream-view: serving-up
+	uv run python -m mlops_cv.streaming.view
 
 # Build the GPU serving image the serving stack runs.
 serve-image:

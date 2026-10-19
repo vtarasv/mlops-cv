@@ -78,6 +78,10 @@ optimize = [
     "tensorrt-cu13==10.16.1.11; sys_platform == 'linux'",
 ]
 
+link = [
+    "av==19.0.1",
+]
+
 edge = [
     "ncnn==1.0.20260526",
     "opencv-python==4.13.0.92",
@@ -95,6 +99,7 @@ default-groups = [
     "optimize",
     "serving",
     "edge",
+    "link",
 ]
 
 required-environments = [

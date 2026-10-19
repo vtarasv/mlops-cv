@@ -14,8 +14,8 @@ per-frame annotations in its ten raw categories.
 _Avoid_: source data, VisDrone (unqualified)
 
 **Sequence**:
-One continuous drone recording in the raw dataset, stored as numbered frames. It is the unit
-that is split, keyed, replayed and baselined.
+One continuous drone recording in the raw dataset, stored as numbered frames, or one link session
+on the stream. It is the unit that is split, keyed, replayed and baselined.
 _Avoid_: video, scene, clip (except for a demo clip)
 
 **Frame**:
@@ -215,8 +215,17 @@ _Avoid_: confidence threshold, conf cutoff
 ### Streaming
 
 **Producer**:
-The process that replays the demo store as a live camera feed, optionally with a synthetic shift.
+The process that publishes frames onto the stream, from the demo store or a video link,
+optionally with a synthetic shift.
 _Avoid_: camera, publisher
+
+**Video link**:
+A drone's or UGV's live encoded video feed, received on the ground.
+_Avoid_: stream (that is the bus), feed (unqualified)
+
+**Link session**:
+One unbroken reception of a video link; a gap starts a new one. It is that link's sequence.
+_Avoid_: connection
 
 **Inference consumer**:
 The stream reader that runs the published graph on each frame and emits a detection event.
@@ -241,8 +250,8 @@ The stream's answer for one frame: its detections and which model version produc
 _Avoid_: result, inference output
 
 **Anomaly rule**:
-An alert condition on detection events: the windowed mean count of one merged class crossing a
-set level.
+An alert condition on detection events: the windowed mean count of one merged class within one
+sequence crossing a set level.
 _Avoid_: alert rule, threshold rule
 
 **Alert**:

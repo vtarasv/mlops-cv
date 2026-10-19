@@ -58,11 +58,11 @@ services:
   # the same published graph the service answers with.
   inference-consumer:
     image: ${STREAM_IMAGE:?run via make serving-up (or export STREAM_IMAGE)}
-    container_name: inference-consumer
     environment:
       MLFLOW__TRACKING_URI: http://mlflow:${MLFLOW_PORT}
       STREAMING__BOOTSTRAP_SERVERS: redpanda:9092
     deploy:
+      replicas: ${INFERENCE_REPLICAS:-1}
       resources:
         reservations:
           devices:

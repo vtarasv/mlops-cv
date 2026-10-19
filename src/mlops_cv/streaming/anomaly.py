@@ -2,7 +2,7 @@
 
 Watches one class's per-frame count through a sliding window over **frame time** (scene
 time — flood-mode replay must not distort episodes) and opens an Alert exactly once when
-the windowed mean crosses the threshold, re-arming only after it drops back. Duplicate
+a sequence's windowed mean crosses the threshold, re-arming only after it drops back. Duplicate
 Detection events (at-least-once replay) are idempotently absorbed: the window keys
 entries by ``(sequence, frame_index)``, so a re-delivered frame replaces itself.
 """
@@ -25,7 +25,7 @@ class EpisodeRule:
     threshold: float
     _window: dict[tuple[str, int], tuple[int, int]] = field(default_factory=dict)
     _watermark_ms: int = 0  # newest frame time seen
-    _active: bool = False  # an episode is open (condition currently holds)
+    _active: dict[str, bool] = field(default_factory=dict)  # per sequence: an episode is open
 
     def observe(self, event: DetectionEvent) -> Alert | None:
         """Fold one Detection event into the window; return an Alert if an episode opens."""
@@ -36,10 +36,16 @@ class EpisodeRule:
         horizon = self._watermark_ms - int(self.window_s * 1000)
         self._window = {key: (ts, n) for key, (ts, n) in self._window.items() if ts >= horizon}
 
-        mean = sum(n for _, n in self._window.values()) / len(self._window)
+        live = {seq for seq, _ in self._window}
+        self._active = {seq: on for seq, on in self._active.items() if seq in live}
+
+        counts = [n for (seq, _), (_, n) in self._window.items() if seq == event.sequence]
+        if not counts:  # the frame itself fell behind the shared watermark
+            return None
+        mean = sum(counts) / len(counts)
         crossed = mean > self.threshold
-        opened = crossed and not self._active
-        self._active = crossed
+        opened = crossed and not self._active.get(event.sequence, False)
+        self._active[event.sequence] = crossed
         if not opened:
             return None
         return Alert(
@@ -48,7 +54,7 @@ class EpisodeRule:
             window_s=self.window_s,
             threshold=self.threshold,
             observed=mean,
-            n_frames=len(self._window),
+            n_frames=len(counts),
             sequence=event.sequence,
             frame_index=event.frame_index,
             ts_ms=event.ts_frame_ms,

@@ -29,6 +29,8 @@ services:
       - start
       - --mode=dev-container   # single-node dev profile (no production tuning checks)
       - --smp=1
+      # dev-container sets no cap: seastar takes all host RAM and its cache grows until OOM.
+      - --memory=1G
       - --kafka-addr=internal://0.0.0.0:9092,external://0.0.0.0:${KAFKA_HOST_PORT}
       # What clients are told to dial back: in-network clients the service name, host clients localhost.
       - --advertise-kafka-addr=internal://redpanda:9092,external://localhost:${KAFKA_HOST_PORT}
@@ -73,6 +75,9 @@ services:
         }
         create ${RAW_FRAMES_TOPIC} ${DATA_TOPIC_PARTITIONS} \
           -c max.message.bytes=${FRAME_MAX_MESSAGE_BYTES} -c retention.ms=${FRAME_RETENTION_MS}
+        # Idempotent, so a topic created before a retention change picks it up on the next `up`.
+        rpk topic alter-config ${RAW_FRAMES_TOPIC} -X brokers=redpanda:9092 \
+          --set retention.bytes=${FRAME_RETENTION_BYTES} --set retention.ms=${FRAME_RETENTION_MS}
         create ${DETECTIONS_TOPIC} ${DATA_TOPIC_PARTITIONS}
         create ${ALERTS_TOPIC} 1
         rpk topic list -X brokers=redpanda:9092

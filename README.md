@@ -124,6 +124,16 @@ decides whether to collect and label footage like that, which feeds the next tra
 
 Details: [docs/monitoring.md](docs/monitoring.md).
 
+### Edge device integration
+
+- **Predict on the device.** The device (e.g., a Raspberry Pi 5) pulls the champion's NCNN
+  variant and runs detection on its own camera, with no network to the ground needed while it
+  runs. Its accuracy and latency on ARM are measured on the device and gated on the desktop
+  before the variant is trusted there. Details: [docs/edge.md](docs/edge.md).
+- **Stream video to the ground.** The device only encodes its camera as H.264 and sends it over
+  the link. The ground-side producer decodes the link into the stream, so the streaming, serving
+  and monitoring apply unchanged. Details: [docs/streaming.md](docs/streaming.md#video-links).
+
 ## Running it
 
 ### Prerequisites

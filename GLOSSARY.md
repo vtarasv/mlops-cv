@@ -190,10 +190,30 @@ A COCO-pretrained model scored without training, its COCO classes mapped onto th
 classes. It shows what fine-tuning adds.
 _Avoid_: out-of-the-box model, pretrained baseline
 
+**Third-party baseline**:
+A VisDrone-trained checkpoint from outside this repo, scored on this repo's test split, its
+classes mapped onto the merged classes. It shows how the tuned recipe compares with community
+training on other VisDrone data.
+_Avoid_: published model, VisDrone baseline (a published result is a number, not a model scored here)
+
 **Noise floor**:
-The spread of val mAP50-95 across seeds of one trial setup. A trial must beat its stage's
-winner so far by more than this to count as a win.
+The spread of val mAP50-95 across seeds of one trial setup. The win margin is set above it.
 _Avoid_: variance, seed noise
+
+**Win margin**:
+How far a trial must beat its stage's winner so far on val mAP50-95 to count as a win. It sits
+above the noise floor, which is measured on one val sample with the data order held fixed.
+_Avoid_: threshold, tolerance
+
+**Confirmation stage**:
+The last stage of the tuning grid. It tries the settings found on one model size on the other
+sizes, and each size keeps them only if they beat its own winner so far by the win margin.
+_Avoid_: transfer stage, validation stage
+
+**Evaluation-only arm**:
+A different way of scoring a trial's weights, such as sliced inference or the other detection
+head. It is recorded beside the trial and never picks a winner.
+_Avoid_: variant (that is a serving variant), ablation
 
 ### Optimization and serving
 
@@ -233,6 +253,11 @@ _Avoid_: prediction, box (unqualified)
 The minimum confidence for a detection to be reported. It has the same default on HTTP and on
 the stream.
 _Avoid_: confidence threshold, conf cutoff, operating point
+
+**Max-F1 confidence**:
+The confidence at which a model's class-mean F1 on a split peaks; the logged precision and recall
+are read there. A candidate for the confidence floor, not the floor itself.
+_Avoid_: operating point, optimal threshold, tuned floor
 
 ### Streaming
 

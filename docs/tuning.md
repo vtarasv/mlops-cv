@@ -111,6 +111,29 @@ assignment (`TaskAlignedAssigner`) onto the CPU on every batch, about 10× slowe
 them one after another. Even alone, s@640 at batch 16 reaches the 8 GB limit and fell back to the
 CPU on 37 batches across its three seeds.
 
+## Stage 2: imgsz per size
+
+`make tune STAGE=stage2` runs imgsz 960 and 1280 for every size against its stage 1 row at 640
+(30 epochs, pinned batch, `workers=4`). Values are in %. The 640 rows are repeated from stage 1.
+
+| Model | imgsz | val mAP50-95 | person | vehicle | two-three-wheeler | mAP50-95_small | p50 ms | best epoch | s/epoch |
+|---|---|---|---|---|---|---|---|---|---|
+| yolo26n | 640 | 21.0 | 17.3 | 32.9 | 12.8 | 8.8 | 11.0 | 28 | 24.8 |
+| yolo26n | 960 | 26.0 | 21.7 | 38.6 | 17.6 | 12.4 | 10.7 | 27 | 23.8 |
+| **yolo26n** | **1280** | **28.4** | 24.4 | 41.5 | 19.5 | 13.9 | 12.1 | 29 | 40.6 |
+| yolo26s | 640 | 26.3 | 23.2 | 37.7 | 17.9 | 11.0 | 10.3 | 24, 25, 29 | 30.5 |
+| yolo26s | 960 | 28.9 | 25.0 | 41.9 | 19.8 | 14.3 | 12.4 | 25 | 39.2 |
+| **yolo26s** | **1280** | **30.8** | 26.5 | 42.9 | 22.9 | 13.5 | 16.2 | 25 | 64.9 |
+| yolo26m | 640 | 28.6 | 24.5 | 40.6 | 20.7 | 12.5 | 12.0 | 28 | 41.3 |
+| yolo26m | 960 | 31.4 | 27.7 | 44.7 | 21.9 | 15.2 | 16.6 | 19 | 64.9 |
+| **yolo26m** | **1280** | **32.9** | 28.2 | 44.3 | 26.1 | 15.9 | 25.0 | 19 | 115.0 |
+
+1280 wins for every size, by 1.4–2.5 pt over 960, well past the win margin. n@1280 (28.4)
+matches m@640 (28.6) at about the same latency. Both m trials peak at epoch 19, before mosaic
+closes. m@1280's best epoch (32.8) is a one-epoch spike over a plateau near 31.6, and on the
+mean of its last six epochs it leads m@960 by only 0.5 pt (31.6 vs 31.0), right at the margin. Its win still stands under the
+protocol, which scores `best.pt`. Because m@1280 won, the confirmation stage runs `freeze=11`.
+
 ## The grid
 
 Each stage is a full grid of its own factors, run against the winner so far. Stages 2 and 3 run

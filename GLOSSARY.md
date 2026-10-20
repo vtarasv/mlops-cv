@@ -173,6 +173,28 @@ A crop of one low-confidence true positive or one high-confidence false positive
 show where the model is unsure or confidently wrong.
 _Avoid_: failure sample, hard example
 
+### Tuning
+
+**Tuning grid**:
+The fixed, staged list of trials. Each stage varies one or two factors and carries its winner
+into the next.
+_Avoid_: sweep, search space, hyperparameter search
+
+**Trial**:
+One training run of one tuning-grid point. It is compared on val and never registered as a
+model version.
+_Avoid_: experiment (that holds many runs), training run (that produces a model version)
+
+**Zero-shot baseline**:
+A COCO-pretrained model scored without training, its COCO classes mapped onto the merged
+classes. It shows what fine-tuning adds.
+_Avoid_: out-of-the-box model, pretrained baseline
+
+**Noise floor**:
+The spread of val mAP50-95 across seeds of one trial setup. A trial must beat its stage's
+winner so far by more than this to count as a win.
+_Avoid_: variance, seed noise
+
 ### Optimization and serving
 
 **Serving variant**:
@@ -210,7 +232,7 @@ _Avoid_: prediction, box (unqualified)
 **Confidence floor**:
 The minimum confidence for a detection to be reported. It has the same default on HTTP and on
 the stream.
-_Avoid_: confidence threshold, conf cutoff
+_Avoid_: confidence threshold, conf cutoff, operating point
 
 ### Streaming
 

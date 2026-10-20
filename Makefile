@@ -1,5 +1,5 @@
 .PHONY: setup lint fmt typecheck test test-all ci clean gpu-smoke \
-	train tune eval ingest profile optimize edge-gate serve \
+	train tune zero-shot eval ingest profile optimize edge-gate serve \
 	beam-image train-image optimize-image serve-image stream-image monitor-image \
     mlflow-up mlflow-down mlflow-logs \
 	airflow-up airflow-down airflow-logs airflow-env \
@@ -93,6 +93,10 @@ train: mlflow-up
 # Add PARALLEL=<n> to train n trials at once.
 tune: mlflow-up
 	uv run python -m mlops_cv.training.tune configs/tuning/$(STAGE).yaml $(if $(PARALLEL),--parallel $(PARALLEL))
+
+# COCO-pretrained yolo26n/s/m x imgsz 640/1280 on val, zero-shot -> one run each in the tune experiment.
+zero-shot: mlflow-up
+	uv run python -m mlops_cv.evaluation.zero_shot
 
 # Evaluate an MLflow model -> test metrics + report + gate + demo videos + TP/FP crops in MLflow.
 # Pass MODEL=<models:/aerial-object-detector@champion | runs:/<run_id>/weights/best.pt>.

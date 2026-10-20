@@ -50,8 +50,22 @@ Each trial run records:
 
 ## Zero-shot baselines
 
+`make zero-shot` scores the COCO-pretrained weights on val, with no training. COCO classes are
+mapped onto the merged classes: person to person; car, bus and truck to vehicle; bicycle and
+motorcycle to two-three-wheeler. Every other COCO class is dropped. Predictions use val's floor
+and cap (conf 0.001, 300 boxes, applied before the mapping). When one box comes out under two
+COCO classes that map to the same merged class, only the higher-confidence copy is kept. Scoring
+goes through `score_detections`. Each baseline is a `zero-shot-<size><imgsz>` run in the tune
+experiment. Values are in %; latency is the trial stub.
+
 | Model | imgsz | val mAP50-95 | mAP50 | person | vehicle | two-three-wheeler | mAP50-95_small | p50 ms |
 |---|---|---|---|---|---|---|---|---|
+| yolo26n | 640 | 13.6 | 31.0 | 13.5 | 22.6 | 4.9 | 2.8 | 12.4 |
+| yolo26n | 1280 | 20.0 | 42.2 | 19.8 | 30.8 | 9.4 | 6.7 | 18.6 |
+| yolo26s | 640 | 18.5 | 38.3 | 16.7 | 30.3 | 8.6 | 4.8 | 12.8 |
+| yolo26s | 1280 | 22.5 | 47.5 | 20.8 | 37.0 | 9.9 | 7.4 | 23.5 |
+| yolo26m | 640 | 20.0 | 41.6 | 18.4 | 33.2 | 8.4 | 6.0 | 20.7 |
+| yolo26m | 1280 | 22.5 | 47.9 | 21.8 | 37.1 | 8.5 | 8.1 | 33.4 |
 
 ## Noise floor (s@640, current recipe)
 

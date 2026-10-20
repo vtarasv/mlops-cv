@@ -163,7 +163,7 @@ def main(argv: list[str] | None = None) -> int:
             device=args.device,
             patience=t.patience,
             seed=args.seed,
-            name=run_name,  # distinct save dirs for parallel trials
+            name=run_name,
         ) | dict(args.overrides)
         model.train(**train_args)
         mlflow.autolog(disable=True)  # the built-in callback enabled autolog

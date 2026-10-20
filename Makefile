@@ -90,9 +90,8 @@ train: mlflow-up
 	uv run python -m mlops_cv.training
 
 # Run one tuning-grid stage (configs/tuning/$(STAGE).yaml) -> unregistered trial runs in the tune experiment.
-# Add PARALLEL=<n> to train n trials at once.
 tune: mlflow-up
-	uv run python -m mlops_cv.training.tune configs/tuning/$(STAGE).yaml $(if $(PARALLEL),--parallel $(PARALLEL))
+	uv run python -m mlops_cv.training.tune configs/tuning/$(STAGE).yaml
 
 # COCO-pretrained yolo26n/s/m x imgsz 640/1280 on val, zero-shot -> one run each in the tune experiment.
 zero-shot: mlflow-up

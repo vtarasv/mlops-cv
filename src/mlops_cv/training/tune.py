@@ -1,7 +1,7 @@
 """Run one tuning-grid stage: ``configs/tuning/<stage>.yaml`` -> one training process per trial.
 
-Trials train one at a time (``--parallel N`` opts in), never register, and log to the tune
-experiment. Each trial's latency is measured afterwards, alone on the GPU, onto its run.
+Trials train one at a time, never register, and log to the tune experiment. Each trial's
+latency is measured afterwards, alone on the GPU, onto its run.
 """
 
 from __future__ import annotations
@@ -14,16 +14,15 @@ import subprocess
 import sys
 import time
 from collections.abc import Mapping
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
 import yaml
 
 from mlops_cv.config import get_settings
-from mlops_cv.data.subset import IMAGES_DIRNAME, dataset_yaml
+from mlops_cv.data.subset import IMAGES_DIRNAME
 from mlops_cv.orchestration.handoff import best_weights_uri
-from mlops_cv.startup import StartupError, exits_on_startup_error
+from mlops_cv.startup import exits_on_startup_error
 from mlops_cv.training.train import TRIAL_SPLIT
 
 logger = logging.getLogger(__name__)
@@ -32,9 +31,6 @@ TUNE_EXPERIMENT = "aerial-object-detection-tune"
 
 # Knobs with a named training flag (headed for Airflow); every other knob goes through ``--set``.
 FLAGS = ("model", "imgsz", "epochs", "batch", "seed")
-
-# Knobs that change the image list, so they rewrite the label cache that parallel trials share.
-LIST_KNOBS = ("data", "fraction")
 
 
 def load_stage(path: Path) -> dict[str, dict[str, Any]]:
@@ -91,7 +87,6 @@ def _record_latency(mlflow: Any, name: str, imgsz: int, since_ms: int) -> None:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="Run one tuning-grid stage, one process per trial.")
     p.add_argument("stage", type=Path, help="configs/tuning/<stage>.yaml")
-    p.add_argument("--parallel", type=int, default=1, help="trials trained at once")
     args = p.parse_args(argv)
 
     os.environ["MLFLOW__EXPERIMENT"] = TUNE_EXPERIMENT  # trials inherit it: never production's
@@ -99,18 +94,10 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=settings.log_level.upper(), format="%(message)s")
     trials = load_stage(args.stage)
 
-    if args.parallel > 1:
-        if listed := [n for n, k in trials.items() if any(key in k for key in LIST_KNOBS)]:
-            raise StartupError(f"{', '.join(listed)} change the image list; run with --parallel 1")
-        from mlops_cv.evaluation.score_detections import split_labels
-
-        for split in ("train", TRIAL_SPLIT):  # write the label caches before trials race to
-            split_labels(dataset_yaml(settings), split)
-
     since_ms = int(time.time() * 1000)
-    with ThreadPoolExecutor(args.parallel) as pool:
-        codes = pool.map(lambda kv: subprocess.run(trial_argv(*kv)).returncode, trials.items())
-        failed = [name for name, code in zip(trials, codes, strict=True) if code]
+    failed = [
+        name for name, knobs in trials.items() if subprocess.run(trial_argv(name, knobs)).returncode
+    ]
 
     from mlops_cv.tracking import client
 

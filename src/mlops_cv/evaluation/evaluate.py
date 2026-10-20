@@ -97,7 +97,7 @@ def split_metrics(
 ) -> dict[str, float]:
     """``model.val`` on one split -> headline, per-class and mAP50-95_small keyed ``<split>/...``.
 
-    ``name`` picks the val save dir; concurrent processes need distinct ones.
+    ``name`` picks the val save dir.
     """
     results = model.val(
         data=str(data_yaml),

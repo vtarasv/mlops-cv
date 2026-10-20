@@ -19,8 +19,7 @@ vehicle, two-three-wheeler; see [data](data.md#annotation-format-and-3-class-mer
 ## Run a stage
 
 ```bash
-make tune STAGE=smoke              # configs/tuning/smoke.yaml
-make tune STAGE=stage2 PARALLEL=2  # two trials train at once
+make tune STAGE=smoke  # configs/tuning/smoke.yaml
 ```
 
 A stage file lists its trials. `defaults` apply to every trial, and a trial's own knobs win:
@@ -34,9 +33,8 @@ trials:
 
 `model`, `imgsz`, `epochs`, `batch` and `seed` become training flags. Every other knob is passed
 to `model.train()` through `--set`. The runner starts one training process per trial, one at a
-time unless `--parallel` is given. It then measures each trial's latency on its own, with nothing
-else on the GPU. Run names are `<stage>-<trial>`. Parallel trials refuse knobs that change the
-image list (`data`, `fraction`), because they would race on the shared label cache.
+time. It then measures each trial's latency on its own, with nothing else on the GPU. Run names
+are `<stage>-<trial>`.
 
 Each trial run records:
 

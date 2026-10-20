@@ -69,10 +69,38 @@ experiment. Values are in %; latency is the trial stub.
 
 ## Noise floor (s@640, current recipe)
 
-| Seed | val mAP50-95 | person | vehicle | two-three-wheeler |
-|---|---|---|---|---|
+`make tune STAGE=stage1` runs the noise floor and stage 1. Every trial uses the current recipe
+(30 epochs, AdamW from `optimizer=auto`, `nbs=64`) with `patience=0`, `close_mosaic=10`, a pinned
+batch and `workers=0`. On 8.4.72 dataloader workers ignore the seed. In the main process the seed
+varies weight init and augmentation, but the data order stays fixed, so the spread is a lower
+bound. Values are in %.
+
+| Seed | val mAP50-95 | person | vehicle | two-three-wheeler | mAP50-95_small |
+|---|---|---|---|---|---|
+| 0 | 26.25 | 22.5 | 37.9 | 18.3 | 11.2 |
+| 1 | 26.17 | 23.4 | 37.1 | 18.0 | 11.2 |
+| 2 | 26.42 | 23.7 | 38.0 | 17.5 | 10.6 |
+| range | 0.25 | 1.2 | 0.9 | 0.8 | 0.6 |
+
+The standard deviation of the overall score is 0.13 pt. A single class moves 4–5× more than the
+overall score.
 
 ## Stage 1: the current recipe per size
 
-| Model | imgsz | val mAP50-95 | mAP50-95_small | p50 ms | best epoch |
-|---|---|---|---|---|---|
+Batch 16 for n and s and batch 8 for m, so `accumulate` is 4 and 8: about 19 optimizer steps per
+epoch for every size. The s row is the mean of the three seeds. Per-epoch time is with
+`workers=0`, which leaves loading on one CPU core and the GPU about half idle.
+
+| Model | imgsz | val mAP50-95 | mAP50-95_small | p50 ms | best epoch | s/epoch |
+|---|---|---|---|---|---|---|
+| yolo26n | 640 | 21.0 | 8.8 | 11.0 | 28 | 24.8 |
+| yolo26s | 640 | 26.3 | 11.0 | 10.3 | 24, 25, 29 | 30.5 |
+| yolo26m | 640 | 28.6 | 12.5 | 12.0 | 28 | 41.3 |
+
+The best epoch falls between 24 and 29 of 30. Over the last six epochs the curve moves within the
+noise. Whether more epochs help is the grid's call.
+
+Two trials at once don't fit in 8 GB: two n@640 trials at batch 16 pushed the loss's label
+assignment (`TaskAlignedAssigner`) onto the CPU on every batch, about 10× slower than running
+them one after another. Even alone, s@640 at batch 16 reaches the 8 GB limit and fell back to the
+CPU on 37 batches across its three seeds.

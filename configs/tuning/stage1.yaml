@@ -1,0 +1,9 @@
+# The noise floor (s@640, three seeds) and stage 1: the current recipe once per size.
+# workers=0: on 8.4.72 worker augmentation ignores the seed, so only the main process lets it vary.
+defaults: {patience: 0, close_mosaic: 10, imgsz: 640, epochs: 30, workers: 0}
+trials:
+  - {name: s640-seed0, model: yolo26s, batch: 16, seed: 0}
+  - {name: s640-seed1, model: yolo26s, batch: 16, seed: 1}
+  - {name: s640-seed2, model: yolo26s, batch: 16, seed: 2}
+  - {name: n640, model: yolo26n, batch: 16, seed: 0}
+  - {name: m640, model: yolo26m, batch: 8, seed: 0}

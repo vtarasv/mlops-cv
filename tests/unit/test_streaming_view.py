@@ -138,6 +138,7 @@ def server(monkeypatch) -> Iterator[str]:
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     yield f"http://127.0.0.1:{httpd.server_address[1]}"
     httpd.shutdown()
+    httpd.server_close()
 
 
 def test_the_page_is_html_with_the_floor_and_classes(server: str) -> None:
@@ -153,6 +154,7 @@ def test_an_unknown_path_is_404(server: str) -> None:
     with pytest.raises(urllib.error.HTTPError) as err:
         urllib.request.urlopen(f"{server}/nope")
     assert err.value.code == 404
+    err.value.close()  # the error holds the open response
 
 
 def test_a_new_client_gets_the_latest_event_first(server: str, monkeypatch) -> None:

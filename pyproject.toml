@@ -88,6 +88,9 @@ edge = [
     "opencv-python==4.13.0.92",
     "mlflow-skinny==3.14.0",
 ]
+tuning = [
+    "sahi==0.12.8",
+]
 
 [tool.uv]
 default-groups = [
@@ -101,6 +104,7 @@ default-groups = [
     "serving",
     "edge",
     "link",
+    "tuning",
 ]
 
 required-environments = [

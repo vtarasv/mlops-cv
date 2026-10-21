@@ -1,5 +1,5 @@
 .PHONY: setup lint fmt typecheck test test-all ci clean gpu-smoke \
-	train tune zero-shot eval ingest profile optimize edge-gate serve \
+	train tune arms zero-shot eval ingest profile optimize edge-gate serve \
 	beam-image train-image optimize-image serve-image stream-image monitor-image \
     mlflow-up mlflow-down mlflow-logs \
 	airflow-up airflow-down airflow-logs airflow-env \
@@ -92,6 +92,11 @@ train: mlflow-up
 # Run one tuning-grid stage (configs/tuning/$(STAGE).yaml) -> unregistered trial runs in the tune experiment.
 tune: mlflow-up
 	uv run python -m mlops_cv.training.tune configs/tuning/$(STAGE).yaml
+
+# Evaluation-only arms (end2end=False, SAHI) on tuning trials' best.pt -> one run per arm, never selecting.
+# Pass TRIALS="<trial run name> ...".
+arms: mlflow-up
+	uv run python -m mlops_cv.evaluation.arms $(TRIALS)
 
 # COCO-pretrained yolo26n/s/m x imgsz 640/1280 on val, zero-shot -> one run each in the tune experiment.
 zero-shot: mlflow-up

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import tempfile
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
@@ -39,13 +39,18 @@ def split_labels(data_yaml: Path, split: str) -> list[dict[str, Any]]:
 
 
 def _validate(
-    detections: Mapping[str, np.ndarray], data_yaml: Path, split: str
+    detections: Mapping[str, np.ndarray],
+    data_yaml: Path,
+    split: str,
+    frames: Collection[str] | None = None,
 ) -> tuple[DetectionValidator, list[dict[str, Any]]]:
     import torch
 
     with tempfile.TemporaryDirectory() as save_dir:
         validator = _validator(data_yaml, split, Path(save_dir))
         labels = validator.build_dataset(validator.data[split]).labels  # type: ignore[attr-defined]
+        if frames is not None:
+            labels = [lb for lb in labels if Path(lb["im_file"]).name in frames]
         names = Counter(Path(lb["im_file"]).name for lb in labels)
         if dupes := sorted(n for n, c in names.items() if c > 1):
             raise ValueError(
@@ -77,14 +82,21 @@ def _validate(
     return validator, labels
 
 
-def score(detections: Mapping[str, np.ndarray], data_yaml: Path, split: str) -> DetMetrics:
+def score(
+    detections: Mapping[str, np.ndarray],
+    data_yaml: Path,
+    split: str,
+    frames: Collection[str] | None = None,
+) -> DetMetrics:
     """``{frame file name: (n, 6) x1 y1 x2 y2 conf cls, source pixels}`` -> the validator's metrics.
+
+    ``frames`` (file names) scores only those frames of the split, ignoring the rest.
 
     Each frame goes through ``DetectionValidator.update_metrics`` with a batch whose image shape
     is the source shape, so ``_prepare_batch`` scales the normalized labels into source pixels,
     where the detections live.
     """
-    return _validate(detections, data_yaml, split)[0].metrics
+    return _validate(detections, data_yaml, split, frames)[0].metrics
 
 
 def score_with_ap_small(

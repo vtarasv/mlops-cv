@@ -94,10 +94,11 @@ def split_metrics(
     device: str,
     batch: int,
     name: str | None = None,
+    **overrides: Any,
 ) -> dict[str, float]:
     """``model.val`` on one split -> headline, per-class and mAP50-95_small keyed ``<split>/...``.
 
-    ``name`` picks the val save dir.
+    ``name`` picks the val save dir. ``overrides`` go to ``model.val`` as is (``end2end=False``).
     """
     results = model.val(
         data=str(data_yaml),
@@ -107,6 +108,7 @@ def split_metrics(
         batch=batch,
         name=name,
         save_json=True,  # predictions.json, for mAP50-95_small
+        **overrides,
     )
     metrics = headline_metrics(results.box, prefix=split)
     metrics[metric_key(split, MAP_SMALL)] = ap_small_mod.ap_small(

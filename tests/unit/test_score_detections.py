@@ -59,6 +59,13 @@ def test_ap_small_comes_from_the_same_validator_pass(data_yaml: Path) -> None:
     assert ap_s == pytest.approx(1.0)
 
 
+def test_frames_scores_only_those_frames(data_yaml: Path) -> None:
+    """b.jpg's only box is missed, but scoring a.jpg alone leaves it out."""
+    dets = ground_truth() | {"b.jpg": np.zeros((0, 6), np.float32)}
+    assert score(dets, data_yaml, "test").box.mr < 1.0
+    assert score(dets, data_yaml, "test", frames={"a.jpg"}).box.mr == 1.0
+
+
 def test_empty_predictions_score_zero(data_yaml: Path) -> None:
     empty = {name: np.zeros((0, 6), np.float32) for name in FRAMES}
     assert score(empty, data_yaml, "test").box.map == 0.0

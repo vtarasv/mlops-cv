@@ -134,6 +134,29 @@ closes. m@1280's best epoch (32.8) is a one-epoch spike over a plateau near 31.6
 mean of its last six epochs it leads m@960 by only 0.5 pt (31.6 vs 31.0), right at the margin. Its win still stands under the
 protocol, which scores `best.pt`. Because m@1280 won, the confirmation stage runs `freeze=11`.
 
+## Stage 3: epochs per size
+
+`make tune STAGE=stage3` runs 60 and 100 epochs for every size at 1280 against stage 2's 30-epoch
+row. The last-six column is the mean val mAP50-95 over the run's final six epochs, a check on
+`best.pt` spikes. Values are in %.
+
+| Model | epochs | val mAP50-95 | person | vehicle | two-three-wheeler | mAP50-95_small | last six | best epoch | GPU h |
+|---|---|---|---|---|---|---|---|---|---|
+| **yolo26n** | **30** | **28.4** | 24.4 | 41.5 | 19.5 | 13.9 | 28.2 | 29 | 0.34 |
+| yolo26n | 60 | 28.7 | 24.2 | 42.3 | 19.6 | 14.3 | 28.2 | 48 | 0.69 |
+| yolo26n | 100 | 28.1 | 23.7 | 40.5 | 20.2 | 12.1 | 27.5 | 21 | 1.15 |
+| **yolo26s** | **30** | **30.8** | 26.5 | 42.9 | 22.9 | 13.5 | 30.6 | 25 | 0.54 |
+| yolo26s | 60 | 30.1 | 25.5 | 42.7 | 22.2 | 13.3 | 28.9 | 38 | 1.09 |
+| yolo26s | 100 | 30.4 | 25.9 | 41.9 | 23.4 | 12.0 | 28.0 | 38 | 1.85 |
+| **yolo26m** | **30** | **32.9** | 28.2 | 44.3 | 26.1 | 15.9 | 31.6 | 19 | 0.96 |
+| yolo26m | 60 | 32.0 | 28.9 | 44.6 | 22.5 | 16.1 | 30.0 | 29 | 1.93 |
+| yolo26m | 100 | 31.8 | 27.4 | 44.7 | 23.2 | 16.1 | 28.4 | 25 | 3.32 |
+
+30 epochs stays for every size. n at 60 epochs gains 0.3 pt, inside the win margin, and every
+other longer run loses. Longer runs peak before the end and then fall: the last-six mean drops by
+0.7–3.2 pt from 30 to 100 epochs, the signature of overfitting 1238 training frames rather than
+of undertraining. Per-epoch time doesn't change with the budget (n/s/m about 41/66/118 s).
+
 ## The grid
 
 Each stage is a full grid of its own factors, run against the winner so far. Stages 2 and 3 run

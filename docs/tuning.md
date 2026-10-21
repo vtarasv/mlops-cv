@@ -195,6 +195,24 @@ agrees (+0.4 pt), and it lifts mAP50-95_small by 1.4 pt at the same cost. Halvin
 0.4 pt alone (inside the margin) and nothing on top of the zoom. A narrower `scale` of 0.25
 loses with either mosaic.
 
+## Stages 6–7: close_mosaic and cls_pw on s
+
+`make tune STAGE=stage6`, then `STAGE=stage7`, run on s's stage-5 winner (1280, 30 epochs,
+`scale=[0.75, 1.5]`). Stage 6 keeps mosaic on to the last epoch. Stage 7 adds `cls_pw`,
+ultralytics' inverse-frequency classification-loss weights. Values are in %.
+
+| Setup | val mAP50-95 | person | vehicle | two-three-wheeler | mAP50-95_small | last six | best epoch |
+|---|---|---|---|---|---|---|---|
+| **stage 5 winner (`close_mosaic=10`, `cls_pw=0`)** | **31.4** | 27.5 | 43.4 | 23.2 | 14.9 | 31.0 | 27 |
+| `close_mosaic=0` | 31.0 | 27.6 | 42.8 | 22.4 | 14.1 | 30.6 | 26 |
+| `cls_pw=0.5` | 30.9 | 27.7 | 43.1 | 21.9 | 13.6 | 30.6 | 23 |
+| `cls_pw=1.0` | 30.4 | 27.5 | 42.2 | 21.4 | 14.2 | 29.6 | 21 |
+
+Both lose, so `close_mosaic=10` and `cls_pw=0` stay, and stage 6 needs no follow-up at 5 or 15.
+`cls_pw` lowers the class it upweights most: two-three-wheeler falls 1.3 and 1.8 pt.
+
+s's tuned recipe is the current recipe at imgsz 1280 with `scale=[0.75, 1.5]`.
+
 ## The grid
 
 Each stage is a full grid of its own factors, run against the winner so far. Stages 2 and 3 run

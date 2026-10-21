@@ -174,6 +174,27 @@ ran `optimizer=auto` (AdamW, lr0 0.001429 on 8.4.72). Every arm also sets `momen
 Its last-six mean is 0.1 pt below auto's. The four arms span 0.6 pt, so lr0 barely matters
 here.
 
+## Stage 5: scale and mosaic on s
+
+`make tune STAGE=stage5` crosses `scale` with `mosaic` for s@1280×30. The 0.5 × 1.0 cell is
+stage 2's s1280 row. `scale: [0.75, 1.5]` is an absolute zoom range that only ever shrinks to
+0.75 and can upscale, which is the full-frame stand-in for tile training (the SAHI paper's
+upscaled crops). Values are in %.
+
+| scale | mosaic | val mAP50-95 | person | vehicle | two-three-wheeler | mAP50-95_small | last six | best epoch |
+|---|---|---|---|---|---|---|---|---|
+| 0.5 | 1.0 | 30.8 | 26.5 | 42.9 | 22.9 | 13.5 | 30.6 | 25 |
+| 0.25 | 1.0 | 30.4 | 26.7 | 42.4 | 22.0 | 13.7 | 29.6 | 20 |
+| **[0.75, 1.5]** | **1.0** | **31.4** | 27.5 | 43.4 | 23.2 | 14.9 | 31.0 | 27 |
+| 0.5 | 0.5 | 31.2 | 27.7 | 43.3 | 22.5 | 13.7 | 30.8 | 27 |
+| 0.25 | 0.5 | 30.5 | 26.6 | 42.1 | 22.8 | 13.1 | 29.9 | 19 |
+| [0.75, 1.5] | 0.5 | 31.0 | 28.1 | 42.8 | 22.1 | 14.3 | 30.2 | 22 |
+
+The zoom range wins: +0.6 pt over 0.5 × 1.0, just past the win margin. Its last-six mean
+agrees (+0.4 pt), and it lifts mAP50-95_small by 1.4 pt at the same cost. Halving mosaic gains
+0.4 pt alone (inside the margin) and nothing on top of the zoom. A narrower `scale` of 0.25
+loses with either mosaic.
+
 ## The grid
 
 Each stage is a full grid of its own factors, run against the winner so far. Stages 2 and 3 run

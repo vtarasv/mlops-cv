@@ -30,6 +30,7 @@ OVERLAP = 0.2
 NMS_IOU = 0.5
 WARMUP = 3  # SAHI frames left out of the latency readings
 
+
 def resolution_group(width: int) -> str:
     """The group a frame of this source width reports under: val holds 3840, 2688/2720 and
     1344/1904 frames. Test is mostly 1360 wide, so ``1904px`` is the group test can repeat."""
@@ -91,7 +92,7 @@ def _latency(seconds: Iterable[float]) -> dict[str, float]:
     }
 
 
-def sahi_arm(model: Any, images: list[Path], data_yaml: Path, *, imgsz: int, device: str) -> dict:
+def sahi_arm(model: Any, images_dir: Path, data_yaml: Path, *, imgsz: int, device: str) -> dict:
     """SAHI under ``val/``, the path-matched full frame under ``val_full/``, latency, passes."""
     from PIL import Image
     from sahi.models.ultralytics import UltralyticsDetectionModel
@@ -100,13 +101,14 @@ def sahi_arm(model: Any, images: list[Path], data_yaml: Path, *, imgsz: int, dev
 
     from mlops_cv.training.train import TRIAL_SPLIT
 
+    images = sorted(images_dir.glob("*.jpg"))
     sizes = {p.name: Image.open(p).size for p in images}
     frame_groups = groups(sizes)
 
     full = {
         Path(r.path).name: r.boxes.data.cpu().numpy()
         for r in model.predict(
-            [str(p) for p in images],
+            str(images_dir),  # a directory streams frame by frame; a list is one batch
             imgsz=imgsz,
             device=device,
             conf=CONF,
@@ -183,7 +185,7 @@ def main(argv: list[str] | None = None) -> int:
 
     mlflow = client.connect(settings)
     data_yaml = dataset_yaml(settings)
-    images = sorted((settings.data.subset_dir / IMAGES_DIRNAME / TRIAL_SPLIT).glob("*.jpg"))
+    images_dir = settings.data.subset_dir / IMAGES_DIRNAME / TRIAL_SPLIT
     device = settings.training.device
 
     for trial in args.trials:
@@ -213,7 +215,7 @@ def main(argv: list[str] | None = None) -> int:
                     end2end=False,
                 )
             else:
-                readings = sahi_arm(model, images, data_yaml, imgsz=imgsz, device=device)
+                readings = sahi_arm(model, images_dir, data_yaml, imgsz=imgsz, device=device)
             with mlflow.start_run(run_name=f"{trial}-{arm}"):
                 mlflow.set_tag("tune.stage", "arms")
                 mlflow.log_params({"trial": trial, "trial_run_id": run.info.run_id, "imgsz": imgsz})

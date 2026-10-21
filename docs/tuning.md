@@ -213,6 +213,64 @@ Both lose, so `close_mosaic=10` and `cls_pw=0` stay, and stage 6 needs no follow
 
 s's tuned recipe is the current recipe at imgsz 1280 with `scale=[0.75, 1.5]`.
 
+## Confirmation stage: s's settings on n and m
+
+`make tune STAGE=confirm` carries s's one change, `scale=[0.75, 1.5]`, to n and m at 1280×30.
+Because m@1280 won stage 2, it adds one m trial with `freeze=11` (the whole backbone frozen).
+Values are in %.
+
+| Trial | val mAP50-95 | mAP50-95_small | last six | best epoch | GPU h |
+|---|---|---|---|---|---|
+| **n, current recipe (stage 2)** | **28.4** | 13.9 | 28.2 | 29 | 0.34 |
+| n + zoom | 28.0 | 14.8 | 27.8 | 26 | 0.33 |
+| **m, current recipe (stage 2)** | **32.9** | 15.9 | 31.6 | 19 | 0.96 |
+| m + zoom | 32.6 | 16.1 | 31.3 | 17 | 0.97 |
+| m + zoom + `freeze=11` | 31.3 | 15.9 | 31.0 | 13 | 0.63 |
+
+The zoom doesn't carry over. It lowers n and m by 0.4 and 0.2 pt, on `best.pt` and on the
+last-six mean, though it still lifts mAP50-95_small. A frozen backbone loses 1.5 pt.
+
+## Final winners
+
+| Model | Recipe | Trial run | val mAP50-95 | mAP50-95_small | p50 ms |
+|---|---|---|---|---|---|
+| yolo26n | 1280, 30 epochs, batch 4 | `stage2-n1280` | 28.4 | 13.9 | 12.1 |
+| yolo26s | 1280, 30 epochs, batch 4, `scale=[0.75, 1.5]` | `stage5-s1280-zoom0.75-1.5` | 31.4 | 14.9 | 16.3 |
+| yolo26m | 1280, 30 epochs, batch 2 | `stage2-m1280` | 32.9 | 15.9 | 25.0 |
+
+Each size keeps `optimizer=auto`, `mosaic=1.0`, `close_mosaic=10`, `cls_pw=0` and `nbs=64`.
+s's zoom clears the win margin by 0.1 pt while n and m lose with it, so it is the grid's least
+certain decision. The whole grid, stages 2 to confirmation, took 20.9 GPU-hours.
+
+## Evaluation-only arms
+
+`make arms TRIALS="<trial run> ..."` scores a trial's `best.pt` two more ways, each as a
+`<trial>-<arm>` run in the tune experiment. Arms never select.
+
+- **`o2m`:** `model.val(end2end=False)`, the one-to-many head with NMS on the same weights, scored
+  like the trial's own `val/` keys.
+- **`sahi`:** SAHI 0.12.8 sliced inference (slices at the trial's imgsz, overlap 0.2, plus the
+  full frame; class-aware NMS at IoU 0.5; floor 0.001; the top 300 per frame), against the same
+  trial's full-frame predictions (`val_full/`). Both are scored through `score_detections`,
+  overall and per source-resolution group (`val/3840px/...`). Latency is per frame, batch 1.
+  `sahi` lives in the `tuning` uv group, outside every image.
+
+Values are in %.
+
+| Model | end2end (trial) | `end2end=False` | full frame | SAHI | SAHI − full: 3840 / 2720 / ≤1904 px | SAHI p50 ms |
+|---|---|---|---|---|---|---|
+| yolo26n | 28.4 | **30.2** | 28.5 | 29.8 | +8.5 / +1.6 / +0.3 | 95 |
+| yolo26s | 31.4 | **32.6** | 31.2 | 31.6 | +4.6 / −0.3 / +0.9 | 150 |
+| yolo26m | 32.9 | **34.0** | 32.6 | 31.9 | +4.0 / −2.7 / +0.6 | 260 |
+
+- **The one-to-many head scores 1.2–1.8 pt higher** on the same weights for every size, more than
+  the whole tuning grid gained after imgsz. Serving exports the end2end NMS-free head
+  ([serving](serving.md)), so this is an input to the production default, not a recipe change.
+- **SAHI pays off only on 3840-wide frames.** At ≤1904 px, the resolution test is mostly at,
+  it gains 0.3–0.9 pt for 8–10× the latency (5.8 passes per val frame). For m the class-aware NMS
+  merge costs more than slicing gains outside 3840. The serving re-entry condition, a gain beyond
+  the noise floor at test-like resolutions within a named latency budget, is not met.
+
 ## The grid
 
 Each stage is a full grid of its own factors, run against the winner so far. Stages 2 and 3 run
@@ -240,8 +298,8 @@ every size. Stages 4–7 run on s only, and the confirmation stage carries s's s
 - **Evaluation-only arms** run on the three final winners and never select: SAHI sliced inference
   (slices at the trial's imgsz, overlap 0.2, plus the full frame), reported by source resolution,
   and `val(end2end=False)` (the one-to-many head with NMS, on the same weights).
-- **Cost:** about 22–40 GPU-hours, depending mostly on the epoch winner. That is an estimate, not a
-  cap.
+- **Cost:** estimated at 22–40 GPU-hours, depending mostly on the epoch winner. With 30 epochs
+  winning, stages 2 to confirmation took 20.9.
 
 ### Pinned batch per setup
 

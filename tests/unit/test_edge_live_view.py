@@ -63,10 +63,12 @@ def server() -> Iterator[str]:
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     yield f"http://127.0.0.1:{httpd.server_address[1]}"
     httpd.shutdown()
+    httpd.server_close()
 
 
 def test_page_points_at_the_stream_and_stats(server: str) -> None:
-    body = urllib.request.urlopen(f"{server}/").read()
+    with urllib.request.urlopen(f"{server}/") as resp:
+        body = resp.read()
     assert b'src="/stream.mjpg"' in body
     assert b"fetch('/stats')" in body
 
@@ -82,6 +84,7 @@ def test_unknown_path_is_404(server: str) -> None:
     with pytest.raises(urllib.error.HTTPError) as exc:
         urllib.request.urlopen(f"{server}/nope")
     assert exc.value.code == 404
+    exc.value.close()  # the error holds the open response
 
 
 def test_pull_only_prints_the_pulled_dir_and_never_opens_the_camera(

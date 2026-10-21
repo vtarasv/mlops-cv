@@ -107,8 +107,8 @@ pydantic + yaml: the Airflow and serving images import them.
 - Airflow `@task`s are thin wrappers around `src/mlops_cv`. Pass small values via XCom and large
   artifacts via MLflow URIs.
 - Metrics come only from ultralytics' metric code: `model.val()`, or
-  `evaluation.score_detections` feeding stored detections through its validator. Never hand-roll
-  AP math.
+- Never hand-roll AP math: score with an established evaluator (ultralytics' validator, or
+  faster-coco-eval for COCO size buckets). Compare numbers only within one evaluator's scale.
 - Thresholds (anomaly, drift bars, `--shift` defaults) are measured values. Remeasure them when the
   champion, the demo clips or the inference path change. Trust `Settings` over numbers in prose.
 - `serving/prepost.py` matches ultralytics' pre/post byte-for-byte against golden fixtures. Keep

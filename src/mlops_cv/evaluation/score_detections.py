@@ -7,31 +7,44 @@ from collections import Counter
 from collections.abc import Mapping
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from mlops_cv.evaluation import ap_small as ap_small_mod
+
 if TYPE_CHECKING:
+    from ultralytics.models.yolo.detect import DetectionValidator
     from ultralytics.utils.metrics import DetMetrics
 
 
-def score(detections: Mapping[str, np.ndarray], data_yaml: Path, split: str) -> DetMetrics:
-    """``{frame file name: (n, 6) x1 y1 x2 y2 conf cls, source pixels}`` -> the validator's metrics.
-
-    Each frame goes through ``DetectionValidator.update_metrics`` with a batch whose image shape
-    is the source shape, so ``_prepare_batch`` scales the normalized labels into source pixels,
-    where the detections live.
-    """
-    import torch
+def _validator(data_yaml: Path, split: str, save_dir: Path) -> DetectionValidator:
     from ultralytics.data.utils import check_det_dataset
     from ultralytics.models.yolo.detect import DetectionValidator
 
+    validator = DetectionValidator(
+        save_dir=save_dir,
+        args={"data": str(data_yaml), "split": split, "plots": False, "save_json": True},
+    )
+    validator.data = check_det_dataset(str(data_yaml), autodownload=False)
+    validator.stride = 32
+    return validator
+
+
+def split_labels(data_yaml: Path, split: str) -> list[dict[str, Any]]:
+    """The split's labels as ultralytics' dataset reads them (``im_file``, ``shape``, ...)."""
     with tempfile.TemporaryDirectory() as save_dir:
-        validator = DetectionValidator(
-            save_dir=Path(save_dir), args={"data": str(data_yaml), "split": split, "plots": False}
-        )
-        validator.data = check_det_dataset(str(data_yaml), autodownload=False)
-        validator.stride = 32
+        validator = _validator(data_yaml, split, Path(save_dir))
+        return validator.build_dataset(validator.data[split]).labels  # type: ignore[attr-defined]
+
+
+def _validate(
+    detections: Mapping[str, np.ndarray], data_yaml: Path, split: str
+) -> tuple[DetectionValidator, list[dict[str, Any]]]:
+    import torch
+
+    with tempfile.TemporaryDirectory() as save_dir:
+        validator = _validator(data_yaml, split, Path(save_dir))
         labels = validator.build_dataset(validator.data[split]).labels  # type: ignore[attr-defined]
         names = Counter(Path(lb["im_file"]).name for lb in labels)
         if dupes := sorted(n for n, c in names.items() if c > 1):
@@ -61,4 +74,23 @@ def score(detections: Mapping[str, np.ndarray], data_yaml: Path, split: str) -> 
             pred = {"bboxes": rows[:, :4], "conf": rows[:, 4], "cls": rows[:, 5]}
             validator.update_metrics([pred], batch)
         validator.get_stats()
-    return validator.metrics
+    return validator, labels
+
+
+def score(detections: Mapping[str, np.ndarray], data_yaml: Path, split: str) -> DetMetrics:
+    """``{frame file name: (n, 6) x1 y1 x2 y2 conf cls, source pixels}`` -> the validator's metrics.
+
+    Each frame goes through ``DetectionValidator.update_metrics`` with a batch whose image shape
+    is the source shape, so ``_prepare_batch`` scales the normalized labels into source pixels,
+    where the detections live.
+    """
+    return _validate(detections, data_yaml, split)[0].metrics
+
+
+def score_with_ap_small(
+    detections: Mapping[str, np.ndarray], data_yaml: Path, split: str
+) -> tuple[DetMetrics, float]:
+    """:func:`score` plus mAP50-95_small over the same validator's COCO-JSON predictions."""
+    validator, labels = _validate(detections, data_yaml, split)
+    metrics = validator.metrics
+    return metrics, ap_small_mod.ap_small(validator.jdict, labels, metrics.names)

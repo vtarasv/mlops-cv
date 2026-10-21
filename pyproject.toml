@@ -21,6 +21,7 @@ dev = [
 ]
 
 training = [
+    "faster-coco-eval==1.8.0",
     "imageio==2.37.3",
     "imageio-ffmpeg==0.6.0",
     "mlflow==3.14.0",

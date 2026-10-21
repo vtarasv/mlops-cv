@@ -1,7 +1,7 @@
 """Evaluate a model from MLflow (a registry ref or a run URI) on the data subset and log a
-reproducible report to MLflow: P/R/mAP50/mAP50-95 (overall + per merged class), a comparison table,
-a pass/fail gate (floors + champion/challenger), a latency stub, and the qualitative artifacts —
-the fixed demo-clip and the TP/FP error-analysis crops.
+reproducible report to MLflow: P/R/mAP50/mAP50-95 (overall + per merged class), mAP50-95_small,
+a comparison table, a pass/fail gate (floors + champion/challenger), a latency stub, and the
+qualitative artifacts — the fixed demo-clip and the TP/FP error-analysis crops.
 
 The exit code is ``0`` on a gate pass and ``1`` on a fail (``--exit-zero`` forces ``0`` for
 orchestrators that branch on the verdict, not the exit code); the last stdout line is a
@@ -24,13 +24,16 @@ from mlops_cv.data.subset import (
     dataset_yaml,
     demo_store_present,
 )
+from mlops_cv.evaluation import ap_small as ap_small_mod
 from mlops_cv.evaluation import gate as gate_mod
 from mlops_cv.evaluation import report as report_mod
+from mlops_cv.evaluation.score_detections import split_labels
 from mlops_cv.orchestration.handoff import GateVerdict
 from mlops_cv.startup import exits_on_startup_error
 from mlops_cv.tracking import client
 from mlops_cv.tracking.metric_keys import (
     LATENCY_PREFIX,
+    MAP_SMALL,
     PRIMARY,
     headline_metrics,
     metric_key,
@@ -109,8 +112,14 @@ def main(argv: list[str] | None = None) -> int:
             imgsz=args.imgsz,
             device=args.device,
             batch=args.batch,
+            save_json=True,  # predictions.json, for mAP50-95_small
         )
         candidate = headline_metrics(results.box, prefix=args.split)
+        candidate[metric_key(args.split, MAP_SMALL)] = ap_small_mod.ap_small(
+            ap_small_mod.load_predictions(results.save_dir),
+            split_labels(data_yaml, args.split),
+            results.names,
+        )
         candidate |= per_class_metrics(
             results.maps,
             results.ap_class_index,

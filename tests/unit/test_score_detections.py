@@ -10,11 +10,11 @@ import yaml
 
 pytest.importorskip("ultralytics")
 
-from mlops_cv.evaluation.score_detections import score  # noqa: E402
+from mlops_cv.evaluation.score_detections import score, score_with_ap_small  # noqa: E402
 
 # Frame name -> (w, h) and its boxes as (cls, x1, y1, x2, y2) in source pixels.
 FRAMES = {
-    "a.jpg": ((320, 240), [(0, 10, 20, 60, 100), (1, 150, 50, 300, 200)]),
+    "a.jpg": ((320, 240), [(0, 10, 20, 60, 100), (1, 150, 50, 300, 200), (0, 200, 210, 220, 230)]),
     "b.jpg": ((200, 160), [(1, 40, 30, 120, 90)]),
 }
 
@@ -50,6 +50,13 @@ def test_ground_truth_fed_back_scores_perfectly(data_yaml: Path) -> None:
     box = score(ground_truth(), data_yaml, "test").box
     assert (box.mp, box.mr) == (1.0, 1.0)
     assert box.map == pytest.approx(0.995)  # ultralytics' AP interpolation tops out at 0.995
+
+
+def test_ap_small_comes_from_the_same_validator_pass(data_yaml: Path) -> None:
+    """a.jpg's 20x20 person is the one small box; fed back, it scores perfectly."""
+    metrics, ap_s = score_with_ap_small(ground_truth(), data_yaml, "test")
+    assert metrics.box.map == pytest.approx(0.995)
+    assert ap_s == pytest.approx(1.0)
 
 
 def test_empty_predictions_score_zero(data_yaml: Path) -> None:

@@ -1,0 +1,7 @@
+# Stage 4: optimizer and lr0 on s@1280x30, against stage 2's s1280 (auto = AdamW lr0 0.001429).
+# momentum and warmup_bias_lr copy what optimizer=auto sets, so only the optimizer and lr0 change.
+defaults: {patience: 0, close_mosaic: 10, model: yolo26s, imgsz: 1280, epochs: 30, batch: 4, seed: 0, momentum: 0.9, warmup_bias_lr: 0.0}
+trials:
+  - {name: s1280-adamw-lr0.0007, optimizer: AdamW, lr0: 0.0007}
+  - {name: s1280-adamw-lr0.003, optimizer: AdamW, lr0: 0.003}
+  - {name: s1280-musgd-lr0.01, optimizer: MuSGD, lr0: 0.01}

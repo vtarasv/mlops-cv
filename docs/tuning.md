@@ -157,6 +157,23 @@ other longer run loses. Longer runs peak before the end and then fall: the last-
 0.7–3.2 pt from 30 to 100 epochs, the signature of overfitting 1238 training frames rather than
 of undertraining. Per-epoch time doesn't change with the budget (n/s/m about 41/66/118 s).
 
+## Stage 4: optimizer and lr0 on s
+
+`make tune STAGE=stage4` pins the optimizer for s@1280×30 against stage 2's s1280 row, which
+ran `optimizer=auto` (AdamW, lr0 0.001429 on 8.4.72). Every arm also sets `momentum=0.9` and
+`warmup_bias_lr=0.0`, as `auto` does, so only the optimizer and lr0 change. Values are in %.
+
+| Optimizer | lr0 | val mAP50-95 | person | vehicle | two-three-wheeler | mAP50-95_small | last six | best epoch |
+|---|---|---|---|---|---|---|---|---|
+| **AdamW (auto)** | **0.001429** | **30.8** | 26.5 | 42.9 | 22.9 | 13.5 | 30.6 | 25 |
+| AdamW | 0.0007 | 30.7 | 28.6 | 41.3 | 22.0 | 13.4 | 30.0 | 22 |
+| AdamW | 0.003 | 30.5 | 26.3 | 42.6 | 22.6 | 14.1 | 30.2 | 25 |
+| MuSGD | 0.01 | 31.1 | 27.9 | 42.2 | 23.3 | 12.3 | 30.4 | 9 |
+
+`optimizer=auto` stays. MuSGD gains 0.3 pt, inside the win margin, from a `best.pt` at epoch 9.
+Its last-six mean is 0.1 pt below auto's. The four arms span 0.6 pt, so lr0 barely matters
+here.
+
 ## The grid
 
 Each stage is a full grid of its own factors, run against the winner so far. Stages 2 and 3 run

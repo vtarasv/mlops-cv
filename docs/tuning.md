@@ -244,7 +244,7 @@ certain decision. The whole grid, stages 2 to confirmation, took 20.9 GPU-hours.
 
 ## Evaluation-only arms
 
-`make arms TRIALS="<trial run> ..."` scores a trial's `best.pt` two more ways, each as a
+`make sahi-eval TRIALS="<trial run> ..."` scores a trial's `best.pt` two more ways, each as a
 `<trial>-<arm>` run in the tune experiment. Arms never select.
 
 - **`o2m`:** `model.val(end2end=False)`, the one-to-many head with NMS on the same weights, scored

@@ -1,10 +1,10 @@
-"""Unit tests for the evaluation-only arms' pure helpers (no GPU, no SAHI)."""
+"""Unit tests for the SAHI evaluation's pure helpers (no GPU, no SAHI)."""
 
 from __future__ import annotations
 
 import numpy as np
 
-from mlops_cv.evaluation.arms import groups, resolution_group, top_k
+from mlops_cv.evaluation.sahi_eval import groups, resolution_group, top_k
 
 
 def test_resolution_groups_split_val_by_source_width() -> None:

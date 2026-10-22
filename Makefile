@@ -1,5 +1,5 @@
 .PHONY: setup lint fmt typecheck test test-all ci clean gpu-smoke \
-	train tune arms zero-shot eval ingest profile optimize edge-gate serve \
+	train tune sahi-eval zero-shot eval ingest profile optimize edge-gate serve \
 	beam-image train-image optimize-image serve-image stream-image monitor-image \
     mlflow-up mlflow-down mlflow-logs \
 	airflow-up airflow-down airflow-logs airflow-env \
@@ -93,10 +93,10 @@ train: mlflow-up
 tune: mlflow-up
 	uv run python -m mlops_cv.training.tune configs/tuning/$(STAGE).yaml
 
-# Evaluation-only arms (end2end=False, SAHI) on tuning trials' best.pt -> one run per arm, never selecting.
+# Evaluation-only arms (SAHI sliced inference, end2end=False head) on tuning trials' best.pt -> one run per arm, never selecting.
 # Pass TRIALS="<trial run name> ...".
-arms: mlflow-up
-	uv run python -m mlops_cv.evaluation.arms $(TRIALS)
+sahi-eval: mlflow-up
+	uv run python -m mlops_cv.evaluation.sahi_eval $(TRIALS)
 
 # COCO-pretrained yolo26n/s/m x imgsz 640/1280 on val, zero-shot -> one run each in the tune experiment.
 zero-shot: mlflow-up

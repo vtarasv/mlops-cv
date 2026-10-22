@@ -1,0 +1,10 @@
+# VisDrone-VID-merged.yaml with train's 1280 slices beside the full frames (`make tune-sliced`).
+# Val and test stay full frames.
+path: /abs/data/visdrone-vid-small
+train: [images/train, images/train-sliced1280]
+val: images/val
+test: images/test
+names:
+  0: person
+  1: vehicle
+  2: two-three-wheeler

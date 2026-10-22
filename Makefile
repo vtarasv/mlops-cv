@@ -1,5 +1,5 @@
 .PHONY: setup lint fmt typecheck test test-all ci clean gpu-smoke \
-	train tune sahi-eval zero-shot eval ingest profile optimize edge-gate serve \
+	train tune tune-sliced sahi-eval zero-shot eval ingest profile optimize edge-gate serve \
 	beam-image train-image optimize-image serve-image stream-image monitor-image \
     mlflow-up mlflow-down mlflow-logs \
 	airflow-up airflow-down airflow-logs airflow-env \
@@ -92,6 +92,12 @@ train: mlflow-up
 # Run one tuning-grid stage (configs/tuning/$(STAGE).yaml) -> unregistered trial runs in the tune experiment.
 tune: mlflow-up
 	uv run python -m mlops_cv.training.tune configs/tuning/$(STAGE).yaml
+
+# Slicing-aided fine-tuning: slice train into 1280 windows, then the sliced stage on frames + slices.
+tune-sliced: mlflow-up
+	uv run python -m mlops_cv.data.slices --imgsz 1280
+	DATA__DATASET_YAML=configs/datasets/VisDrone-VID-merged-sliced1280.yaml \
+		uv run python -m mlops_cv.training.tune configs/tuning/sliced.yaml
 
 # Evaluation-only arms (SAHI sliced inference, end2end=False head) on tuning trials' best.pt -> one run per arm, never selecting.
 # Pass TRIALS="<trial run name> ...".

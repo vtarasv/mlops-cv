@@ -93,11 +93,11 @@ train: mlflow-up
 tune: mlflow-up
 	uv run python -m mlops_cv.training.tune configs/tuning/$(STAGE).yaml
 
-# Slicing-aided fine-tuning: slice train into 1280 windows, then the sliced stage on frames + slices.
+# Slicing-aided fine-tuning: slice train into 1280 windows, then STAGE (default sliced) on frames + slices.
 tune-sliced: mlflow-up
 	uv run python -m mlops_cv.data.slices --imgsz 1280
 	DATA__DATASET_YAML=configs/datasets/VisDrone-VID-merged-sliced1280.yaml \
-		uv run python -m mlops_cv.training.tune configs/tuning/sliced.yaml
+		uv run python -m mlops_cv.training.tune configs/tuning/$(or $(STAGE),sliced).yaml
 
 # Evaluation-only arms (SAHI sliced inference, end2end=False head) on tuning trials' best.pt -> one run per arm, never selecting.
 # Pass TRIALS="<trial run name> ...".

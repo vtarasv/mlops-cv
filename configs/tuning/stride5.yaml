@@ -1,0 +1,5 @@
+# Train frame stride 5 (val and test stay 20) for n1280 on the stage-2 recipe. Run with
+# DATA__SUBSET_DIR=<datasets>/subsets/visdrone-vid-train-s5; stride 20 is stage2-n1280.
+defaults: {patience: 0, close_mosaic: 10, epochs: 30, seed: 0}
+trials:
+  - {name: n1280, model: yolo26n, imgsz: 1280, batch: 4}

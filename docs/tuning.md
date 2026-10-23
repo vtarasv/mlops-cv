@@ -389,6 +389,31 @@ comparable. On the same weights, the official toolkit reads 4.3–4.8 AP above p
 | arXiv 2605.22605 YOLOv8n / YOLOv8s / YOLO11n @640 | VID val | unstated | 10.4 / 13.6 / 12.2 |
 | FGFA / D&T / FPN | VID test-dev | official toolkit | 14.44 / 14.21 / 12.93 |
 
+## Train frame stride
+
+Does a denser train split help? n@1280 on the shared recipe trains at train strides 10, 5 and 2,
+each on its own subset built with `--train-frame-stride` (val and test stay at 20, row for row).
+Each stride is its own stage, `configs/tuning/stride<N>.yaml`, run with `DATA__SUBSET_DIR` set to
+that subset. Stride 20 is `stage2-n1280`. Every trial runs `auto` (AdamW lr0 0.001429), 30 epochs.
+Values are in %.
+
+| Train stride | train frames | val mAP50-95 | person | vehicle | two-three-wheeler | mAP50-95_small | last six | best epoch | GPU h |
+|---|---|---|---|---|---|---|---|---|---|
+| 20 | 1238 | 28.4 | 24.4 | 41.5 | 19.5 | 13.9 | 28.2 | 29 | 0.34 |
+| **10** | 2446 | **29.4** | 25.5 | 41.4 | 21.2 | 14.1 | 28.7 | 22 | 0.67 |
+| 5 | 4868 | 29.1 | 25.2 | 42.4 | 19.7 | 12.4 | 28.2 | 14 | 1.33 |
+| 2 | 12112 | 29.1 | 24.3 | 42.1 | 21.0 | 12.7 | 26.6 | 8 | 3.27 |
+
+- **Stride 10 wins on val**, 1.0 pt over stride 20. The next halving loses 0.3, and stride 2 ties
+  stride 5, so stride 1 doesn't run.
+- **Denser strides peak earlier and then fall.** The best epoch moves from 29 to 8, and stride 2's
+  last six epochs sit 2.5 pt below its best. Thirty epochs of a denser split are more steps on the
+  same 56 sequences, so the extra frames add steps, not new scenes.
+- **The win doesn't carry to test.** Stride 10 reads 24.7 (one-to-many 25.8) against stride 20's
+  25.0 (26.2), inside test's 0.34 pt seed spread. Per class on test: person 16.1, vehicle 45.0,
+  two-three-wheeler 12.9, small 14.7 (stride 20: 17.4, 44.5, 13.1, 14.7).
+- **Stride 20 stays.** Stride 10 doubles training time for a val gain test doesn't show.
+
 ## The grid
 
 Each stage is a full grid of its own factors, run against the winner so far. Stages 2 and 3 run

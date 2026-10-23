@@ -37,18 +37,18 @@ MAX_DET = 300
 IMGSZ = (640, 1280)
 
 
-def class_lut(coco_names: Mapping[int, str]) -> np.ndarray:
-    """COCO class id -> merged class id, ``-1`` for a dropped class."""
+def class_lut(names: Mapping[int, str], table: Mapping[str, str] = COCO_TO_MERGED) -> np.ndarray:
+    """A model's class id -> merged class id through ``table`` (by name), ``-1`` if dropped."""
     merged = {name: i for i, name in YOLO_NAMES.items()}
-    lut = np.full(max(coco_names) + 1, -1)
-    for i, name in coco_names.items():
-        if name in COCO_TO_MERGED:
-            lut[i] = merged[COCO_TO_MERGED[name]]
+    lut = np.full(max(names) + 1, -1)
+    for i, name in names.items():
+        if name in table:
+            lut[i] = merged[table[name]]
     return lut
 
 
 def merge_classes(rows: np.ndarray, lut: np.ndarray) -> np.ndarray:
-    """``(n, 6) x1 y1 x2 y2 conf cls`` COCO rows -> merged rows, highest conf first.
+    """``(n, 6) x1 y1 x2 y2 conf cls`` model rows -> merged rows, highest conf first.
 
     YOLO26's end2end top-k can emit one box under several classes (car and truck), which become
     the same box twice in one merged class: only the highest-conf copy is kept.

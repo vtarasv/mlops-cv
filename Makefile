@@ -1,5 +1,5 @@
 .PHONY: setup lint fmt typecheck test test-all ci clean gpu-smoke \
-	train tune tune-sliced sahi-eval test-read zero-shot eval ingest profile optimize edge-gate serve \
+	train tune tune-sliced sahi-eval test-read zero-shot third-party eval ingest profile optimize edge-gate serve \
 	beam-image train-image optimize-image serve-image stream-image monitor-image \
     mlflow-up mlflow-down mlflow-logs \
 	airflow-up airflow-down airflow-logs airflow-env \
@@ -111,6 +111,10 @@ test-read: mlflow-up
 # COCO-pretrained yolo26n/s/m x imgsz 640/1280 on val, zero-shot -> one run each in the tune experiment.
 zero-shot: mlflow-up
 	uv run python -m mlops_cv.evaluation.zero_shot
+
+# dronefreak's DET-trained YOLO26 s/m @1280 + stage2-s1280/m1280 on test, both heads, remapped -> tune experiment.
+third-party: mlflow-up
+	uv run python -m mlops_cv.evaluation.third_party
 
 # Evaluate an MLflow model -> test metrics + report + gate + demo videos + TP/FP crops in MLflow.
 # Pass MODEL=<models:/aerial-object-detector@champion | runs:/<run_id>/weights/best.pt>.

@@ -336,7 +336,55 @@ trial's own. Per-class and small-object columns are the end2end head.
   its zoom trial), so its val lead carries over.
 - **Seed noise on test is 0.34 pt** (s@640's range), near val's 0.25, so the win margin carries.
 - **The shared recipe beats the champion** (v2, s@640, 3 epochs, test 21.6) by 5.0 pt at s@1280.
-- Not read on test yet: the third-party baseline.
+- The third-party baseline is read below.
+
+## Third-party baseline
+
+**Different protocol; no comparability claim.** `make third-party` scores dronefreak's
+VisDrone-DET-trained YOLO26 s and m at 1280 on test:
+[visdrone-yolo26s](https://huggingface.co/dronefreak/visdrone-yolo26s)@`dc042f4`,
+[visdrone-yolo26m](https://huggingface.co/dronefreak/visdrone-yolo26m)@`cf0d3e8`. The licence is
+AGPL-3.0, so they are evaluated here and never redistributed. Each checkpoint's sha256 is pinned
+in `evaluation/third_party.py`.
+
+Scoring follows the zero-shot path. Each model predicts at conf 0.001 with 300 boxes. Its 10
+raw categories are remapped by name onto the merged classes, as ingest does; `others` is
+dropped. The remap is followed by a same-box dedupe, then `score_detections`. `stage2-s1280` and
+`stage2-m1280` go through the same path, so both sides are read the same way on the same frames.
+This path reads ours 0.2–0.4 pt below `make test-read`'s `model.val`.
+
+Their checkpoints ship with the one-to-many head switched on, so both heads are read for every
+model. Runs are `<model>-test` and `<model>-test-o2m` (ours: `<trial>-predict-test[-o2m]`), tagged
+`tune.stage=test-read`.
+
+The headline uses the 13 test sequences with no known DET overlap (264 frames). It drops
+`uav0000201_00000_v`, `uav0000297_00000_v` and both `uav0000249_*`. The 17-sequence read is
+beside it, and the official test numbers stay in the table above. Values are in %.
+
+| Model | head | 13-seq mAP50-95 | mAP50 | person | vehicle | two-three-wheeler | mAP50-95_small | 17-seq mAP50-95 |
+|---|---|---|---|---|---|---|---|---|
+| dronefreak s | end2end | 25.6 | 56.2 | 16.9 | 45.7 | 14.1 | 13.5 | 24.0 |
+| ours s | end2end | 26.8 | 55.1 | 19.3 | 46.1 | 14.9 | 18.0 | 26.4 |
+| dronefreak s | one-to-many | 27.1 | 58.9 | 19.0 | 47.0 | 15.5 | 14.4 | 25.7 |
+| ours s | one-to-many | 27.9 | 57.1 | 20.6 | 47.4 | 15.7 | 18.3 | 27.6 |
+| dronefreak m | end2end | 26.7 | 58.2 | 18.6 | 45.6 | 15.8 | 13.5 | 25.2 |
+| ours m | end2end | 28.1 | 57.6 | 20.7 | 47.7 | 15.8 | 19.1 | 28.0 |
+| dronefreak m | one-to-many | 28.0 | 60.2 | 20.2 | 46.8 | 16.9 | 14.3 | 26.6 |
+| **ours m** | **one-to-many** | **29.1** | 59.0 | 21.8 | 49.4 | 16.0 | 19.3 | 29.1 |
+
+- **The shared recipe beats community DET training on the same head, for both sizes**: s
+  +1.2/+0.8 pt and m +1.4/+1.1 pt (end2end/one-to-many) on the 13 sequences. That is above the
+  0.34 pt test seed spread. 79% of DET-train (`9999xxx`) is unchecked for overlap, and any leakage
+  it holds can only favour them, so the win stands.
+- **They lead on mAP50 in every row** (+0.6–1.8 pt) yet trail on mAP50-95, so their boxes find
+  objects but sit looser. Small-object AP is 4–6 pt ours.
+- **The DET-overlap sequences cost them, not us.** Dropping them lifts dronefreak by 1.4–1.6 pt
+  and ours by 0.0–0.4. No sign that the overlap helps them.
+- **DET → VID transfer**: their own DET test-dev numbers are 26.43 (s) and 29.24 (m) on 10
+  classes, from ultralytics val with 500 boxes. They land at 25.7 and 26.6 here (17 sequences,
+  one-to-many, merged classes).
+- **Latency is the same as ours**: same architecture, 29.7 ms p50 for both s checkpoints measured
+  back to back. The stubs on these runs come from a slower GPU session than the trials' own.
 
 ## The grid
 

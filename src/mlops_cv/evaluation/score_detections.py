@@ -100,9 +100,12 @@ def score(
 
 
 def score_with_ap_small(
-    detections: Mapping[str, np.ndarray], data_yaml: Path, split: str
+    detections: Mapping[str, np.ndarray],
+    data_yaml: Path,
+    split: str,
+    frames: Collection[str] | None = None,
 ) -> tuple[DetMetrics, float]:
     """:func:`score` plus mAP50-95_small over the same validator's COCO-JSON predictions."""
-    validator, labels = _validate(detections, data_yaml, split)
+    validator, labels = _validate(detections, data_yaml, split, frames)
     metrics = validator.metrics
     return metrics, ap_small_mod.ap_small(validator.jdict, labels, metrics.names)

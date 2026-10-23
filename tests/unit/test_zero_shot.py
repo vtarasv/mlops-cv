@@ -30,3 +30,13 @@ def test_merge_drops_unmapped_and_keeps_one_copy_of_a_same_box_duplicate() -> No
         [0, 0, 10, 10, 0.3, 0],
         [1, 1, 4, 4, 0.1, 2],
     ]
+
+
+def test_visdrone_table_merges_like_ingest_and_drops_others() -> None:
+    """A DET-trained checkpoint's 10 raw categories (+ empty ``others``) merge as ingest does."""
+    from mlops_cv.evaluation.third_party import VISDRONE_TO_MERGED
+
+    raw = ["pedestrian", "people", "bicycle", "car", "van", "truck", "tricycle"]
+    raw += ["awning-tricycle", "bus", "motor", "others"]
+    lut = class_lut(dict(enumerate(raw)), VISDRONE_TO_MERGED)
+    assert lut.tolist() == [0, 0, 2, 1, 1, 1, 2, 2, 1, 2, -1]

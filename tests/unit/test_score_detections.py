@@ -66,6 +66,13 @@ def test_frames_scores_only_those_frames(data_yaml: Path) -> None:
     assert score(dets, data_yaml, "test", frames={"a.jpg"}).box.mr == 1.0
 
 
+def test_ap_small_scores_only_the_given_frames(data_yaml: Path) -> None:
+    """a.jpg's small person is missed, but scoring b.jpg alone has no small box to miss."""
+    dets = ground_truth() | {"a.jpg": np.zeros((0, 6), np.float32)}
+    metrics, _ = score_with_ap_small(dets, data_yaml, "test", frames={"b.jpg"})
+    assert metrics.box.mr == 1.0
+
+
 def test_empty_predictions_score_zero(data_yaml: Path) -> None:
     empty = {name: np.zeros((0, 6), np.float32) for name in FRAMES}
     assert score(empty, data_yaml, "test").box.map == 0.0

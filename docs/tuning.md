@@ -250,6 +250,10 @@ Against the ultralytics defaults the recipe changes only imgsz (640 → 1280, st
 optimizer, loss or freeze setting beat the defaults by the margin. The whole grid, stages 2 to
 confirmation, took 20.9 GPU-hours.
 
+The gain is bought at inference, so a model is served at the imgsz it was trained at. Run at 640,
+the 1280 winners score n/s/m 21.0/25.4/28.0 on val (one-to-many 22.3/25.8/28.4), below the
+640-trained models' 21.0/26.2/28.6 (23.2/27.0/29.2).
+
 ## Evaluation-only arms
 
 `make sahi-eval TRIALS="[--slice N] <trial run> ..."` scores a trial's `best.pt` two more ways, each as a

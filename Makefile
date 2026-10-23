@@ -104,7 +104,7 @@ tune-sliced: mlflow-up
 sahi-eval: mlflow-up
 	uv run python -m mlops_cv.evaluation.sahi_eval $(TRIALS)
 
-# Score tuning trials' best.pt on test (end2end head) -> one <trial>-test run each in the tune experiment.
+# Score tuning trials' best.pt on test (end2end head; TRIALS="--o2m ..." for end2end=False) -> tune experiment.
 test-read: mlflow-up
 	uv run python -m mlops_cv.evaluation.test_read $(TRIALS)
 

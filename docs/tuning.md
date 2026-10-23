@@ -309,27 +309,29 @@ cell is winner → `sliced` → `sliced-e8`.
 ## Test read
 
 `make test-read TRIALS="<trial run> ..."` scores a trial's `best.pt` on test (337 frames, 17
-sequences) with the served end2end head, as a `<trial>-test` run in the tune experiment. It
-selects nothing. The shared recipe is read at 640 (stage 1) and 1280 (stage 2) for every size.
-Values are in %; the s@640 row is the mean of three seeds (22.5/22.9/22.8), and latency is the
-trial's own.
+sequences) with the served end2end head, as a `<trial>-test` run in the tune experiment;
+`TRIALS="--o2m ..."` scores the one-to-many head as `<trial>-test-o2m`. It selects nothing. The
+shared recipe is read at 640 (stage 1) and 1280 (stage 2) for every size. Values are in %; the
+s@640 row is the mean of three seeds (22.5/22.9/22.8), and latency is the
+trial's own. Per-class and small-object columns are the end2end head.
 
-| Model | imgsz | val mAP50-95 | test mAP50-95 | person | vehicle | two-three-wheeler | test mAP50-95_small | p50 ms |
-|---|---|---|---|---|---|---|---|---|
-| yolo26n | 640 | 21.0 | 18.5 | 9.4 | 36.7 | 9.4 | 11.8 | 11.0 |
-| yolo26s | 640 | 26.3 | 22.7 | 14.1 | 41.8 | 12.4 | 14.3 | 10.3 |
-| yolo26m | 640 | 28.6 | 25.1 | 16.8 | 45.0 | 13.5 | 15.2 | 12.0 |
-| yolo26n | 1280 | 28.4 | 25.0 | 17.4 | 44.5 | 13.1 | 14.7 | 12.1 |
-| yolo26s | 1280 | 30.8 | 26.6 | 19.0 | 46.3 | 14.6 | 16.3 | 16.2 |
-| **yolo26m** | **1280** | 32.9 | **28.3** | 20.7 | 48.1 | 16.1 | 18.4 | 25.0 |
+| Model | imgsz | val mAP50-95 | test mAP50-95 | test `end2end=False` | person | vehicle | two-three-wheeler | test mAP50-95_small | p50 ms |
+|---|---|---|---|---|---|---|---|---|---|
+| yolo26n | 640 | 21.0 | 18.5 | – | 9.4 | 36.7 | 9.4 | 11.8 | 11.0 |
+| yolo26s | 640 | 26.3 | 22.7 | – | 14.1 | 41.8 | 12.4 | 14.3 | 10.3 |
+| yolo26m | 640 | 28.6 | 25.1 | – | 16.8 | 45.0 | 13.5 | 15.2 | 12.0 |
+| yolo26n | 1280 | 28.4 | 25.0 | 26.2 | 17.4 | 44.5 | 13.1 | 14.7 | 12.1 |
+| yolo26s | 1280 | 30.8 | 26.6 | 27.8 | 19.0 | 46.3 | 14.6 | 16.3 | 16.2 |
+| **yolo26m** | **1280** | 32.9 | 28.3 | **29.5** | 20.7 | 48.1 | 16.1 | 18.4 | 25.0 |
 
 - **Val's ranking holds on test.** 1280 beats 640 for every size (n/s/m +6.5/+3.9/+3.2 against
   val's +7.4/+4.5/+4.3), m > s > n at both sizes, and n@1280 still matches m@640 (25.0 vs 25.1).
 - **Test reads 2.5–4.6 pt below val**, the gap mostly widening with the val score.
+- **The one-to-many head gains 1.2 pt on test for every size** (val: n/m +1.8/+1.1, s +1.2 on
+  its zoom trial), so its val lead carries over.
 - **Seed noise on test is 0.34 pt** (s@640's range), near val's 0.25, so the win margin carries.
 - **The shared recipe beats the champion** (s@640, 1 epoch, test 17.9) by 8.7 pt at s@1280.
-- Not read on test yet: `end2end=False`, the zero-shot and third-party baselines, and each
-  model's max-F1 confidence.
+- Not read on test yet: the third-party baseline and each model's max-F1 confidence.
 
 ## The grid
 

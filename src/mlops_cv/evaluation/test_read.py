@@ -1,8 +1,9 @@
 """The test read: a tuning trial's ``best.pt`` scored on test with the served end2end head.
 
 It measures, never selects. Each trial is one ``<trial>-test`` run in the tune experiment
-(``tune.stage=test-read``) holding ``test/`` keys that mirror the trial's ``val/`` ones. Latency
-does not depend on the split, so the trial's own readings stand.
+(``--o2m``: ``<trial>-test-o2m``, the one-to-many head with NMS, ``end2end=False``)
+tagged ``tune.stage=test-read``, holding ``test/`` keys that mirror the trial's ``val/`` ones.
+Latency does not depend on the split, so the trial's own readings stand.
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ def main(argv: list[str] | None = None) -> int:
 
     p = argparse.ArgumentParser(description="Score tuning trials' best.pt on test.")
     p.add_argument("trials", nargs="+", help="trial run names, e.g. stage2-n1280")
+    p.add_argument("--o2m", action="store_true", help="score the one-to-many head (end2end=False)")
     args = p.parse_args(argv)
 
     os.environ["MLFLOW__EXPERIMENT"] = TUNE_EXPERIMENT  # never production's experiment
@@ -47,7 +49,8 @@ def main(argv: list[str] | None = None) -> int:
         run = finished_trial(mlflow, trial)
         imgsz = int(run.data.params["imgsz"])
         weights, _ = resolve_model(best_weights_uri(run.info.run_id))
-        name = f"{trial}-{SPLIT}"
+        name = f"{trial}-{SPLIT}" + ("-o2m" if args.o2m else "")
+        overrides = {"end2end": False} if args.o2m else {}
         readings = split_metrics(
             YOLO(str(weights)),
             data_yaml,
@@ -56,6 +59,7 @@ def main(argv: list[str] | None = None) -> int:
             device=settings.training.device,
             batch=8,  # the trial's own val batch
             name=name,
+            **overrides,
         )
         with mlflow.start_run(run_name=name):
             mlflow.set_tag("tune.stage", "test-read")

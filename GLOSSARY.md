@@ -117,8 +117,9 @@ too.
 _Avoid_: experiment (in tracking, an experiment holds many runs)
 
 **Champion**:
-The model version that the champion alias currently points at, and the only one that is served
-and monitored.
+The model version that a deployment target's champion alias currently points at, and the only one
+that target serves and monitors. Each deployment target has its own registered model, champion
+and gate.
 _Avoid_: production model, best model, latest model
 
 **Challenger**:
@@ -209,6 +210,16 @@ _Avoid_: threshold, tolerance
 The last stage of the tuning grid. It tries the settings found on one model size on the other
 sizes, and each size keeps them only if they beat its own winner so far by the win margin.
 _Avoid_: transfer stage, validation stage
+
+**Production default**:
+The model size, imgsz and detection head a deployment target trains and serves unless told
+otherwise. The model is trained at the imgsz it is served at.
+_Avoid_: production model, default model
+
+**Detection head**:
+Which of YOLO26's two heads produces the boxes: **one-to-one** (end2end, no NMS) or
+**one-to-many** (NMS after). Evaluation scores the head that is served.
+_Avoid_: end2end mode, NMS mode
 
 **Evaluation-only arm**:
 A different way of scoring a trial's weights, such as sliced inference or the other detection

@@ -331,7 +331,7 @@ trial's own. Per-class and small-object columns are the end2end head.
 - **The one-to-many head gains 1.2 pt on test for every size** (val: n/m +1.8/+1.1, s +1.2 on
   its zoom trial), so its val lead carries over.
 - **Seed noise on test is 0.34 pt** (s@640's range), near val's 0.25, so the win margin carries.
-- **The shared recipe beats the champion** (s@640, 1 epoch, test 17.9) by 8.7 pt at s@1280.
+- **The shared recipe beats the champion** (v2, s@640, 3 epochs, test 21.6) by 5.0 pt at s@1280.
 - Not read on test yet: the third-party baseline.
 
 ## The grid

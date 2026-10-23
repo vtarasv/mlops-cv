@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -60,9 +60,39 @@ def merge_classes(rows: np.ndarray, lut: np.ndarray) -> np.ndarray:
     return rows[np.sort(first)]
 
 
-def _rows(result: Any) -> np.ndarray:
+def result_rows(result: Any) -> np.ndarray:
     """An ultralytics predict result -> ``(n, 6) x1 y1 x2 y2 conf cls`` in source pixels."""
     return result.boxes.data.cpu().numpy()
+
+
+def readings(
+    detections: Mapping[str, np.ndarray],
+    data_yaml: Path,
+    split: str,
+    prefix: str,
+    frames: Collection[str] | None = None,
+) -> dict[str, float]:
+    """Merged detections scored on ``split`` (or its ``frames``) -> trial keys under ``prefix``."""
+    from mlops_cv.evaluation.score_detections import score_with_ap_small
+    from mlops_cv.tracking.metric_keys import (
+        MAP_SMALL,
+        PRIMARY,
+        headline_metrics,
+        metric_key,
+        per_class_metrics,
+    )
+
+    metrics, ap_s = score_with_ap_small(detections, data_yaml, split, frames)
+    return (
+        headline_metrics(metrics.box, prefix=prefix)
+        | {metric_key(prefix, MAP_SMALL): ap_s}
+        | per_class_metrics(
+            metrics.maps,
+            metrics.ap_class_index,
+            metrics.names,
+            prefix=metric_key(prefix, PRIMARY),
+        )
+    )
 
 
 @exits_on_startup_error
@@ -80,15 +110,7 @@ def main() -> int:
 
     from mlops_cv.data.subset import IMAGES_DIRNAME, dataset_yaml
     from mlops_cv.evaluation.evaluate import latency_stub
-    from mlops_cv.evaluation.score_detections import score_with_ap_small
     from mlops_cv.tracking import client
-    from mlops_cv.tracking.metric_keys import (
-        MAP_SMALL,
-        PRIMARY,
-        headline_metrics,
-        metric_key,
-        per_class_metrics,
-    )
 
     mlflow = client.connect(settings)
     data_yaml = dataset_yaml(settings)
@@ -101,7 +123,7 @@ def main() -> int:
         for imgsz in IMGSZ:
             run_name = f"zero-shot-{name.removeprefix('yolo26')}{imgsz}"
             detections = {
-                Path(r.path).name: merge_classes(_rows(r), lut)
+                Path(r.path).name: merge_classes(result_rows(r), lut)
                 for r in model.predict(
                     str(images_dir),
                     imgsz=imgsz,
@@ -112,23 +134,13 @@ def main() -> int:
                     verbose=False,
                 )
             }
-            metrics, ap_s = score_with_ap_small(detections, data_yaml, TRIAL_SPLIT)
-            readings = (
-                headline_metrics(metrics.box, prefix=TRIAL_SPLIT)
-                | {metric_key(TRIAL_SPLIT, MAP_SMALL): ap_s}
-                | per_class_metrics(
-                    metrics.maps,
-                    metrics.ap_class_index,
-                    metrics.names,
-                    prefix=metric_key(TRIAL_SPLIT, PRIMARY),
-                )
-            )
-            readings |= latency_stub(model, images_dir, imgsz=imgsz, device=device)
+            scores = readings(detections, data_yaml, TRIAL_SPLIT, TRIAL_SPLIT)
+            scores |= latency_stub(model, images_dir, imgsz=imgsz, device=device)
             with mlflow.start_run(run_name=run_name):
                 mlflow.set_tag("tune.stage", "zero-shot")
                 mlflow.log_params({"model": name, "imgsz": imgsz, "conf": CONF, "max_det": MAX_DET})
-                mlflow.log_metrics(readings)
-            logger.info(f"{run_name}: {readings}")
+                mlflow.log_metrics(scores)
+            logger.info(f"{run_name}: {scores}")
     return 0
 
 

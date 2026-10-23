@@ -342,24 +342,17 @@ trial's own. Per-class and small-object columns are the end2end head.
 
 **Different protocol; no comparability claim.** `make third-party` scores dronefreak's
 VisDrone-DET-trained YOLO26 s and m at 1280 on test:
-[visdrone-yolo26s](https://huggingface.co/dronefreak/visdrone-yolo26s)@`dc042f4`,
-[visdrone-yolo26m](https://huggingface.co/dronefreak/visdrone-yolo26m)@`cf0d3e8`. The licence is
-AGPL-3.0, so they are evaluated here and never redistributed. Each checkpoint's sha256 is pinned
-in `evaluation/third_party.py`.
+[visdrone-yolo26s](https://huggingface.co/dronefreak/visdrone-yolo26s)@`dc042f4` and
+[visdrone-yolo26m](https://huggingface.co/dronefreak/visdrone-yolo26m)@`cf0d3e8`. Both are
+AGPL-3.0, so they are evaluated here and never redistributed.
 
-Scoring follows the zero-shot path. Each model predicts at conf 0.001 with 300 boxes. Its 10
-raw categories are remapped by name onto the merged classes, as ingest does; `others` is
-dropped. The remap is followed by a same-box dedupe, then `score_detections`. `stage2-s1280` and
-`stage2-m1280` go through the same path, so both sides are read the same way on the same frames.
-This path reads ours 0.2–0.4 pt below `make test-read`'s `model.val`.
+Scoring follows the zero-shot path: their 10 raw categories are remapped onto the merged
+classes. `stage2-s1280` and `stage2-m1280` go through the same path, which reads them 0.2–0.4 pt
+below `make test-read`. Their checkpoints ship with the one-to-many head on, so both heads are
+read for every model.
 
-Their checkpoints ship with the one-to-many head switched on, so both heads are read for every
-model. Runs are `<model>-test` and `<model>-test-o2m` (ours: `<trial>-predict-test[-o2m]`), tagged
-`tune.stage=test-read`.
-
-The headline uses the 13 test sequences with no known DET overlap (264 frames). It drops
-`uav0000201_00000_v`, `uav0000297_00000_v` and both `uav0000249_*`. The 17-sequence read is
-beside it, and the official test numbers stay in the table above. Values are in %.
+The headline is the 13 test sequences with no known DET overlap (264 frames, without
+`uav0000201_00000_v`, `uav0000297_00000_v` and both `uav0000249_*`). Values are in %.
 
 | Model | head | 13-seq mAP50-95 | mAP50 | person | vehicle | two-three-wheeler | mAP50-95_small | 17-seq mAP50-95 |
 |---|---|---|---|---|---|---|---|---|
@@ -377,14 +370,24 @@ beside it, and the official test numbers stay in the table above. Values are in 
   0.34 pt test seed spread. 79% of DET-train (`9999xxx`) is unchecked for overlap, and any leakage
   it holds can only favour them, so the win stands.
 - **They lead on mAP50 in every row** (+0.6–1.8 pt) yet trail on mAP50-95, so their boxes find
-  objects but sit looser. Small-object AP is 4–6 pt ours.
+  objects but sit looser. Small-object AP is 3.9–5.6 pt ours.
 - **The DET-overlap sequences cost them, not us.** Dropping them lifts dronefreak by 1.4–1.6 pt
   and ours by 0.0–0.4. No sign that the overlap helps them.
-- **DET → VID transfer**: their own DET test-dev numbers are 26.43 (s) and 29.24 (m) on 10
-  classes, from ultralytics val with 500 boxes. They land at 25.7 and 26.6 here (17 sequences,
-  one-to-many, merged classes).
-- **Latency is the same as ours**: same architecture, 29.7 ms p50 for both s checkpoints measured
-  back to back. The stubs on these runs come from a slower GPU session than the trials' own.
+- **Latency is the same as ours** (same architecture): measured back to back, s is 29.7 ms p50
+  on both sides and m is 39.3 vs 39.6. These come from a slower GPU session than the trials' own
+  stubs, so they are not comparable with the latency columns above.
+
+Published numbers for context. Each row's protocol differs from this repo's, and none is
+comparable. On the same weights, the official toolkit reads 4.3–4.8 AP above pycocotools
+(PP-YOLOE on DET test-dev).
+
+| Model | Data | Protocol | mAP50-95 |
+|---|---|---|---|
+| dronefreak YOLO26 s / m @1280 | DET test-dev, 10 classes | ultralytics val, 500 boxes | 26.43 / 29.24 |
+| the same weights, read here | VID test, 17 seq, merged | this repo, one-to-many | 25.7 / 26.6 |
+| XS-VID YOLOv8-S / YOLOv8-L / YOLOv9-C @1024 | VID test-dev or val (the paper says both) | COCO-style, unstated | 13.2 / 16.0 / 15.5 |
+| arXiv 2605.22605 YOLOv8n / YOLOv8s / YOLO11n @640 | VID val | unstated | 10.4 / 13.6 / 12.2 |
+| FGFA / D&T / FPN | VID test-dev | official toolkit | 14.44 / 14.21 / 12.93 |
 
 ## The grid
 

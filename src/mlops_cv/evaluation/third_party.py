@@ -1,15 +1,8 @@
 """The third-party baseline: dronefreak's DET-trained YOLO26 s/m @1280 on test, beside ours.
 
-A different protocol, never a comparability claim. The checkpoints predict VisDrone's 10 raw
-categories (+ an empty ``others``), so they are scored like the zero-shot baselines: predict,
-remap by name onto the merged classes, same-box dedupe, ``score_detections``. Never ``model.val``:
-it scores the model's own class ids against the merged labels. ``stage2-s1280`` and
-``stage2-m1280`` go through the same path, so both sides are read on the same frames.
-
-Each model x head is one run in the tune experiment tagged ``tune.stage=test-read``: ``test/``
-keys over all 17 test sequences, ``test-no-det-overlap/`` keys over the 13 with no known
-VisDrone-DET overlap (the headline). The checkpoints are AGPL-3.0: evaluated, never logged or
-redistributed.
+Scored like the zero-shot baselines, never ``model.val`` (it scores the model's own 10 class ids
+against the merged labels). Ours go through the same path, so both sides read the same frames.
+The checkpoints are AGPL-3.0: evaluated here, never logged or redistributed.
 """
 
 from __future__ import annotations
@@ -20,7 +13,7 @@ import os
 import urllib.request
 from pathlib import Path
 
-from mlops_cv.startup import exits_on_startup_error
+from mlops_cv.startup import StartupError, exits_on_startup_error
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +37,7 @@ LICENCE = "AGPL-3.0"
 FINALISTS = ("stage2-s1280", "stage2-m1280")
 IMGSZ = 1280
 
-# Test sequences with frames in VisDrone-DET train or val (measured in research 02).
+# Test sequences whose frames also appear, downscaled, in VisDrone-DET train or val.
 DET_OVERLAP = frozenset(
     {"uav0000201_00000_v", "uav0000297_00000_v", "uav0000249_00001_v", "uav0000249_02688_v"}
 )
@@ -69,9 +62,11 @@ def _download(repo: str, revision: str, sha256: str, dest: Path) -> Path:
     if not dest.exists():
         dest.parent.mkdir(parents=True, exist_ok=True)
         url = f"https://huggingface.co/{repo}/resolve/{revision}/best.pt"
-        urllib.request.urlretrieve(url, dest)  # noqa: S310 (a fixed https URL)
+        urllib.request.urlretrieve(url, dest)
     if (got := hashlib.sha256(dest.read_bytes()).hexdigest()) != sha256:
-        raise ValueError(f"{dest}: sha256 {got}, expected {sha256} ({repo}@{revision})")
+        raise StartupError(
+            f"{dest}: sha256 {got}, expected {sha256} ({repo}@{revision}); delete it to re-download"
+        )
     return dest
 
 
@@ -90,24 +85,23 @@ def main() -> int:
     from mlops_cv.data.convert_visdrone_vid import YOLO_NAMES
     from mlops_cv.data.subset import IMAGES_DIRNAME, dataset_yaml
     from mlops_cv.evaluation.evaluate import latency_stub
-    from mlops_cv.evaluation.score_detections import score_with_ap_small
-    from mlops_cv.evaluation.zero_shot import CONF, MAX_DET, _rows, class_lut, merge_classes
+    from mlops_cv.evaluation.zero_shot import (
+        CONF,
+        MAX_DET,
+        class_lut,
+        merge_classes,
+        readings,
+        result_rows,
+    )
     from mlops_cv.orchestration.handoff import best_weights_uri
     from mlops_cv.tracking import client
-    from mlops_cv.tracking.metric_keys import (
-        MAP_SMALL,
-        PRIMARY,
-        headline_metrics,
-        metric_key,
-        per_class_metrics,
-    )
     from mlops_cv.tracking.resolve import resolve_model
 
     mlflow = client.connect(settings)
     data_yaml = dataset_yaml(settings)
     images_dir = settings.data.subset_dir / IMAGES_DIRNAME / SPLIT
     device = settings.training.device
-    no_overlap = {
+    no_overlap_frames = {
         p.name for p in images_dir.glob("*.jpg") if p.name.rsplit("_", 1)[0] not in DET_OVERLAP
     }
 
@@ -128,7 +122,7 @@ def main() -> int:
             model = YOLO(str(weights))  # the predictor fixes the head on first use: one per head
             lut = class_lut(model.names, table)
             detections = {
-                Path(r.path).name: merge_classes(_rows(r), lut)
+                Path(r.path).name: merge_classes(result_rows(r), lut)
                 for r in model.predict(
                     str(images_dir),
                     imgsz=IMGSZ,
@@ -140,29 +134,18 @@ def main() -> int:
                     verbose=False,
                 )
             }
-            readings: dict[str, float] = {}
-            for prefix, frames in ((SPLIT, None), (NO_OVERLAP, no_overlap)):
-                metrics, ap_s = score_with_ap_small(detections, data_yaml, SPLIT, frames)
-                readings |= (
-                    headline_metrics(metrics.box, prefix=prefix)
-                    | {metric_key(prefix, MAP_SMALL): ap_s}
-                    | per_class_metrics(
-                        metrics.maps,
-                        metrics.ap_class_index,
-                        metrics.names,
-                        prefix=metric_key(prefix, PRIMARY),
-                    )
-                )
+            scores = readings(detections, data_yaml, SPLIT, SPLIT)
+            scores |= readings(detections, data_yaml, SPLIT, NO_OVERLAP, no_overlap_frames)
             if name in CHECKPOINTS:  # a trial's own latency readings stand
-                readings |= latency_stub(model, images_dir, imgsz=IMGSZ, device=device)
+                scores |= latency_stub(model, images_dir, imgsz=IMGSZ, device=device)
             run_name = f"{name}-{SPLIT}" + ("" if end2end else "-o2m")
             with mlflow.start_run(run_name=run_name):
                 mlflow.set_tag("tune.stage", "test-read")
                 mlflow.log_params(
                     params | {"imgsz": IMGSZ, "conf": CONF, "max_det": MAX_DET, "end2end": end2end}
                 )
-                mlflow.log_metrics(readings)
-            logger.info(f"{run_name}: {readings}")
+                mlflow.log_metrics(scores)
+            logger.info(f"{run_name}: {scores}")
     return 0
 
 

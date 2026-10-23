@@ -57,6 +57,20 @@ def trial_argv(name: str, knobs: Mapping[str, Any]) -> list[str]:
     return argv
 
 
+def finished_trial(mlflow: Any, name: str) -> Any:
+    """The latest finished run named ``name`` in the tune experiment."""
+    runs = mlflow.search_runs(
+        experiment_names=[TUNE_EXPERIMENT],
+        filter_string=f"attributes.run_name = '{name}' and attributes.status = 'FINISHED'",
+        order_by=["attributes.start_time DESC"],
+        max_results=1,
+        output_format="list",
+    )
+    if not runs:
+        raise ValueError(f"no finished trial run named {name}")
+    return runs[0]
+
+
 def _record_latency(mlflow: Any, name: str, imgsz: int, since_ms: int) -> None:
     """Benchmark the trial's logged ``best.pt`` and log the latency onto its run."""
     from ultralytics import YOLO

@@ -166,7 +166,7 @@ def sahi_arm(
 @exits_on_startup_error
 def main(argv: list[str] | None = None) -> int:
     from mlops_cv.training.train import TRIAL_SPLIT
-    from mlops_cv.training.tune import TUNE_EXPERIMENT
+    from mlops_cv.training.tune import TUNE_EXPERIMENT, finished_trial
 
     p = argparse.ArgumentParser(description="Evaluation-only arms on tuning trials' best.pt.")
     p.add_argument("trials", nargs="+", help="trial run names, e.g. stage5-s1280-zoom0.75-1.5")
@@ -193,16 +193,7 @@ def main(argv: list[str] | None = None) -> int:
     device = settings.training.device
 
     for trial in args.trials:
-        runs = mlflow.search_runs(
-            experiment_names=[TUNE_EXPERIMENT],
-            filter_string=f"attributes.run_name = '{trial}' and attributes.status = 'FINISHED'",
-            order_by=["attributes.start_time DESC"],
-            max_results=1,
-            output_format="list",
-        )
-        if not runs:
-            raise ValueError(f"no finished trial run named {trial}")
-        run = runs[0]
+        run = finished_trial(mlflow, trial)
         imgsz = int(run.data.params["imgsz"])
         weights, _ = resolve_model(best_weights_uri(run.info.run_id))
         for arm in ("sahi",) if args.slice else ("o2m", "sahi"):

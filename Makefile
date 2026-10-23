@@ -1,5 +1,5 @@
 .PHONY: setup lint fmt typecheck test test-all ci clean gpu-smoke \
-	train tune tune-sliced sahi-eval zero-shot eval ingest profile optimize edge-gate serve \
+	train tune tune-sliced sahi-eval test-read zero-shot eval ingest profile optimize edge-gate serve \
 	beam-image train-image optimize-image serve-image stream-image monitor-image \
     mlflow-up mlflow-down mlflow-logs \
 	airflow-up airflow-down airflow-logs airflow-env \
@@ -103,6 +103,10 @@ tune-sliced: mlflow-up
 # Pass TRIALS="<trial run name> ...".
 sahi-eval: mlflow-up
 	uv run python -m mlops_cv.evaluation.sahi_eval $(TRIALS)
+
+# Score tuning trials' best.pt on test (end2end head) -> one <trial>-test run each in the tune experiment.
+test-read: mlflow-up
+	uv run python -m mlops_cv.evaluation.test_read $(TRIALS)
 
 # COCO-pretrained yolo26n/s/m x imgsz 640/1280 on val, zero-shot -> one run each in the tune experiment.
 zero-shot: mlflow-up

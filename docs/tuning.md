@@ -20,6 +20,8 @@ vehicle, two-three-wheeler; see [data](data.md#annotation-format-and-3-class-mer
   - When two challengers both win but sit within the margin of each other, the cheaper setup
     (lower trial GPU time) carries forward.
   - Per-class scores and mAP50-95_small are recorded only. They never pick a winner.
+- **One recipe for every size.** A recipe setting is chosen once for n, s and m, on the mean val
+  mAP50-95 over the three sizes with the win margin. Only the model and its pinned batch differ.
 - **Val stays at frame stride 20** (146 frames, 7 sequences). Adjacent frames are near-duplicates
   and the sequence is the independent unit, so a denser val would add frames without adding
   independent evidence.
@@ -232,20 +234,26 @@ last-six mean, though it still lifts mAP50-95_small. A frozen backbone loses 1.5
 
 ## Final winners
 
-| Model | Recipe | Trial run | val mAP50-95 | mAP50-95_small | p50 ms |
-|---|---|---|---|---|---|
-| yolo26n | 1280, 30 epochs, batch 4 | `stage2-n1280` | 28.4 | 13.9 | 12.1 |
-| yolo26s | 1280, 30 epochs, batch 4, `scale=[0.75, 1.5]` | `stage5-s1280-zoom0.75-1.5` | 31.4 | 14.9 | 16.3 |
-| yolo26m | 1280, 30 epochs, batch 2 | `stage2-m1280` | 32.9 | 15.9 | 25.0 |
+The shared recipe is the ultralytics defaults at `imgsz=1280` and 30 epochs. s's zoom scores a
+mean of 30.67 over the three sizes against 30.70 without it, inside the margin, so it drops out
+and s's winner is `stage2-s1280`.
 
-Each size keeps `optimizer=auto`, `mosaic=1.0`, `close_mosaic=10`, `cls_pw=0` and `nbs=64`.
-s's zoom clears the win margin by 0.1 pt while n and m lose with it, so it is the grid's least
-certain decision. The whole grid, stages 2 to confirmation, took 20.9 GPU-hours.
+| Model | Trial run | val mAP50-95 | mAP50-95_small | p50 ms |
+|---|---|---|---|---|
+| yolo26n | `stage2-n1280` | 28.4 | 13.9 | 12.1 |
+| yolo26s | `stage2-s1280` | 30.8 | 13.5 | 16.2 |
+| yolo26m | `stage2-m1280` | 32.9 | 15.9 | 25.0 |
+
+Against the ultralytics defaults the recipe changes only imgsz (640 → 1280, stage 2) and epochs
+(100 → 30, stage 3). Batch 4/4/2 with `nbs=64` is the 8 GB GPU's ceiling. No augmentation,
+optimizer, loss or freeze setting beat the defaults by the margin. The whole grid, stages 2 to
+confirmation, took 20.9 GPU-hours.
 
 ## Evaluation-only arms
 
 `make sahi-eval TRIALS="[--slice N] <trial run> ..."` scores a trial's `best.pt` two more ways, each as a
-`<trial>-<arm>` run in the tune experiment. Arms never select.
+`<trial>-<arm>` run in the tune experiment. Arms never select. s's arms ran on
+`stage5-s1280-zoom0.75-1.5`, its winner before the one-recipe rule.
 
 - **`o2m`:** `model.val(end2end=False)`, the one-to-many head with NMS on the same weights, scored
   like the trial's own `val/` keys.
@@ -297,6 +305,31 @@ cell is winner → `sliced` → `sliced-e8`.
 - **No winner changes.** n's best, 30.7 at 97 ms, sits below s's full-frame
   `end2end=False` read (32.6) at a fraction of the cost (s's end2end p50 is 16 ms).
   Train has no 3840-wide frames, which may cap the 3840 gain. The two stages took ~8 GPU-hours.
+
+## Test read
+
+`make test-read TRIALS="<trial run> ..."` scores a trial's `best.pt` on test (337 frames, 17
+sequences) with the served end2end head, as a `<trial>-test` run in the tune experiment. It
+selects nothing. The shared recipe is read at 640 (stage 1) and 1280 (stage 2) for every size.
+Values are in %; the s@640 row is the mean of three seeds (22.5/22.9/22.8), and latency is the
+trial's own.
+
+| Model | imgsz | val mAP50-95 | test mAP50-95 | person | vehicle | two-three-wheeler | test mAP50-95_small | p50 ms |
+|---|---|---|---|---|---|---|---|---|
+| yolo26n | 640 | 21.0 | 18.5 | 9.4 | 36.7 | 9.4 | 11.8 | 11.0 |
+| yolo26s | 640 | 26.3 | 22.7 | 14.1 | 41.8 | 12.4 | 14.3 | 10.3 |
+| yolo26m | 640 | 28.6 | 25.1 | 16.8 | 45.0 | 13.5 | 15.2 | 12.0 |
+| yolo26n | 1280 | 28.4 | 25.0 | 17.4 | 44.5 | 13.1 | 14.7 | 12.1 |
+| yolo26s | 1280 | 30.8 | 26.6 | 19.0 | 46.3 | 14.6 | 16.3 | 16.2 |
+| **yolo26m** | **1280** | 32.9 | **28.3** | 20.7 | 48.1 | 16.1 | 18.4 | 25.0 |
+
+- **Val's ranking holds on test.** 1280 beats 640 for every size (n/s/m +6.5/+3.9/+3.2 against
+  val's +7.4/+4.5/+4.3), m > s > n at both sizes, and n@1280 still matches m@640 (25.0 vs 25.1).
+- **Test reads 2.5–4.6 pt below val**, the gap mostly widening with the val score.
+- **Seed noise on test is 0.34 pt** (s@640's range), near val's 0.25, so the win margin carries.
+- **The shared recipe beats the champion** (s@640, 1 epoch, test 17.9) by 8.7 pt at s@1280.
+- Not read on test yet: `end2end=False`, the zero-shot and third-party baselines, and each
+  model's max-F1 confidence.
 
 ## The grid
 

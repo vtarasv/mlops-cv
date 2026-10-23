@@ -6,7 +6,8 @@
   against the same trial's full-frame predictions, both through ``score_detections`` at val's
   floor and cap, overall and by source resolution.
 
-Each arm is one ``<trial>-<arm>`` run in the tune experiment.
+Each arm is one ``<trial>-<arm>`` run in the tune experiment. ``--slice N`` runs only the sahi
+arm with N-px slices (each still predicted at imgsz) as ``<trial>-sahi<N>``.
 """
 
 from __future__ import annotations
@@ -92,7 +93,9 @@ def _latency(seconds: Iterable[float]) -> dict[str, float]:
     }
 
 
-def sahi_arm(model: Any, images_dir: Path, data_yaml: Path, *, imgsz: int, device: str) -> dict:
+def sahi_arm(
+    model: Any, images_dir: Path, data_yaml: Path, *, imgsz: int, slice_size: int, device: str
+) -> dict:
     """SAHI under ``val/``, the path-matched full frame under ``val_full/``, latency, passes."""
     from PIL import Image
     from sahi.models.ultralytics import UltralyticsDetectionModel
@@ -127,8 +130,8 @@ def sahi_arm(model: Any, images_dir: Path, data_yaml: Path, *, imgsz: int, devic
         result = get_sliced_prediction(
             str(path),
             sliced,
-            slice_height=imgsz,
-            slice_width=imgsz,
+            slice_height=slice_size,
+            slice_width=slice_size,
             overlap_height_ratio=OVERLAP,
             overlap_width_ratio=OVERLAP,
             postprocess_type="NMS",
@@ -149,7 +152,7 @@ def sahi_arm(model: Any, images_dir: Path, data_yaml: Path, *, imgsz: int, devic
         detections[path.name] = top_k(rows)
 
     passes = [
-        len(get_slice_bboxes(h, w, imgsz, imgsz, False, OVERLAP, OVERLAP)) + 1
+        len(get_slice_bboxes(h, w, slice_size, slice_size, False, OVERLAP, OVERLAP)) + 1
         for w, h in sizes.values()
     ]
     return (
@@ -167,6 +170,7 @@ def main(argv: list[str] | None = None) -> int:
 
     p = argparse.ArgumentParser(description="Evaluation-only arms on tuning trials' best.pt.")
     p.add_argument("trials", nargs="+", help="trial run names, e.g. stage5-s1280-zoom0.75-1.5")
+    p.add_argument("--slice", type=int, help="SAHI slice px (default: imgsz); sahi arm only")
     args = p.parse_args(argv)
 
     os.environ["MLFLOW__EXPERIMENT"] = TUNE_EXPERIMENT  # never production's experiment
@@ -201,7 +205,7 @@ def main(argv: list[str] | None = None) -> int:
         run = runs[0]
         imgsz = int(run.data.params["imgsz"])
         weights, _ = resolve_model(best_weights_uri(run.info.run_id))
-        for arm in ("o2m", "sahi"):
+        for arm in ("sahi",) if args.slice else ("o2m", "sahi"):
             model = YOLO(str(weights))
             if arm == "o2m":
                 readings = split_metrics(
@@ -215,12 +219,18 @@ def main(argv: list[str] | None = None) -> int:
                     end2end=False,
                 )
             else:
-                readings = sahi_arm(model, images_dir, data_yaml, imgsz=imgsz, device=device)
-            with mlflow.start_run(run_name=f"{trial}-{arm}"):
+                slice_size = args.slice or imgsz
+                readings = sahi_arm(
+                    model, images_dir, data_yaml, imgsz=imgsz, slice_size=slice_size, device=device
+                )
+            name = f"{trial}-{arm}{args.slice or ''}"
+            with mlflow.start_run(run_name=name):
                 mlflow.set_tag("tune.stage", "arms")
                 mlflow.log_params({"trial": trial, "trial_run_id": run.info.run_id, "imgsz": imgsz})
+                if arm == "sahi":
+                    mlflow.log_param("slice", slice_size)
                 mlflow.log_metrics(readings)
-            logger.info(f"{trial}-{arm}: {readings}")
+            logger.info(f"{name}: {readings}")
     return 0
 
 

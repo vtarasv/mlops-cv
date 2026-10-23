@@ -244,7 +244,7 @@ certain decision. The whole grid, stages 2 to confirmation, took 20.9 GPU-hours.
 
 ## Evaluation-only arms
 
-`make sahi-eval TRIALS="<trial run> ..."` scores a trial's `best.pt` two more ways, each as a
+`make sahi-eval TRIALS="[--slice N] <trial run> ..."` scores a trial's `best.pt` two more ways, each as a
 `<trial>-<arm>` run in the tune experiment. Arms never select.
 
 - **`o2m`:** `model.val(end2end=False)`, the one-to-many head with NMS on the same weights, scored
@@ -270,6 +270,10 @@ Values are in %.
   it gains 0.3–0.9 pt for 8–10× the latency (5.8 passes per val frame). For m the class-aware NMS
   merge costs more than slicing gains outside 3840. The serving re-entry condition, a gain beyond
   the noise floor at test-like resolutions within a named latency budget, is not met.
+- **Smaller slices lose.** `--slice 640` (each slice upscaled 2× to imgsz, 18.3 passes) scores
+  n/s/m 26.7/26.9/29.2 against 29.8/31.6/31.9 with 1280 slices, at twice the latency. It loses
+  in every resolution group and on mAP50-95_small too, so training on 640 slices has no
+  inference gain to build on.
 
 ## Slicing-aided fine-tuning
 

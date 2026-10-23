@@ -7,7 +7,8 @@ vehicle, two-three-wheeler; see [data](data.md#annotation-format-and-3-class-mer
 ## Protocol
 
 - **Selection on val.** Trials are compared on val mAP50-95. Test is read once, at the end, for the
-  finalists and the zero-shot baselines.
+  shared recipe at 640 and 1280 (below). Test gaps are plain numbers, read against test's seed
+  spread.
 - **Trials never register.** They log to the MLflow experiment `aerial-object-detection-tune` and
   never touch the registry or the champion alias. A finalist reaches production through the normal
   train → evaluate → gate path.
@@ -331,7 +332,7 @@ trial's own. Per-class and small-object columns are the end2end head.
   its zoom trial), so its val lead carries over.
 - **Seed noise on test is 0.34 pt** (s@640's range), near val's 0.25, so the win margin carries.
 - **The shared recipe beats the champion** (s@640, 1 epoch, test 17.9) by 8.7 pt at s@1280.
-- Not read on test yet: the third-party baseline and each model's max-F1 confidence.
+- Not read on test yet: the third-party baseline.
 
 ## The grid
 
@@ -389,6 +390,6 @@ ultralytics' max-F1 confidence at IoU 0.5, not at the serving floor. Scored at t
 0.25, the champion reads about 3.3 pt lower on mAP50-95 from truncation alone, so online accuracy
 is scored at a floor of 0.01 or lower.
 
-The serving default stays 0.25 during tuning. Each finalist's max-F1 confidence is read at the
-final test read, on val and on test, and recorded here. Whether one replaces 0.25 is decided with
-the production default for model size and imgsz.
+The serving default stays 0.25 during tuning. A tuned floor is not a one-off reading: if one
+replaces 0.25, the pipeline computes it for every model version. That is decided with the
+production default for model size and imgsz.

@@ -79,7 +79,9 @@ def demo_yaml(tmp_path: Path) -> Path:
 def test_convert_sequence_dofn_strides_and_skips_empty(raw: Path, tmp_path: Path) -> None:
     with BeamTestPipeline() as p:
         records = (
-            p | beam.Create([("train", "seqA")]) | beam.ParDo(ConvertSequenceDoFn(str(raw), STRIDE))
+            p
+            | beam.Create([("train", "seqA")])
+            | beam.ParDo(ConvertSequenceDoFn(str(raw), STRIDE, STRIDE))
         )
         base = raw / RAW_SPLIT_DIRS["train"] / "sequences" / "seqA"
         expected = [
@@ -207,9 +209,10 @@ def test_main_rejects_unknown_sequence(raw: Path, tmp_path: Path) -> None:
         main([f"--raw-dir={raw}", f"--output-dir={tmp_path / 'x'}", "--sequences", "nope"])
 
 
-def test_main_rejects_bad_stride(raw: Path, tmp_path: Path) -> None:
+@pytest.mark.parametrize("flag", ["--frame-stride=0", "--train-frame-stride=0"])
+def test_main_rejects_bad_stride(raw: Path, tmp_path: Path, flag: str) -> None:
     with pytest.raises(ValueError, match="frame-stride"):
-        main([f"--raw-dir={raw}", f"--output-dir={tmp_path / 'x'}", "--frame-stride=0"])
+        main([f"--raw-dir={raw}", f"--output-dir={tmp_path / 'x'}", flag])
 
 
 def test_missing_raw_split_raises_download_hint(tmp_path: Path) -> None:

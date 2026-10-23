@@ -408,11 +408,12 @@ Values are in %.
   stride 5, so stride 1 doesn't run.
 - **Denser strides peak earlier and then fall.** The best epoch moves from 29 to 8, and stride 2's
   last six epochs sit 2.5 pt below its best. Thirty epochs of a denser split are more steps on the
-  same 56 sequences, so the extra frames add steps, not new scenes.
-- **The win doesn't carry to test.** Stride 10 reads 24.7 (one-to-many 25.8) against stride 20's
-  25.0 (26.2), inside test's 0.34 pt seed spread. Per class on test: person 16.1, vehicle 45.0,
-  two-three-wheeler 12.9, small 14.7 (stride 20: 17.4, 44.5, 13.1, 14.7).
-- **Stride 20 stays.** Stride 10 doubles training time for a val gain test doesn't show.
+  same 56 sequences, so the extra frames add steps, not new sequences.
+- **Test doesn't confirm it.** Stride 10 reads 24.7 (one-to-many 25.8) against stride 20's 25.0
+  (26.2): 0.3 / 0.4 pt below, about test's 0.34 pt seed spread. Per class on test: person 16.1,
+  vehicle 45.0, two-three-wheeler 12.9, small 14.7 (stride 20: 17.4, 44.5, 13.1, 14.7).
+- **Not adopted.** The test read selects nothing, but stride 10 doubles training time for a win
+  test doesn't show, so the subset keeps stride 20. That is a cost call, not the grid's rule.
 
 ## The grid
 

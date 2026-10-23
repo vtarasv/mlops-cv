@@ -109,11 +109,11 @@ def _read_text(path: str) -> str:
 class ConvertSequenceDoFn(beam.DoFn):
     """Convert one ``(split, sequence)`` into per-frame records for the strided subset."""
 
-    def __init__(self, raw_dir: str, stride: int, train_stride: int | None = None) -> None:
+    def __init__(self, raw_dir: str, stride: int, train_stride: int) -> None:
         super().__init__()
         self.raw_dir = raw_dir
         self.stride = stride
-        self.train_stride = train_stride or stride
+        self.train_stride = train_stride
         self.sequences_processed = Metrics.counter(COUNTER_NAMESPACE, "sequences_processed")
         self.sequences_empty = Metrics.counter(COUNTER_NAMESPACE, "sequences_empty")
         self.frames_kept = Metrics.counter(COUNTER_NAMESPACE, "frames_kept")
@@ -315,7 +315,9 @@ def main(argv: list[str] | None = None) -> int:
     settings = get_settings()
     logging.basicConfig(level=settings.log_level.upper(), format="%(message)s")
     options = IngestOptions(beam_argv(argv))
-    if options.frame_stride < 1 or (options.train_frame_stride or 1) < 1:
+    if options.train_frame_stride is None:
+        options.train_frame_stride = options.frame_stride
+    if min(options.frame_stride, options.train_frame_stride) < 1:
         raise ValueError("--frame-stride and --train-frame-stride must be >= 1")
     # Settings-backed defaults, resolved at run time (never at class definition).
     options.raw_dir = options.raw_dir or str(settings.data.raw_dir)

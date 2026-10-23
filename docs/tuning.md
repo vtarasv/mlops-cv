@@ -271,6 +271,29 @@ Values are in %.
   merge costs more than slicing gains outside 3840. The serving re-entry condition, a gain beyond
   the noise floor at test-like resolutions within a named latency budget, is not met.
 
+## Slicing-aided fine-tuning
+
+SAHI's training half, paired with its sliced inference. `make tune-sliced [STAGE=sliced-e8]`
+cuts train into the windows the `sahi` arm infers on (1238 frames → 3300 slices; a box stays if a
+tenth of it is inside) and retrains each final winner on frames + slices; val stays full frames.
+Frames + slices are 3.7× an epoch, so `sliced` (30 epochs) runs 3.7× the steps and `sliced-e8`
+(8 epochs, `close_mosaic=3`, `warmup_epochs=0.8`) the baselines' steps. Values are in %; each
+cell is winner → `sliced` → `sliced-e8`.
+
+| Model | SAHI | SAHI 3840 / 2720 / ≤1904 px | full frame | `end2end=False` |
+|---|---|---|---|---|
+| yolo26n | 29.8 → 29.4 → **30.7** | 15.9 / 33.7 / 30.9 → 14.5 / 35.6 / 31.4 (e8) | 28.5 → 28.2 → 28.4 | 30.2 → 29.7 → 29.9 |
+| yolo26s | 31.6 → 30.5 → 31.4 | 15.1 / 36.0 / 32.5 → 19.6 / 36.3 / 31.7 (e8) | 31.2 → 30.2 → 30.0 | 32.6 → 31.4 → 31.7 |
+| yolo26m | 31.9 → 31.3 → 31.7 | 19.8 / 35.6 / 33.8 → 21.9 / 35.3 / 33.1 (e8) | 32.6 → 31.5 → 31.5 | 34.0 → 33.5 → 32.9 |
+
+- **At 30 epochs it overfits.** Every `sliced` run peaks at epoch 9–10 and loses on every read.
+- **At equal steps only n's SAHI read clears the win margin** (+0.9). s and m tie on SAHI and
+  lose 1.1–1.2 pt on full frames and the one-to-many head. The 3840 group gains for s and m
+  (+4.5/+2.1, 49 frames) and the ≤1904 group doesn't.
+- **No winner changes.** n's best, 30.7 at 97 ms, sits below s's full-frame
+  `end2end=False` read (32.6) at a fraction of the cost (s's end2end p50 is 16 ms).
+  Train has no 3840-wide frames, which may cap the 3840 gain. The two stages took ~8 GPU-hours.
+
 ## The grid
 
 Each stage is a full grid of its own factors, run against the winner so far. Stages 2 and 3 run

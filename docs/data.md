@@ -88,6 +88,8 @@ shrinks the set with `--frame-stride N` — keeping every Nth frame to drop the 
 consecutive frames of a video. Flags:
 
 - `--frame-stride N` — keep every Nth frame in train, val, and test splits (default 20).
+- `--train-frame-stride N` — override the stride for train only; val and test keep
+  `--frame-stride`, so val selection and test reads stay comparable.
 - `--sequences NAME ...` — restrict to specific sequences (default: all) for a quick smoke.
 - `--demo-clips PATH` — demo-clips YAML for the demo store (default
   `configs/demo_clips.yaml`; `none` disables).

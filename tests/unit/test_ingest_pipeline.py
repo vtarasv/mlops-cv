@@ -166,6 +166,31 @@ def test_main_without_demo_clips(raw: Path, tmp_path: Path) -> None:
     assert not demo_store_present(out)
 
 
+def test_train_frame_stride_thins_only_train(raw: Path, tmp_path: Path) -> None:
+    import csv
+
+    out = tmp_path / "subset"
+    argv = [
+        f"--raw-dir={raw}",
+        f"--output-dir={out}",
+        f"--frame-stride={STRIDE}",
+        "--train-frame-stride=1",
+        "--demo-clips=none",
+    ]
+    assert main(argv) == 0
+    with (out / MANIFEST_FILENAME).open(newline="", encoding="utf-8") as fh:
+        rows = list(csv.DictReader(fh))
+    assert sorted((r["split"], r["sequence"], r["frame_index"]) for r in rows) == [
+        ("test", "seqC", "1"),
+        ("test", "seqC", "3"),
+        ("train", "seqA", "1"),
+        ("train", "seqA", "2"),
+        ("train", "seqA", "4"),
+        ("train", "seqA", "5"),
+        ("val", "seqB", "1"),
+    ]
+
+
 def test_a_reingest_drops_stale_frames(raw: Path, tmp_path: Path) -> None:
     out = tmp_path / "subset"
     argv = [f"--raw-dir={raw}", f"--output-dir={out}", "--demo-clips=none"]

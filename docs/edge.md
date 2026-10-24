@@ -41,11 +41,12 @@ The desktop measures accuracy; the device re-measures it to confirm it holds on 
 only source of its latency. On the device:
 
 ```bash
-python -m mlops_cv.edge.bench                                    # champion, every NCNN variant
-python -m mlops_cv.edge.bench --model-version 2 --variants ncnn-fp16-320 --device-label pi5
+python -m mlops_cv.edge.bench                                    # edge champion, every NCNN variant
+python -m mlops_cv.edge.bench --model-version 2 --variants ncnn-fp16-1280 --device-label pi5
 ```
 
-It logs latency under `optimize/<variant>/device/<label>/latency/*`, each variant's detections
+Every edge tool acts on `aerial-object-detector-edge`, the edge deployment target's own registered
+model. It logs latency under `optimize/<variant>/device/<label>/latency/*`, each variant's detections
 on the test split as `edge/<label>/<variant>/detections.json` (at val's settings, so they stand in
 for `model.val`), and the device's ncnn/numpy/OpenCV versions as `optimize.<label>.*` tags. Then
 on the desktop:
@@ -60,6 +61,9 @@ It scores each dump with ultralytics' validator (`evaluation.score_detections`),
 `edge/<label>.md` report, and sets `optimize.measured.<label>` when every |Δ| is within 0.5
 percentage points of mAP50-95 (`OPTIMIZE__DEVICE_TOLERANCE_PT`); otherwise it exits 1. Δ is against the desktop
 **NCNN** reading, not the training run's `test/*`.
+
+The device is never on the promotion path: the CT pipeline publishes the edge ladder and promotes
+on the served tag alone. Bench and gate run out-of-band, adding readings to the same record run.
 
 ## Raspberry Pi 5 setup
 
@@ -126,8 +130,8 @@ class).
 ```bash
 python -m mlops_cv.edge.live_view                       # web: http://<pi-host>:8090/
 DISPLAY=:0 python -m mlops_cv.edge.live_view --show screen   # a window on the Pi's display, q quits
-python -m mlops_cv.edge.live_view --pull-only           # pull the champion's ncnn-fp16-640, print its dir
-python -m mlops_cv.edge.live_view --model models/ncnn-fp16-640_ncnn_model   # no network
+python -m mlops_cv.edge.live_view --pull-only           # pull the champion's ncnn-fp16-<imgsz>, print its dir
+python -m mlops_cv.edge.live_view --model models/ncnn-fp16-1280_ncnn_model  # no network
 ```
 
 Without `--model` it pulls from MLflow, so it needs the `MLFLOW__TRACKING_URI` export above.

@@ -165,5 +165,5 @@ def test_optimize_defaults_to_the_champion_alias_without_addressing() -> None:
 
     settings = _settings()
     args = build_parser(settings).parse_args([])
-    expected = f"models:/{settings.mlflow.registered_model}@{settings.mlflow.champion_alias}"
+    expected = "models:/aerial-object-detector-server@champion"
     assert model_uri(args, settings) == expected

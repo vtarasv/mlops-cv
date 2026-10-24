@@ -121,9 +121,9 @@ def evaluate_gate(
 
 
 def fetch_champion_metrics(
-    settings: Settings, *, registry: Any | None = None
+    settings: Settings, target: str, *, registry: Any | None = None
 ) -> dict[str, float] | None:
-    """The champion's training-run metrics, or ``None`` when there is no champion yet.
+    """``target``'s champion's training-run metrics, or ``None`` when it has no champion yet.
 
     ``None`` means exactly "no champion yet" → :func:`evaluate_gate`
     treats the candidate as a bootstrap.
@@ -132,36 +132,37 @@ def fetch_champion_metrics(
     from mlops_cv.tracking import champion
 
     try:
-        version = champion.resolve(settings, registry=registry)
+        version = champion.resolve(settings, target=target, registry=registry)
     except StartupError as exc:
         logger.info(f"no champion to compare against ({exc}) — bootstrap")
         return None
     return dict(champion.training_run(version, registry=registry).data.metrics)
 
 
-def promote(settings: Settings, version: str | int, *, registry: Any | None = None) -> None:
-    """Point the champion alias at ``version``; only a servable gate winner."""
-    from mlops_cv.optimize.variants import servable_tags
+def promote(
+    settings: Settings, version: str | int, target: str, *, registry: Any | None = None
+) -> None:
+    """Point ``target``'s champion alias at ``version``; only a servable gate winner."""
+    from mlops_cv.optimize.variants import served_tag
     from mlops_cv.orchestration.handoff import best_weights_uri
     from mlops_cv.startup import StartupError
     from mlops_cv.tracking import champion, client
 
-    name = settings.mlflow.registered_model
+    name = settings.mlflow.registered_model(target)
     reg = client.registry(settings, injected=registry)
     entity = reg.get_model_version(name, str(version))
     run = champion.training_run(entity, registry=reg)
-    weights = f"MODEL={best_weights_uri(run.info.run_id)} RUN_ID={run.info.run_id}"
+    weights = f"MODEL={best_weights_uri(run.info.run_id)} RUN_ID={run.info.run_id} TARGET={target}"
     if run.data.tags.get(GATE_PASSED_TAG) != "True":
         raise StartupError(
             f"not promoting v{version}: its training run carries no passing gate verdict "
             f"({GATE_PASSED_TAG}={run.data.tags.get(GATE_PASSED_TAG)}). Run `make eval {weights}`."
         )
-    if missing := [
-        t for t in servable_tags(settings.optimize.server_imgsz) if t not in entity.tags
-    ]:
+    tag = served_tag(target, champion.training_imgsz(run.info.run_id, registry=reg))
+    if tag not in entity.tags:
         raise StartupError(
-            f"not promoting v{version}: it is not servable (missing {', '.join(missing)}). "
+            f"not promoting {name} v{version}: it is not servable (missing {tag}). "
             f"Run `make optimize {weights}`."
         )
     reg.set_registered_model_alias(name, settings.mlflow.champion_alias, str(version))
-    logger.info(f"promoted v{version} -> alias {settings.mlflow.champion_alias!r}")
+    logger.info(f"promoted {name} v{version} -> alias {settings.mlflow.champion_alias!r}")

@@ -21,6 +21,7 @@ import yaml
 
 from mlops_cv.config import Settings, get_settings
 from mlops_cv.data.subset import dataset_yaml
+from mlops_cv.optimize.variants import EDGE, SERVER, TARGETS
 from mlops_cv.orchestration.handoff import BEST_WEIGHTS_RELPATH, TrainHandoff
 from mlops_cv.tracking import client, data_version
 from mlops_cv.training.callbacks import log_batch_params, log_per_class
@@ -33,6 +34,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 MODELS = ("yolo26n", "yolo26s", "yolo26m")
+
+# Each deployment target's production default size (docs/tuning.md § Final recipe).
+TARGET_MODELS = {SERVER: "yolo26m", EDGE: "yolo26n"}
 
 # A trial's final val and latency both read this split.
 TRIAL_SPLIT = "val"
@@ -51,7 +55,13 @@ def build_parser(settings: Settings) -> argparse.ArgumentParser:
     """CLI parser whose defaults come from ``settings.training``."""
     t = settings.training
     p = argparse.ArgumentParser(description="Train YOLO26 on a dataset with MLflow logging.")
-    p.add_argument("--model", choices=MODELS, default=Path(t.weights).stem)
+    p.add_argument(
+        "--target",
+        choices=TARGETS,
+        default=SERVER,
+        help="deployment target: picks the registered model and the default --model",
+    )
+    p.add_argument("--model", choices=MODELS, default=None, help="default: the target's size")
     p.add_argument("--epochs", type=int, default=t.epochs)
     p.add_argument("--imgsz", type=int, default=t.imgsz)
     p.add_argument("--batch", type=int, default=t.batch, help="-1 = ultralytics autobatch")
@@ -132,6 +142,7 @@ def main(argv: list[str] | None = None) -> int:
     settings = get_settings()
     logging.basicConfig(level=settings.log_level.upper(), format="%(message)s")
     args = build_parser(settings).parse_args(argv)
+    args.model = args.model or TARGET_MODELS[args.target]
 
     mlflow = client.connect(settings)
 
@@ -188,7 +199,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             logger.info(f"trial {run_name} recorded on run {run_id}, not registered")
             return 0
-        version = _register_model(run, settings.mlflow.registered_model)
+        version = _register_model(run, settings.mlflow.registered_model(args.target))
 
     # Machine-readable handoff: orchestrators read the last stdout line (DockerOperator XCom).
     print(TrainHandoff(version=version, run_id=run_id).to_line(), flush=True)

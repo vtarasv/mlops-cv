@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from mlops_cv.config import Settings
+from mlops_cv.optimize.variants import SERVER
 from mlops_cv.pipelines import profiling
 from mlops_cv.startup import StartupError
 from mlops_cv.streaming.messages import ModelInfo
@@ -78,13 +79,13 @@ def baseline_scenes(data_run_id: str) -> list[BaselineScene]:
 
 
 def resolve_baseline(settings: Settings, *, registry: Any | None = None) -> ResolvedBaseline:
-    """Champion alias -> the drift baseline the monitor scores live windows against."""
-    version = champion.resolve(settings, registry=registry)
+    """Server champion -> the drift baseline the monitor scores live windows against."""
+    version = champion.resolve(settings, target=SERVER, registry=registry)
     training_run = champion.training_run(version, registry=registry)
     data_run_id = data_version_id(training_run)
     return ResolvedBaseline(
         scenes=baseline_scenes(data_run_id),
-        model=ModelInfo(name=settings.mlflow.registered_model, version=version.version),
+        model=ModelInfo(name=settings.mlflow.registered_model(SERVER), version=version.version),
         data_run_id=data_run_id,
         training_run_id=training_run.info.run_id,
     )

@@ -219,8 +219,9 @@ def aerial_object_detection_ct() -> None:
         """Point the champion alias at the challenger version (gate passed, variants published)."""
         from mlops_cv.config import get_settings
         from mlops_cv.evaluation.gate import promote as set_champion_alias
+        from mlops_cv.optimize.variants import SERVER
 
-        set_champion_alias(get_settings(), train_info["version"])
+        set_champion_alias(get_settings(), train_info["version"], SERVER)
 
     subset_choice = check_subset()
     profiled_choice = check_profiled()

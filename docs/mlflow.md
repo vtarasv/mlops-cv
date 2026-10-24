@@ -67,7 +67,7 @@ from mlops_cv.tracking import client
 settings = get_settings()
 settings.mlflow.tracking_uri      # "http://localhost:5000" (override with MLFLOW__TRACKING_URI)
 settings.mlflow.experiment        # "aerial-object-detection"
-settings.mlflow.registered_model  # "aerial-object-detector"
+settings.mlflow.registered_model("server")  # "aerial-object-detector-server" (or "edge")
 client.configure(settings)        # exports MLFLOW_TRACKING_URI into the environment
 mlflow = client.connect(settings) # the configured module, ready to open runs
 ```
@@ -83,6 +83,12 @@ flowchart LR
     version -- "run that produced it" --> train["training run\n(metrics, data.version tag)"]
     train --> children["record runs\n(optimize, monitor)"]
 ```
+
+Each deployment target has its own registered model, `aerial-object-detector-<target>`
+(`MLFLOW__REGISTERED_MODEL_PREFIX`), with its own champion alias and gate: the server's
+services and the drift monitor resolve `-server`, the edge tools `-edge`. The old
+`aerial-object-detector` stays in the registry as history. The training run's `imgsz` param is
+the size the champion is served at (`champion.training_imgsz`).
 
 ## Persistence & teardown
 

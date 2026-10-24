@@ -59,6 +59,11 @@ def variant_latency_prefix(variant: str) -> str:
     return metric_key(variant_prefix(variant), "latency")
 
 
+def variant_head_latency_prefix(variant: str, head: str) -> str:
+    """Where a graph rung's other-head latency lives: ``optimize/<variant>/<head>/latency``."""
+    return metric_key(metric_key(variant_prefix(variant), head), "latency")
+
+
 def variant_device_latency_prefix(variant: str, device_label: str) -> str:
     """Where an on-device harness's latency readings live, beside its accuracy:
     ``optimize/<variant>/device/<label>/latency``."""

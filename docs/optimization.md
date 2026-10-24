@@ -23,7 +23,7 @@ flowchart LR
   subgraph harness["mlops_cv.optimize"]
     portable["ONNX graph"]
     engines["TRT engine<br/>+ fingerprint"]
-    ncnn["NCNN models<br/>fp32 · fp16 · fp16-320"]
+    ncnn["NCNN models<br/>fp32 · fp16"]
     measure["measure each variant<br/>val() + latency (+ memory on GPU)"]
     portable -.->|"equivalent graph,<br/>re-exported by the compiler"| engines
     portable --> measure
@@ -56,30 +56,47 @@ flowchart LR
 
 ## The variant ladder
 
-| Rung | Target | What it isolates |
+One ladder per deployment target (`--target server|edge`), each in that target's own registered
+model (`aerial-object-detector-<target>`), every rung at the model's **training imgsz**, read off
+its training run (`<imgsz>` below). A target builds nothing another target serves.
+
+| Target | Rung | What it isolates |
 |---|---|---|
-| `torch-fp32-640` | server | the baseline — should reproduce the evaluation harness's recorded reading |
-| `onnx-ort-fp32-640` | server | the cost of leaving the training framework for a portable runtime |
-| `trt-fp16-640` | server | the payoff of ahead-of-time compilation + reduced precision |
-| `ncnn-fp32-640` | edge | the edge runtime at full precision — the accuracy anchor |
-| `ncnn-fp16-640` | edge | half precision alone, resolution held constant |
-| `ncnn-fp16-320` | edge | resolution alone, precision held constant |
+| both | `torch-fp32-<imgsz>` | the baseline — should reproduce the evaluation harness's recorded reading |
+| server | `onnx-ort-fp32-<imgsz>` | **served**: the cost of leaving the training framework for a portable runtime |
+| server | `trt-fp16-<imgsz>` | the payoff of ahead-of-time compilation + reduced precision (published, not served) |
+| edge | `ncnn-fp32-<imgsz>` | the edge runtime at full precision — the accuracy anchor |
+| edge | `ncnn-fp16-<imgsz>` | **served**: half precision alone |
+
+Promotion requires only the target's served tag: `optimize.onnx_<imgsz>` for the server,
+`optimize.ncnn_fp16_<imgsz>` for the edge. The device's own readings ([edge.md](edge.md)) are
+never required.
+
+## Detection head
+
+`--head one-to-one|one-to-many` (default `one-to-many`). One-to-one exports YOLO26's end2end
+NMS-free graph; one-to-many exports with `end2end=False, nms=True, conf=0.001` (iou 0.7,
+`max_det` 300), so the output stays `(1, 300, 6)` and serving's post-processing is unchanged. TRT
+re-exports the graph with the same head, and the torch rung is measured on it too. NCNN has no
+end2end export, so the edge is always one-to-many. The record says which ran (`optimize.head`),
+and the server's ONNX rung also times the other head's graph under
+`optimize/onnx-ort-fp32-<imgsz>/<other head>/latency/*`: what in-graph NMS costs.
 
 ## Run it
 
 ```bash
-# The champion, whole ladder (brings the tracking stack up first):
+# The server champion, whole ladder (brings the tracking stack up first):
 make optimize
 
 # A specific model, recorded on a child of its training run (what the pipeline does):
-make optimize MODEL=runs:/<run_id>/weights/best.pt RUN_ID=<run_id>
+make optimize MODEL=runs:/<run_id>/weights/best.pt RUN_ID=<run_id> TARGET=edge
 
 # Iterate on one rung:
-uv run python -m mlops_cv.optimize --variants trt-fp16-640
+uv run python -m mlops_cv.optimize --variants trt-fp16-1280
 ```
 
-`--model` takes any MLflow model URI; with none, the champion alias is optimized — and if no
-champion has been promoted yet - exits.
+`--model` takes an MLflow model URI with a training run; with none, the target's champion alias
+is optimized — and if no champion has been promoted yet - exits.
 The pipeline passes the gate winner's own `runs:/` weights URI instead. `--run-id`
 names the model version's training run — the record lands on a **child** of it, and
 re-optimizing the same version reuses that child rather than adding a sibling. Without it the
@@ -98,10 +115,10 @@ champion's weights:
 
 | Tag | Artifact |
 |---|---|
-| `optimize.onnx_640` | `onnx/best_640.onnx` — the portable graph |
-| `optimize.trt_fp16_640` | `engines/trt-fp16-640.engine` |
-| `optimize.trt_fp16_640_fingerprint` | `engines/trt-fp16-640.fingerprint.json` |
-| `optimize.ncnn_fp32_640` / `…_fp16_640` / `…_fp16_320` | `ncnn/<variant>_ncnn_model/` |
+| `optimize.onnx_<imgsz>` | `onnx/best_<imgsz>.onnx` — the portable graph (server) |
+| `optimize.trt_fp16_<imgsz>` | `engines/trt-fp16-<imgsz>.engine` (server) |
+| `optimize.trt_fp16_<imgsz>_fingerprint` | `engines/trt-fp16-<imgsz>.fingerprint.json` (server) |
+| `optimize.ncnn_fp32_<imgsz>` / `…_fp16_<imgsz>` | `ncnn/<variant>_ncnn_model/` (edge) |
 
 with `optimization.md` and `variants.csv` at the artifact root.
 
@@ -117,7 +134,7 @@ architecture-independent and travel freely — the Pi pulls its models straight 
 The record goes to a **child run** of the model version's training run, named `optimize` and
 linked by MLflow's parent tag (the UI nests it under the parent).
 
-Practically, a ladder produces about a dozen readings per rung — roughly 70 keys for six rungs,
+Practically, a ladder produces about a dozen readings per rung — roughly 40 keys for three rungs,
 plus 10 more per device label ([edge.md](edge.md)), and they accumulate forever: a rung retired
 today leaves its keys behind. On the training run those would bury the two dozen readings that
 describe the model itself (`train/*`, `val/*`, `test/*`, per-epoch `metrics/*`).

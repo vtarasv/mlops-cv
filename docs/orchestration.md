@@ -122,6 +122,7 @@ Every task is a thin wrapper over `mlops_cv` code — the DAG contains orchestra
     pass**, so only a winner earns the GPU minutes. A failed optimize fails the run and leaves the
     alias where it was; retry by clearing `optimize`.
 11. **`promote`** (in-process) — points the `champion` registry alias at the challenger version.
+    Today the DAG trains, gates and promotes into the server target's registered model.
     It refuses a version whose training run lacks a passing `gate.passed` tag or that is not
     **servable**, so the alias never points at a version the services cannot start on.
 

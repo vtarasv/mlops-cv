@@ -26,9 +26,9 @@ flowchart LR
 
 ```bash
 # The champion (brings the MLflow stack up first):
-make eval MODEL=models:/aerial-object-detector@champion
+make eval MODEL=models:/aerial-object-detector-server@champion
 # or directly (the stack must be up — `make mlflow-up`):
-uv run python -m mlops_cv.evaluation --model models:/aerial-object-detector@champion --batch 16
+uv run python -m mlops_cv.evaluation --model models:/aerial-object-detector-server@champion --batch 16
 
 # Evaluate a fresh training run ONTO that run (one run = one model version's full record):
 make eval MODEL=runs:/<run_id>/weights/best.pt RUN_ID=<run_id>
@@ -36,7 +36,16 @@ make eval MODEL=runs:/<run_id>/weights/best.pt RUN_ID=<run_id>
 # Promote it once it passed the gate and is servable (`make optimize` publishes its variants):
 make optimize MODEL=runs:/<run_id>/weights/best.pt RUN_ID=<run_id>
 make promote RUN_ID=<run_id>
+# An edge model: add TARGET=edge to eval, optimize and promote.
 ```
+
+`--target server|edge` (default `server`) picks whose champion the challenger is gated against:
+each deployment target has its own registered model, champion and gate. `--head one-to-one|
+one-to-many` (default `one-to-many`) is the detection head scored, the one optimization exports;
+the edge always scores one-to-many (NCNN has no end2end export). The run is tagged `eval.head`.
+The split is scored at the model's training imgsz, read off its training run (`--imgsz`
+overrides). The champion's reading was taken at its own imgsz, so a 640 challenger can be gated
+against a 1280 champion.
 
 `--model` is an MLflow URI: a registry ref (`models:/<name>@<alias>`, `models:/<name>/<version>`) or a
 run URI (`runs:/<id>/<path>`); the model's `best.pt` is downloaded automatically. The run logs to the server

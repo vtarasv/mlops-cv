@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from mlops_cv.config import load_settings
-from mlops_cv.training.train import build_parser
+from mlops_cv.training.train import TARGET_MODELS, build_parser
 
 
 def _settings():
@@ -42,9 +42,14 @@ def test_trial_flags() -> None:
     assert args.overrides == [("scale", [0.5, 3.0])]
 
 
-def test_production_defaults_register_the_settings_model() -> None:
+def test_production_defaults_register_into_the_server_target() -> None:
     args = build_parser(_settings()).parse_args([])
-    assert (args.model, args.register, args.overrides) == ("yolo26s", True, [])
+    assert (args.target, args.model, args.register, args.overrides) == ("server", None, True, [])
+    assert args.imgsz == 1280
+
+
+def test_each_target_trains_its_production_default_size() -> None:
+    assert TARGET_MODELS == {"server": "yolo26m", "edge": "yolo26n"}
 
 
 def test_set_needs_key_equals_value() -> None:

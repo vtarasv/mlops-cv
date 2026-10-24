@@ -21,6 +21,7 @@ from mlops_cv.tracking.metric_keys import (
     per_class_metrics,
     variant_device_latency_prefix,
     variant_device_prefix,
+    variant_head_latency_prefix,
     variant_latency_prefix,
     variant_prefix,
 )
@@ -91,6 +92,10 @@ def test_variant_namespace_golden_spellings() -> None:
         == "optimize/ncnn-fp16-320/device/pi5/latency"
     )
     assert variant_device_prefix("ncnn-fp16-640", "pi5") == "optimize/ncnn-fp16-640/device/pi5"
+    assert (
+        variant_head_latency_prefix("onnx-ort-fp32-1280", "one-to-one")
+        == "optimize/onnx-ort-fp32-1280/one-to-one/latency"
+    )
 
 
 def test_device_latency_keys_never_collide_with_the_desktops() -> None:

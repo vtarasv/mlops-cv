@@ -7,7 +7,8 @@ It follows Google's [MLOps level 2](https://docs.cloud.google.com/architecture/m
 pattern: models are retrained, tested, optimized, promoted, served, and watched **automatically**,
 with a human deciding only what new data to admit.
 
-The model is [YOLO26s](https://github.com/ultralytics/ultralytics) fine-tuned on the
+The model is [YOLO26](https://github.com/ultralytics/ultralytics) (m on the GPU server, n on the
+Raspberry Pi 5 edge, both at imgsz 1280) fine-tuned on the
 [VisDrone-VID](https://docs.ultralytics.com/datasets/detect/visdrone) benchmark, detecting three
 classes: **person**, **vehicle**, and **two-three-wheeler** (bikes, motorbikes, tricycles).
 
@@ -62,8 +63,9 @@ Details: [docs/data.md](docs/data.md), [docs/batch-pipeline.md](docs/batch-pipel
 
 ### 2. Training and evaluation: produce a model, then judge it
 
-- **Training** fine-tunes YOLO26s from COCO weights on the subset. It logs parameters, per-epoch
-  metrics, and the best weights to MLflow, and registers a new **model version**.
+- **Training** fine-tunes YOLO26 from COCO weights on the subset, for one deployment target. It
+  logs parameters, per-epoch metrics, and the best weights to MLflow, and registers a new **model
+  version** of that target's registered model.
 - **Evaluation** measures the model on the held-out test split (precision, recall, mAP50,
   mAP50-95, per class), renders demo videos with ground truth vs predictions, saves crops of the
   worst mistakes, and runs the **gate**.
@@ -162,7 +164,7 @@ cp .env.example .env       # then set DATA__RAW_DIR, DATA__SUBSET_DIR, TRAINING_
 ```bash
 make ingest                # raw frames -> training subset + demo clips
 make profile               # subset -> quality report + drift baseline (starts MLflow)
-make train                 # train YOLO26s -> MLflow run + registered model version
+make train                 # train yolo26m@1280 (TARGET=edge: n) -> MLflow run + registered version
 make eval MODEL=runs:/<run_id>/weights/best.pt RUN_ID=<run_id>       # test metrics + gate + videos
 make optimize MODEL=runs:/<run_id>/weights/best.pt RUN_ID=<run_id>   # on a pass: export + benchmark serving variants
 make promote RUN_ID=<run_id>   # champion alias -> this version (needs a passing gate + servable)
@@ -196,7 +198,7 @@ src/mlops_cv/
   config/         settings from .env + environment variables
   data/           VisDrone conversion, subset layout, dataset validation
   pipelines/      Beam pipelines: ingest and profile
-  training/       YOLO26s training + MLflow logging
+  training/       YOLO26 training + MLflow logging
   evaluation/     metrics, gate, report, demo videos, error crops
   tuning/         tuning experiments (trials, baselines, SAHI)
   optimize/       serving variants (ONNX, TensorRT, NCNN) + benchmarks

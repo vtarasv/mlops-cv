@@ -2,19 +2,21 @@
 
 A continuously trained detector for objects in drone video: it learns from VisDrone-VID, serves
 the current best model over HTTP and a live stream, and watches whether live footage still looks
-like what that model learned from.
+like what that model learned from. Alongside, it measures auto-labelers that label drone imagery
+without being trained on it.
 
 ## Language
 
 ### Data
 
 **Raw dataset**:
-The VisDrone-VID benchmark as downloaded: drone video already cut into numbered frames, with
-per-frame annotations in its ten raw categories.
+A VisDrone benchmark as downloaded, annotated in its ten raw categories: VisDrone-VID (drone
+video already cut into numbered frames) or VisDrone-DET (standalone images). The detector learns
+from VisDrone-VID only.
 _Avoid_: source data, VisDrone (unqualified)
 
 **Sequence**:
-One continuous drone recording in the raw dataset, stored as numbered frames, or one link session
+One continuous drone recording in VisDrone-VID, stored as numbered frames, or one link session
 on the stream. It is the unit that is split, keyed, replayed and baselined.
 _Avoid_: video, scene, clip (except for a demo clip)
 
@@ -67,8 +69,8 @@ _Avoid_: demo data, raw frames
 ### Dataset pipelines
 
 **Ingestion**:
-The pipeline that turns the raw dataset into the subset and its demo store. It is the only step
-that reads the raw dataset.
+The pipeline that turns VisDrone-VID into the subset and its demo store. It is the only step on
+the detector's path that reads a raw dataset; the auto-labeler reads raw datasets directly.
 _Avoid_: conversion, preprocessing
 
 **Profiling**:
@@ -365,3 +367,56 @@ _Avoid_: snapshots, thumbnails
 Detection-rate, confidence and class-share readings shown next to drift scores. They give
 context for a drift alarm but never trigger one.
 _Avoid_: model drift, output drift
+
+### Auto-labeling
+
+**Auto-labeler**:
+A chain of pretrained, text-prompted models that labels images or frames it was never trained on:
+an open-vocabulary detector, a box filter, and a segmenter that turns each kept box into
+a mask. A single model that does all three counts too.
+_Also_: auto-labeling pipeline
+
+**Box filter**:
+The auto-labeler's step between the open-vocabulary detector and the segmenter. It drops
+detections that are too small, too large, too unsure or duplicated, so the segmenter only sees
+boxes worth a mask.
+_Avoid_: post-processing, NMS (that is one of its rules)
+
+**Auto-label**:
+One object as the auto-labeler reports it: a merged class, a score, a box and a mask, and in
+sequence mode a track.
+_Avoid_: detection (that is the detector's output), pseudo-label
+
+**Image mode**:
+Auto-labeling each image on its own, with no memory of other images. VisDrone-DET is labeled
+this way.
+_Also_: image case
+
+**Sequence mode**:
+Auto-labeling a sequence frame by frame: objects found on key frames are tracked through the
+frames in between. VisDrone-VID is labeled this way.
+_Also_: video case
+
+**Key frame**:
+A sequence-mode frame on which the open-vocabulary detector runs and objects not yet tracked
+start being tracked.
+
+**Key-frame interval**:
+The N in "every N-th frame is a key frame". It has nothing to do with frame stride, which thins
+the subset.
+_Avoid_: frame stride, detection stride
+
+**Labeling config**:
+The tuned settings of the auto-labeler for one raw dataset: prompts, thresholds, box filter and
+segmenter settings, and in sequence mode the key-frame interval and tracking settings.
+_Avoid_: per-dataset parameters
+
+**Labeling trial**:
+One labeling config run on a tuning split and scored against that split's ground truth. Nothing
+is trained.
+_Avoid_: trial (that is a training run of the detector's tuning)
+
+**Annotation editor**:
+The self-hosted browser app where auto-labels are viewed against ground truth, and later
+corrected.
+_Avoid_: viewer, labeling tool

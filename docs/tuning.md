@@ -1,71 +1,102 @@
-# Tuning
+# Tuning: YOLO26 on VisDrone-VID
 
-A staged tuning grid picks the best training recipe for each model size (yolo26n, s, m) on the
-VisDrone-VID subset: frame stride 20, with the raw categories merged into three classes (person,
-vehicle, two-three-wheeler; see [data](data.md#annotation-format-and-3-class-merge)).
+These experiments look for the best way to train YOLO26 n, s and m on this repo's VisDrone-VID
+subset, and check a few ideas on top of it: sliced inference, sliced training, a denser train split,
+and a comparison with a public VisDrone checkpoint. The [summary](#summary) at the end lists what
+was decided. Scores are mAP50-95 in %, on val unless a section says test.
 
-## Protocol
+## How the experiments work
 
-- **Selection on val.** Trials are compared on val mAP50-95. Test is read once, at the end, for the
-  shared recipe at 640 and 1280 (below). Test gaps are plain numbers, read against test's seed
-  spread.
-- **Trials never register.** They log to the MLflow experiment `aerial-object-detection-tune` and
-  never touch the registry or the champion alias. A finalist reaches production through the normal
-  train → evaluate → gate path.
-- **Staged greedy grid.** First the zero-shot baselines, then the current recipe per size. After
-  that, each stage varies one or two factors as a small full grid and carries its winner forward.
-- **Win margin: 0.5 pt** of overall val mAP50-95. That is about twice the noise floor (three
-  seeds of s@640, below). The floor is a lower bound: data order is fixed and every seed is
-  scored on the same val, so the margin sits above it. One margin covers every size and imgsz.
-  - A challenger inside the margin loses, and the stage's winner so far stays.
-  - When two challengers both win but sit within the margin of each other, the cheaper setup
-    (lower trial GPU time) carries forward.
-  - Per-class scores and mAP50-95_small are recorded only. They never pick a winner.
-- **One recipe for every size.** A recipe setting is chosen once for n, s and m, on the mean val
-  mAP50-95 over the three sizes with the win margin. Only the model and its pinned batch differ.
-- **Val stays at frame stride 20** (146 frames, 7 sequences). Adjacent frames are near-duplicates
-  and the sequence is the independent unit, so a denser val would add frames without adding
-  independent evidence.
+- **Data.** The subset keeps every 20th video frame: train 1238 frames from 56 videos, val 146
+  from 7, test 337 from 17. The ten VisDrone categories are merged into three classes: person,
+  vehicle and two-three-wheeler ([data](data.md#annotation-format-and-3-class-merge)).
+- **Trial.** One training run with one set of settings. Trials log to the MLflow experiment
+  `aerial-object-detection-tune` and are never registered as model versions.
+- **Score.** A trial is judged by the val mAP50-95 of its best checkpoint (`best.pt`). Per-class AP
+  and mAP50-95_small (AP on objects under 32×32 px) are recorded but never decide.
+- **Win margin: 0.5 pt.** Training one setup with three seeds moved its score by 0.25 pt (the
+  [noise floor](#2-noise-floor-one-setup-three-seeds)). A new setting counts as better only if it
+  beats the current best by 0.5 pt; otherwise the current setting stays. When two new settings both
+  win and sit within 0.5 pt of each other, the cheaper one wins.
+- **A few settings at a time.** Each stage changes one or two settings, keeps the best and passes
+  it on. Stages 2–3 run on every size. Stages 4–7 run on s only to save GPU time, and a
+  confirmation stage then tries s's changes on n and m. A setting is kept only if it helps all
+  three sizes on average, so every size ends up with one shared recipe.
+- **Test is read once, at the end.** It never picks a winner; it checks that val's picks hold.
+- **Every trial** uses seed 0, `patience=0` (no early stopping), `close_mosaic=10` (mosaic off for
+  the last 10 epochs, the ultralytics default) and the largest batch that fits the 8 GB GPU (table
+  below), on ultralytics 8.4.72.
 
-## Run a stage
+Table columns that need a word:
+
+| Column | Meaning |
+|---|---|
+| last six | mean val score over the final six epochs: shows whether `best.pt` is a one-epoch spike |
+| best epoch | the epoch `best.pt` comes from |
+| GPU h | training time |
+| p50 ms | median batch-1 predict latency on the server GPU at the trial's imgsz |
+
+### Batch size per setup
+
+These are the largest batches that fit in 8 GB. One step up, s and m run out of memory and n gets
+2–7× slower (the loss's box matching falls back to the CPU). At 1280, ultralytics' automatic
+batch halving crashes instead of recovering, so the batch must be set. `nbs=64` (the default)
+accumulates gradients up to 64 images, so every setup takes about the same number of optimizer
+steps per epoch.
+
+| Model | 640 | 960 | 1280 |
+|---|---|---|---|
+| yolo26n | 16 | 8 | 4 |
+| yolo26s | 16 | 8 | 4 |
+| yolo26m | 8 | 4 | 2 |
+
+## How to run
+
+Start MLflow once, then run a stage file:
 
 ```bash
-make tune STAGE=smoke  # configs/tuning/smoke.yaml
+make mlflow-up
+uv run python -m mlops_cv.tuning.tune configs/tuning/yolo26-visdrone-vid/stage2.yaml
+# the same, through make:  make tune STAGE=yolo26-visdrone-vid/stage2
 ```
 
-A stage file lists its trials. `defaults` apply to every trial, and a trial's own knobs win:
+A stage file lists its trials. `defaults` apply to every trial, and a trial's own keys win:
 
 ```yaml
-defaults: {patience: 0, close_mosaic: 10}
+defaults: {patience: 0, close_mosaic: 10, epochs: 30, seed: 0}
 trials:
-  - {name: n640, model: yolo26n, imgsz: 640, epochs: 30, batch: 16}
-  - {name: n640-zoom, model: yolo26n, imgsz: 640, epochs: 30, batch: 16, scale: [0.5, 1.5]}
+  - {name: n1280, model: yolo26n, imgsz: 1280, batch: 4}
+  - {name: n1280-zoom, model: yolo26n, imgsz: 1280, batch: 4, scale: [0.75, 1.5]}
 ```
 
-`model`, `imgsz`, `epochs`, `batch` and `seed` become training flags. Every other knob is passed
-to `model.train()` through `--set`. The runner starts one training process per trial, one at a
-time. It then measures each trial's latency on its own, with nothing else on the GPU. Run names
-are `<stage>-<trial>`.
-
-Each trial run records:
+`model`, `imgsz`, `epochs`, `batch` and `seed` become training CLI flags; every other key goes to
+`model.train()` as is. Trials run one after another, because two at once don't fit in 8 GB. When
+they finish, the runner measures each trial's latency with nothing else on the GPU. A run is named
+`<stage file>-<trial>`, such as `stage2-n1280`. Each trial run records:
 
 | Key | What |
 |---|---|
-| `val/mAP50-95`, `val/mAP50`, `val/precision`, `val/recall` | the selected weights (`best.pt`) on val |
+| `val/mAP50-95`, `val/mAP50`, `val/precision`, `val/recall` | `best.pt` on val |
 | `val/mAP50-95/<class>` | per merged class |
 | `val/mAP50-95_small` | COCO small-object AP ([evaluation](evaluation.md)) |
-| `latency/p50_ms`, `latency/p95_ms`, `latency/mean_ms` | batch-1 predict at the trial's imgsz on the server GPU |
+| `latency/p50_ms`, `latency/p95_ms`, `latency/mean_ms` | batch-1 predict at the trial's imgsz |
 | `metrics/*` | ultralytics' per-epoch curves |
 
-## Zero-shot baselines
+The other experiment commands live in `mlops_cv.tuning`. Each section below gives the command that
+produced its table. Stage files are in `configs/tuning/yolo26-visdrone-vid/`.
 
-`make zero-shot` scores the COCO-pretrained weights on val, with no training. COCO classes are
-mapped onto the merged classes: person to person; car, bus and truck to vehicle; bicycle and
-motorcycle to two-three-wheeler. Every other COCO class is dropped. Predictions use val's floor
-and cap (conf 0.001, 300 boxes, applied before the mapping). When one box comes out under two
-COCO classes that map to the same merged class, only the higher-confidence copy is kept. Scoring
-goes through `score_detections`. Each baseline is a `zero-shot-<size><imgsz>` run in the tune
-experiment. Values are in %; latency is the trial stub.
+## 1. Zero-shot baselines
+
+**What:** the COCO-pretrained yolo26n, s and m, with no training on VisDrone, at imgsz 640 and
+1280. COCO classes are mapped onto ours: person to person; car, bus and truck to vehicle; bicycle
+and motorcycle to two-three-wheeler. Every other COCO class is dropped. When one box comes out under
+two COCO classes that map to the same class, only the higher-confidence copy is kept.
+
+**Why:** the starting point. It shows how much training on VisDrone adds.
+
+```bash
+uv run python -m mlops_cv.tuning.zero_shot   # runs zero-shot-<size><imgsz>
+```
 
 | Model | imgsz | val mAP50-95 | mAP50 | person | vehicle | two-three-wheeler | mAP50-95_small | p50 ms |
 |---|---|---|---|---|---|---|---|---|
@@ -76,13 +107,20 @@ experiment. Values are in %; latency is the trial stub.
 | yolo26m | 640 | 20.0 | 41.6 | 18.4 | 33.2 | 8.4 | 6.0 | 20.7 |
 | yolo26m | 1280 | 22.5 | 47.9 | 21.8 | 37.1 | 8.5 | 8.1 | 33.4 |
 
-## Noise floor (s@640, current recipe)
+**Result:** 1280 adds 4–6 pt for every size, and untrained m is no better than s at 1280. Training
+(stage 1) adds 7–9 pt at 640.
 
-`make tune STAGE=stage1` runs the noise floor and stage 1. Every trial uses the current recipe
-(30 epochs, AdamW from `optimizer=auto`, `nbs=64`) with `patience=0`, `close_mosaic=10`, a pinned
-batch and `workers=0`. On 8.4.72 dataloader workers ignore the seed. In the main process the seed
-varies weight init and augmentation, but the data order stays fixed, so the spread is a lower
-bound. Values are in %.
+## 2. Noise floor: one setup, three seeds
+
+**What:** s at imgsz 640 and 30 epochs on the default recipe, trained three times with seeds 0, 1
+and 2. It uses `workers=0`, because on 8.4.72 the seed reaches augmentation only without worker
+processes. The data order stays fixed, so this spread is a lower bound.
+
+**Why:** to know how far a score moves by chance, so that a real gain can be told from noise.
+
+```bash
+uv run python -m mlops_cv.tuning.tune configs/tuning/yolo26-visdrone-vid/stage1.yaml   # also stage 1
+```
 
 | Seed | val mAP50-95 | person | vehicle | two-three-wheeler | mAP50-95_small |
 |---|---|---|---|---|---|
@@ -91,14 +129,18 @@ bound. Values are in %.
 | 2 | 26.42 | 23.7 | 38.0 | 17.5 | 10.6 |
 | range | 0.25 | 1.2 | 0.9 | 0.8 | 0.6 |
 
-The standard deviation of the overall score is 0.13 pt. A single class moves 4–5× more than the
-overall score.
+**Result:** the overall score moves 0.25 pt (standard deviation 0.13), so a win must clear 0.5 pt.
+A single class moves 4–5× more, which is why per-class scores never decide.
 
-## Stage 1: the current recipe per size
+## 3. Stage 1: the starting recipe per size
 
-Batch 16 for n and s and batch 8 for m, so `accumulate` is 4 and 8: about 19 optimizer steps per
-epoch for every size. The s row is the mean of the three seeds. Per-epoch time is with
-`workers=0`, which leaves loading on one CPU core and the GPU about half idle.
+**What:** n, s and m on the repo's starting recipe: imgsz 640, 30 epochs and the ultralytics
+defaults (`optimizer=auto` picks AdamW with lr0 0.001429). The s row is the mean of the three
+seeds above.
+
+**Why:** the reference each size's later stages must beat.
+
+Same command as the noise floor (`stage1.yaml`).
 
 | Model | imgsz | val mAP50-95 | mAP50-95_small | p50 ms | best epoch | s/epoch |
 |---|---|---|---|---|---|---|
@@ -106,18 +148,23 @@ epoch for every size. The s row is the mean of the three seeds. Per-epoch time i
 | yolo26s | 640 | 26.3 | 11.0 | 10.3 | 24, 25, 29 | 30.5 |
 | yolo26m | 640 | 28.6 | 12.5 | 12.0 | 28 | 41.3 |
 
-The best epoch falls between 24 and 29 of 30. Over the last six epochs the curve moves within the
-noise. Whether more epochs help is the grid's call.
+**Result:**
+- Training adds 7–9 pt over zero-shot.
+- The best epoch lands between 24 and 29 of 30.
+- Two trials at once are about 10× slower than one after another: they push the loss's box
+  matching onto the CPU. So trials run one at a time.
+- From stage 2 on, trials use 4 dataloader workers, which is 34% faster than `workers=0`.
 
-Two trials at once don't fit in 8 GB: two n@640 trials at batch 16 pushed the loss's label
-assignment (`TaskAlignedAssigner`) onto the CPU on every batch, about 10× slower than running
-them one after another. Even alone, s@640 at batch 16 reaches the 8 GB limit and fell back to the
-CPU on 37 batches across its three seeds.
+## 4. Stage 2: image size
 
-## Stage 2: imgsz per size
+**What:** imgsz 960 and 1280 for every size, against stage 1's 640. 30 epochs each.
 
-`make tune STAGE=stage2` runs imgsz 960 and 1280 for every size against its stage 1 row at 640
-(30 epochs, pinned batch, `workers=4`). Values are in %. The 640 rows are repeated from stage 1.
+**Why:** VisDrone objects are tiny. At 640, 22% of train boxes are under 8 px on their short side;
+at 1280, 1.7% are. A larger input gives each object more pixels.
+
+```bash
+uv run python -m mlops_cv.tuning.tune configs/tuning/yolo26-visdrone-vid/stage2.yaml
+```
 
 | Model | imgsz | val mAP50-95 | person | vehicle | two-three-wheeler | mAP50-95_small | p50 ms | best epoch | s/epoch |
 |---|---|---|---|---|---|---|---|---|---|
@@ -131,17 +178,21 @@ CPU on 37 batches across its three seeds.
 | yolo26m | 960 | 31.4 | 27.7 | 44.7 | 21.9 | 15.2 | 16.6 | 19 | 64.9 |
 | **yolo26m** | **1280** | **32.9** | 28.2 | 44.3 | 26.1 | 15.9 | 25.0 | 19 | 115.0 |
 
-1280 wins for every size, by 1.4–2.5 pt over 960, well past the win margin. n@1280 (28.4)
-matches m@640 (28.6) at about the same latency. Both m trials peak at epoch 19, before mosaic
-closes. m@1280's best epoch (32.8) is a one-epoch spike over a plateau near 31.6, and on the
-mean of its last six epochs it leads m@960 by only 0.5 pt (31.6 vs 31.0), right at the margin. Its win still stands under the
-protocol, which scores `best.pt`. Because m@1280 won, the confirmation stage runs `freeze=11`.
+**Result:**
+- 1280 wins for every size, by 1.4–2.5 pt over 960.
+- n at 1280 (28.4) matches m at 640 (28.6) at about the same latency.
+- m at 1280 peaks at epoch 19 with a one-epoch spike. On the last-six mean it leads m at 960 by
+  only 0.5 pt (31.6 vs 31.0).
 
-## Stage 3: epochs per size
+## 5. Stage 3: epochs
 
-`make tune STAGE=stage3` runs 60 and 100 epochs for every size at 1280 against stage 2's 30-epoch
-row. The last-six column is the mean val mAP50-95 over the run's final six epochs, a check on
-`best.pt` spikes. Values are in %.
+**What:** 60 and 100 epochs for every size at 1280, against stage 2's 30.
+
+**Why:** the ultralytics default is 100 epochs; 30 was the repo's guess.
+
+```bash
+uv run python -m mlops_cv.tuning.tune configs/tuning/yolo26-visdrone-vid/stage3.yaml
+```
 
 | Model | epochs | val mAP50-95 | person | vehicle | two-three-wheeler | mAP50-95_small | last six | best epoch | GPU h |
 |---|---|---|---|---|---|---|---|---|---|
@@ -155,16 +206,22 @@ row. The last-six column is the mean val mAP50-95 over the run's final six epoch
 | yolo26m | 60 | 32.0 | 28.9 | 44.6 | 22.5 | 16.1 | 30.0 | 29 | 1.93 |
 | yolo26m | 100 | 31.8 | 27.4 | 44.7 | 23.2 | 16.1 | 28.4 | 25 | 3.32 |
 
-30 epochs stays for every size. n at 60 epochs gains 0.3 pt, inside the win margin, and every
-other longer run loses. Longer runs peak before the end and then fall: the last-six mean drops by
-0.7–3.2 pt from 30 to 100 epochs, the signature of overfitting 1238 training frames rather than
-of undertraining. Per-epoch time doesn't change with the budget (n/s/m about 41/66/118 s).
+**Result:** 30 epochs stays. Only n at 60 gains (+0.3, inside the margin). Longer runs peak early
+and then decline: the last-six mean falls 0.7–3.2 pt from 30 to 100 epochs, so 1238 frames are
+being overfitted, not undertrained.
 
-## Stage 4: optimizer and lr0 on s
+## 6. Stage 4: optimizer and learning rate (s only)
 
-`make tune STAGE=stage4` pins the optimizer for s@1280×30 against stage 2's s1280 row, which
-ran `optimizer=auto` (AdamW, lr0 0.001429 on 8.4.72). Every arm also sets `momentum=0.9` and
-`warmup_bias_lr=0.0`, as `auto` does, so only the optimizer and lr0 change. Values are in %.
+**What:** s at 1280 and 30 epochs, with AdamW at lr0 0.0007 (half of auto's) and 0.003 (about
+double), and YOLO26's MuSGD at 0.01. The baseline is `optimizer=auto` (AdamW at 0.001429). Each
+run copies the momentum (0.9) and `warmup_bias_lr` (0) that auto sets, so only the optimizer and
+lr0 change. A cosine schedule (`cos_lr`) was to follow only if an arm won.
+
+**Why:** the learning rate is the usual next knob after image size.
+
+```bash
+uv run python -m mlops_cv.tuning.tune configs/tuning/yolo26-visdrone-vid/stage4.yaml
+```
 
 | Optimizer | lr0 | val mAP50-95 | person | vehicle | two-three-wheeler | mAP50-95_small | last six | best epoch |
 |---|---|---|---|---|---|---|---|---|
@@ -173,16 +230,23 @@ ran `optimizer=auto` (AdamW, lr0 0.001429 on 8.4.72). Every arm also sets `momen
 | AdamW | 0.003 | 30.5 | 26.3 | 42.6 | 22.6 | 14.1 | 30.2 | 25 |
 | MuSGD | 0.01 | 31.1 | 27.9 | 42.2 | 23.3 | 12.3 | 30.4 | 9 |
 
-`optimizer=auto` stays. MuSGD gains 0.3 pt, inside the win margin, from a `best.pt` at epoch 9.
-Its last-six mean is 0.1 pt below auto's. The four arms span 0.6 pt, so lr0 barely matters
-here.
+**Result:** `optimizer=auto` stays, so `cos_lr` never ran. The four runs span only 0.6 pt. MuSGD's
++0.3 is inside the margin and comes from an early `best.pt` (epoch 9).
 
-## Stage 5: scale and mosaic on s
+## 7. Stage 5: zoom and mosaic (s only)
 
-`make tune STAGE=stage5` crosses `scale` with `mosaic` for s@1280×30. The 0.5 × 1.0 cell is
-stage 2's s1280 row. `scale: [0.75, 1.5]` is an absolute zoom range that only ever shrinks to
-0.75 and can upscale, which is the full-frame stand-in for tile training (the SAHI paper's
-upscaled crops). Values are in %.
+**What:** two augmentations, crossed on s at 1280 and 30 epochs:
+- `scale` is a random resize: the default 0.5 means 0.5×–1.5×, and 0.25 means 0.75×–1.25×.
+  `[0.75, 1.5]` never shrinks below 0.75× and enlarges up to 1.5×; it stands in for training on
+  enlarged tiles.
+- `mosaic` stitches four images into one: on every image (1.0, the default) or half of them (0.5).
+
+**Why:** shrinking already-tiny objects can erase them. Mosaic is said to help small objects, yet
+the usual small-dataset advice is to halve it.
+
+```bash
+uv run python -m mlops_cv.tuning.tune configs/tuning/yolo26-visdrone-vid/stage5.yaml
+```
 
 | scale | mosaic | val mAP50-95 | person | vehicle | two-three-wheeler | mAP50-95_small | last six | best epoch |
 |---|---|---|---|---|---|---|---|---|
@@ -193,16 +257,27 @@ upscaled crops). Values are in %.
 | 0.25 | 0.5 | 30.5 | 26.6 | 42.1 | 22.8 | 13.1 | 29.9 | 19 |
 | [0.75, 1.5] | 0.5 | 31.0 | 28.1 | 42.8 | 22.1 | 14.3 | 30.2 | 22 |
 
-The zoom range wins: +0.6 pt over 0.5 × 1.0, just past the win margin. Its last-six mean
-agrees (+0.4 pt), and it lifts mAP50-95_small by 1.4 pt at the same cost. Halving mosaic gains
-0.4 pt alone (inside the margin) and nothing on top of the zoom. A narrower `scale` of 0.25
-loses with either mosaic.
+**Result:** the zoom range `[0.75, 1.5]` wins on s by 0.6 pt, with the last-six mean agreeing
+(+0.4) and small-object AP up 1.4. Halving mosaic gains 0.4 on its own (inside the margin) and
+nothing on top of the zoom. A narrower `scale=0.25` loses. The zoom is later dropped, because it
+doesn't help n or m (stage 9).
 
-## Stages 6–7: close_mosaic and cls_pw on s
+## 8. Stages 6–7: mosaic until the end, and class weights (s only)
 
-`make tune STAGE=stage6`, then `STAGE=stage7`, run on s's stage-5 winner (1280, 30 epochs,
-`scale=[0.75, 1.5]`). Stage 6 keeps mosaic on to the last epoch. Stage 7 adds `cls_pw`,
-ultralytics' inverse-frequency classification-loss weights. Values are in %.
+**What:** on s's stage-5 winner (1280, 30 epochs, `scale=[0.75, 1.5]`):
+- Stage 6 sets `close_mosaic=0`, which keeps mosaic on to the last epoch instead of turning it off
+  for the last 10.
+- Stage 7 sets `cls_pw` to 0.5 and 1.0. It weights the classification loss by inverse class
+  frequency; at 1.0 the weights for person, vehicle and two-three-wheeler are 0.90/0.50/1.60.
+
+**Why:** ultralytics turns mosaic off for the last 10 epochs so that training ends on whole
+frames, and stage 6 checks whether that helps here. Stage 7 targets two-three-wheeler, the rarest
+and weakest class.
+
+```bash
+uv run python -m mlops_cv.tuning.tune configs/tuning/yolo26-visdrone-vid/stage6.yaml
+uv run python -m mlops_cv.tuning.tune configs/tuning/yolo26-visdrone-vid/stage7.yaml
+```
 
 | Setup | val mAP50-95 | person | vehicle | two-three-wheeler | mAP50-95_small | last six | best epoch |
 |---|---|---|---|---|---|---|---|
@@ -211,33 +286,40 @@ ultralytics' inverse-frequency classification-loss weights. Values are in %.
 | `cls_pw=0.5` | 30.9 | 27.7 | 43.1 | 21.9 | 13.6 | 30.6 | 23 |
 | `cls_pw=1.0` | 30.4 | 27.5 | 42.2 | 21.4 | 14.2 | 29.6 | 21 |
 
-Both lose, so `close_mosaic=10` and `cls_pw=0` stay, and stage 6 needs no follow-up at 5 or 15.
-`cls_pw` lowers the class it upweights most: two-three-wheeler falls 1.3 and 1.8 pt.
+**Result:** both lose. `cls_pw` even lowers the class it upweights most: two-three-wheeler falls
+1.3 and 1.8 pt. Two other balancing ideas were ruled out without a trial:
+- **Oversampling the rare class:** 81% of train frames already hold a two-three-wheeler, so
+  repeating them barely moves its share of boxes (16.8% → 17.2%).
+- **Weighting every video equally:** videos hold 3–72 frames, and equal weighting would lower the
+  rare class's share.
 
-s's tuned recipe is the current recipe at imgsz 1280 with `scale=[0.75, 1.5]`.
+## 9. Confirmation: s's change on n and m
 
-## Confirmation stage: s's settings on n and m
+**What:** s's only win, `scale=[0.75, 1.5]`, on n and m at 1280 and 30 epochs. One more m trial
+freezes the whole backbone (`freeze=11`), planned because m at 1280 won stage 2.
 
-`make tune STAGE=confirm` carries s's one change, `scale=[0.75, 1.5]`, to n and m at 1280×30.
-Because m@1280 won stage 2, it adds one m trial with `freeze=11` (the whole backbone frozen).
-Values are in %.
+**Why:** stages 4–7 ran on s only.
+
+```bash
+uv run python -m mlops_cv.tuning.tune configs/tuning/yolo26-visdrone-vid/confirm.yaml
+```
 
 | Trial | val mAP50-95 | mAP50-95_small | last six | best epoch | GPU h |
 |---|---|---|---|---|---|
-| **n, current recipe (stage 2)** | **28.4** | 13.9 | 28.2 | 29 | 0.34 |
+| **n, stage 2** | **28.4** | 13.9 | 28.2 | 29 | 0.34 |
 | n + zoom | 28.0 | 14.8 | 27.8 | 26 | 0.33 |
-| **m, current recipe (stage 2)** | **32.9** | 15.9 | 31.6 | 19 | 0.96 |
+| **m, stage 2** | **32.9** | 15.9 | 31.6 | 19 | 0.96 |
 | m + zoom | 32.6 | 16.1 | 31.3 | 17 | 0.97 |
 | m + zoom + `freeze=11` | 31.3 | 15.9 | 31.0 | 13 | 0.63 |
 
-The zoom doesn't carry over. It lowers n and m by 0.4 and 0.2 pt, on `best.pt` and on the
-last-six mean, though it still lifts mAP50-95_small. A frozen backbone loses 1.5 pt.
+**Result:** the zoom lowers n and m by 0.4 and 0.2 pt, though it still lifts small-object AP. A
+frozen backbone loses 1.5 pt.
 
-## Final winners
+## Final recipe
 
-The shared recipe is the ultralytics defaults at `imgsz=1280` and 30 epochs. s's zoom scores a
-mean of 30.67 over the three sizes against 30.70 without it, inside the margin, so it drops out
-and s's winner is `stage2-s1280`.
+One recipe for every size: the ultralytics defaults at imgsz 1280 and 30 epochs, with the batch
+from the table above. The zoom averages 30.67 over the three sizes against 30.70 without it, so it
+is dropped, and s's winner is `stage2-s1280`.
 
 | Model | Trial run | val mAP50-95 | mAP50-95_small | p50 ms |
 |---|---|---|---|---|
@@ -245,82 +327,100 @@ and s's winner is `stage2-s1280`.
 | yolo26s | `stage2-s1280` | 30.8 | 13.5 | 16.2 |
 | yolo26m | `stage2-m1280` | 32.9 | 15.9 | 25.0 |
 
-Against the ultralytics defaults the recipe changes only imgsz (640 → 1280, stage 2) and epochs
-(100 → 30, stage 3). Batch 4/4/2 with `nbs=64` is the 8 GB GPU's ceiling. No augmentation,
-optimizer, loss or freeze setting beat the defaults by the margin. The whole grid, stages 2 to
-confirmation, took 20.9 GPU-hours.
+Stages 2 to 9 took 20.9 GPU-hours. The gain comes from inference resolution, so a model must be
+served at the imgsz it was trained at. Run at 640, the 1280 models score n/s/m 21.0/25.4/28.0 on
+val, below the models trained at 640 (21.0/26.2/28.6).
 
-The gain is bought at inference, so a model is served at the imgsz it was trained at. Run at 640,
-the 1280 winners score n/s/m 21.0/25.4/28.0 on val (one-to-many 22.3/25.8/28.4), below the
-640-trained models' 21.0/26.2/28.6 (23.2/27.0/29.2).
+## 10. Other ways to run the same weights: the second head and SAHI
 
-## Evaluation-only arms
+**What:** two ways to run each winner's weights, with no retraining. They are recorded beside the
+trial and never pick a winner.
+- **One-to-many head (`end2end=False`).** YOLO26 has two heads. The served one-to-one head outputs
+  one box per object without NMS. The one-to-many head outputs several boxes per object and
+  removes duplicates with NMS.
+- **SAHI sliced inference.** Each frame is cut into imgsz tiles with 20% overlap. The model
+  predicts every tile plus the full frame, and NMS (IoU 0.5) merges the results. The table reports
+  it per source-frame width, since val holds 3840-, 2720- and ≤1904-px-wide frames and test is
+  mostly 1360 px wide.
 
-`make sahi-eval TRIALS="[--slice N] <trial run> ..."` scores a trial's `best.pt` two more ways, each as a
-`<trial>-<arm>` run in the tune experiment. Arms never select. s's arms ran on
-`stage5-s1280-zoom0.75-1.5`, its winner before the one-recipe rule.
+**Why:** the second head costs nothing to try. SAHI is the standard trick for small objects.
 
-- **`o2m`:** `model.val(end2end=False)`, the one-to-many head with NMS on the same weights, scored
-  like the trial's own `val/` keys.
-- **`sahi`:** SAHI 0.12.8 sliced inference (slices at the trial's imgsz, overlap 0.2, plus the
-  full frame; class-aware NMS at IoU 0.5; floor 0.001; the top 300 per frame), against the same
-  trial's full-frame predictions (`val_full/`). Both are scored through `score_detections`,
-  overall and per source-resolution group (`val/3840px/...`). Latency is per frame, batch 1.
-  `sahi` lives in the `tuning` uv group, outside every image.
+```bash
+uv run python -m mlops_cv.tuning.sahi_eval stage2-n1280 stage5-s1280-zoom0.75-1.5 stage2-m1280
+uv run python -m mlops_cv.tuning.sahi_eval --slice 640 stage2-n1280 stage5-s1280-zoom0.75-1.5 stage2-m1280
+```
 
-Values are in %.
+The first command runs `<trial>-o2m` and `<trial>-sahi`; `--slice 640` runs `<trial>-sahi640`. s
+ran on its zoom trial, its winner at the time. `sahi` comes with the `tuning` uv group.
 
-| Model | end2end (trial) | `end2end=False` | full frame | SAHI | SAHI − full: 3840 / 2720 / ≤1904 px | SAHI p50 ms |
+| Model | one-to-one (trial) | one-to-many | full frame | SAHI | SAHI − full frame: 3840 / 2720 / ≤1904 px | SAHI p50 ms |
 |---|---|---|---|---|---|---|
 | yolo26n | 28.4 | **30.2** | 28.5 | 29.8 | +8.5 / +1.6 / +0.3 | 95 |
 | yolo26s | 31.4 | **32.6** | 31.2 | 31.6 | +4.6 / −0.3 / +0.9 | 150 |
 | yolo26m | 32.9 | **34.0** | 32.6 | 31.9 | +4.0 / −2.7 / +0.6 | 260 |
 
-- **The one-to-many head scores 1.2–1.8 pt higher** on the same weights for every size, more than
-  the whole tuning grid gained after imgsz. Serving exports the end2end NMS-free head
-  ([serving](serving.md)), so this is an input to the production default, not a recipe change.
-- **SAHI pays off only on 3840-wide frames.** At ≤1904 px, the resolution test is mostly at,
-  it gains 0.3–0.9 pt for 8–10× the latency (5.8 passes per val frame). For m the class-aware NMS
-  merge costs more than slicing gains outside 3840. The serving re-entry condition, a gain beyond
-  the noise floor at test-like resolutions within a named latency budget, is not met.
-- **Smaller slices lose.** `--slice 640` (each slice upscaled 2× to imgsz, 18.3 passes) scores
-  n/s/m 26.7/26.9/29.2 against 29.8/31.6/31.9 with 1280 slices, at twice the latency. It loses
-  in every resolution group and on mAP50-95_small too, so training on 640 slices has no
-  inference gain to build on.
+**Result:**
+- **The one-to-many head scores 1.1–1.8 pt higher** on the same weights, more than every stage
+  after image size gained. It is an input to the serving default, not a training change.
+- **SAHI pays off only on 3840-wide frames.** At ≤1904 px, where test sits, it gains 0.3–0.9 pt
+  for 8–10× the latency. Not adopted for serving.
+- **Smaller tiles lose.** 640-px tiles score n/s/m 26.7/26.9/29.2, against 29.8/31.6/31.9 with
+  1280 tiles, at twice the latency.
 
-## Slicing-aided fine-tuning
+## 11. Sliced training
 
-SAHI's training half, paired with its sliced inference. `make tune-sliced [STAGE=sliced-e8]`
-cuts train into the windows the `sahi` arm infers on (1238 frames → 3300 slices; a box stays if a
-tenth of it is inside) and retrains each final winner on frames + slices; val stays full frames.
-Frames + slices are 3.7× an epoch, so `sliced` (30 epochs) runs 3.7× the steps and `sliced-e8`
-(8 epochs, `close_mosaic=3`, `warmup_epochs=0.8`) the baselines' steps. Values are in %; each
-cell is winner → `sliced` → `sliced-e8`.
+**What:** each winner retrained on train frames plus their 1280 tiles. Slicing turns 1238 frames
+into 3300 extra tiles, and a box stays in a tile if at least a tenth of it is inside. Frames plus
+tiles make an epoch 3.7× longer:
+- `sliced` keeps 30 epochs, so 3.7× the training steps.
+- `sliced-e8` uses 8 epochs, the baseline's step count, with `close_mosaic` and warmup scaled down
+  to match.
 
-| Model | SAHI | SAHI 3840 / 2720 / ≤1904 px | full frame | `end2end=False` |
+Val stays full frames.
+
+**Why:** the SAHI paper's gains came from training on tiles and then predicting on tiles.
+
+```bash
+uv run python -m mlops_cv.tuning.slices --imgsz 1280   # writes images/train-sliced1280 into the subset
+export DATA__DATASET_YAML=configs/tuning/yolo26-visdrone-vid/datasets/VisDrone-VID-merged-sliced1280.yaml
+uv run python -m mlops_cv.tuning.tune configs/tuning/yolo26-visdrone-vid/sliced.yaml
+uv run python -m mlops_cv.tuning.tune configs/tuning/yolo26-visdrone-vid/sliced-e8.yaml
+unset DATA__DATASET_YAML
+uv run python -m mlops_cv.tuning.sahi_eval sliced-n1280 sliced-s1280-zoom0.75-1.5 sliced-m1280 \
+  sliced-e8-n1280 sliced-e8-s1280-zoom0.75-1.5 sliced-e8-m1280
+```
+
+Each cell reads winner → `sliced` → `sliced-e8`.
+
+| Model | SAHI | SAHI 3840 / 2720 / ≤1904 px | full frame | one-to-many |
 |---|---|---|---|---|
 | yolo26n | 29.8 → 29.4 → **30.7** | 15.9 / 33.7 / 30.9 → 14.5 / 35.6 / 31.4 (e8) | 28.5 → 28.2 → 28.4 | 30.2 → 29.7 → 29.9 |
 | yolo26s | 31.6 → 30.5 → 31.4 | 15.1 / 36.0 / 32.5 → 19.6 / 36.3 / 31.7 (e8) | 31.2 → 30.2 → 30.0 | 32.6 → 31.4 → 31.7 |
 | yolo26m | 31.9 → 31.3 → 31.7 | 19.8 / 35.6 / 33.8 → 21.9 / 35.3 / 33.1 (e8) | 32.6 → 31.5 → 31.5 | 34.0 → 33.5 → 32.9 |
 
+**Result:**
 - **At 30 epochs it overfits.** Every `sliced` run peaks at epoch 9–10 and loses on every read.
-- **At equal steps only n's SAHI read clears the win margin** (+0.9). s and m tie on SAHI and
-  lose 1.1–1.2 pt on full frames and the one-to-many head. The 3840 group gains for s and m
-  (+4.5/+2.1, 49 frames) and the ≤1904 group doesn't.
-- **No winner changes.** n's best, 30.7 at 97 ms, sits below s's full-frame
-  `end2end=False` read (32.6) at a fraction of the cost (s's end2end p50 is 16 ms).
-  Train has no 3840-wide frames, which may cap the 3840 gain. The two stages took ~8 GPU-hours.
+- **At equal steps, only n's SAHI score clears the margin** (+0.9). s and m tie on SAHI and lose
+  1.1–1.2 pt on full frames.
+- **Nothing changes.** n's best, 30.7 at 97 ms, is still below s's full-frame one-to-many score
+  (32.6) at a fraction of the latency. The two stages took about 8 GPU-hours.
 
-## Test read
+## 12. Test read
 
-`make test-read TRIALS="<trial run> ..."` scores a trial's `best.pt` on test (337 frames, 17
-sequences) with the served end2end head, as a `<trial>-test` run in the tune experiment;
-`TRIALS="--o2m ..."` scores the one-to-many head as `<trial>-test-o2m`. It selects nothing. The
-shared recipe is read at 640 (stage 1) and 1280 (stage 2) for every size. Values are in %; the
-s@640 row is the mean of three seeds (22.5/22.9/22.8), and latency is the
-trial's own. Per-class and small-object columns are the end2end head.
+**What:** the final recipe's `best.pt` scored on test (337 frames, 17 videos) at 640 (stage 1)
+and 1280 (stage 2), with the served one-to-one head, and at 1280 also with the one-to-many head.
+Per-class and small-object columns are the one-to-one head. The s at 640 row is the mean of three
+seeds (22.5/22.9/22.8), and latency is the trial's own.
 
-| Model | imgsz | val mAP50-95 | test mAP50-95 | test `end2end=False` | person | vehicle | two-three-wheeler | test mAP50-95_small | p50 ms |
+**Why:** to check that val's picks hold on videos the selection never saw. It picks nothing.
+
+```bash
+uv run python -m mlops_cv.tuning.test_read stage1-n640 stage1-s640-seed0 stage1-s640-seed1 \
+  stage1-s640-seed2 stage1-m640 stage2-n1280 stage2-s1280 stage2-m1280   # <trial>-test
+uv run python -m mlops_cv.tuning.test_read --o2m stage2-n1280 stage2-s1280 stage2-m1280   # <trial>-test-o2m
+```
+
+| Model | imgsz | val mAP50-95 | test mAP50-95 | test one-to-many | person | vehicle | two-three-wheeler | test mAP50-95_small | p50 ms |
 |---|---|---|---|---|---|---|---|---|---|
 | yolo26n | 640 | 21.0 | 18.5 | – | 9.4 | 36.7 | 9.4 | 11.8 | 11.0 |
 | yolo26s | 640 | 26.3 | 22.7 | – | 14.1 | 41.8 | 12.4 | 14.3 | 10.3 |
@@ -329,148 +429,145 @@ trial's own. Per-class and small-object columns are the end2end head.
 | yolo26s | 1280 | 30.8 | 26.6 | 27.8 | 19.0 | 46.3 | 14.6 | 16.3 | 16.2 |
 | **yolo26m** | **1280** | 32.9 | 28.3 | **29.5** | 20.7 | 48.1 | 16.1 | 18.4 | 25.0 |
 
-- **Val's ranking holds on test.** 1280 beats 640 for every size (n/s/m +6.5/+3.9/+3.2 against
-  val's +7.4/+4.5/+4.3), m > s > n at both sizes, and n@1280 still matches m@640 (25.0 vs 25.1).
-- **Test reads 2.5–4.6 pt below val**, the gap mostly widening with the val score.
-- **The one-to-many head gains 1.2 pt on test for every size** (val: n/m +1.8/+1.1, s +1.2 on
-  its zoom trial), so its val lead carries over.
-- **Seed noise on test is 0.34 pt** (s@640's range), near val's 0.25, so the win margin carries.
-- **The shared recipe beats the champion** (v2, s@640, 3 epochs, test 21.6) by 5.0 pt at s@1280.
-- The third-party baseline is read below.
+**Result:**
+- **Val's ranking holds.** 1280 beats 640 for every size, m > s > n, and n at 1280 still matches
+  m at 640 (25.0 vs 25.1).
+- **Test reads 2.5–4.6 pt below val.**
+- **The one-to-many head gains 1.2 pt for every size**, as on val.
+- **Seed noise on test is 0.34 pt** (s at 640), close to val's 0.25, so the margin holds.
+- **The recipe beats the current champion** (v2: s at 640, 3 epochs, test 21.6) by 5.0 pt at s
+  and 6.7 pt at m.
 
-## Third-party baseline
+## 13. Third-party comparison
 
-**Different protocol; no comparability claim.** `make third-party` scores dronefreak's
-VisDrone-DET-trained YOLO26 s and m at 1280 on test:
+**What:** dronefreak's public YOLO26 s and m at 1280, trained on VisDrone-DET (still images, ten
+classes), scored on our test split beside our own s and m, with both heads.
 [visdrone-yolo26s](https://huggingface.co/dronefreak/visdrone-yolo26s)@`dc042f4` and
-[visdrone-yolo26m](https://huggingface.co/dronefreak/visdrone-yolo26m)@`cf0d3e8`. Both are
-AGPL-3.0, so they are evaluated here and never redistributed.
+[visdrone-yolo26m](https://huggingface.co/dronefreak/visdrone-yolo26m)@`cf0d3e8` are
+AGPL-3.0, so they are evaluated here and never redistributed. Their ten classes are mapped onto
+our three, and our models go through the same scoring path. That path reads our models 0.2–0.4 pt
+below the test read.
 
-Scoring follows the zero-shot path: their 10 raw categories are remapped onto the merged
-classes. `stage2-s1280` and `stage2-m1280` go through the same path, which reads them 0.2–0.4 pt
-below `make test-read`. Their checkpoints ship with the one-to-many head on, so both heads are
-read for every model.
+**Why:** these are the only YOLO26 VisDrone checkpoints available. Nobody publishes YOLO26 numbers
+on VisDrone-VID.
 
-The headline is the 13 test sequences with no known DET overlap (264 frames, without
-`uav0000201_00000_v`, `uav0000297_00000_v` and both `uav0000249_*`). Values are in %.
+```bash
+uv run python -m mlops_cv.tuning.third_party
+# downloads the pinned checkpoints into runs/third-party/;
+# runs dronefreak-yolo26{s,m}1280-test[-o2m] and stage2-{s,m}1280-predict-test[-o2m]
+```
 
-| Model | head | 13-seq mAP50-95 | mAP50 | person | vehicle | two-three-wheeler | mAP50-95_small | 17-seq mAP50-95 |
+The headline uses the 13 test videos that don't overlap VisDrone-DET (264 frames, without
+`uav0000201_00000_v`, `uav0000297_00000_v` and both `uav0000249_*`). Different training data,
+so this is context, not a like-for-like benchmark.
+
+| Model | head | 13-video mAP50-95 | mAP50 | person | vehicle | two-three-wheeler | mAP50-95_small | 17-video mAP50-95 |
 |---|---|---|---|---|---|---|---|---|
-| dronefreak s | end2end | 25.6 | 56.2 | 16.9 | 45.7 | 14.1 | 13.5 | 24.0 |
-| ours s | end2end | 26.8 | 55.1 | 19.3 | 46.1 | 14.9 | 18.0 | 26.4 |
+| dronefreak s | one-to-one | 25.6 | 56.2 | 16.9 | 45.7 | 14.1 | 13.5 | 24.0 |
+| ours s | one-to-one | 26.8 | 55.1 | 19.3 | 46.1 | 14.9 | 18.0 | 26.4 |
 | dronefreak s | one-to-many | 27.1 | 58.9 | 19.0 | 47.0 | 15.5 | 14.4 | 25.7 |
 | ours s | one-to-many | 27.9 | 57.1 | 20.6 | 47.4 | 15.7 | 18.3 | 27.6 |
-| dronefreak m | end2end | 26.7 | 58.2 | 18.6 | 45.6 | 15.8 | 13.5 | 25.2 |
-| ours m | end2end | 28.1 | 57.6 | 20.7 | 47.7 | 15.8 | 19.1 | 28.0 |
+| dronefreak m | one-to-one | 26.7 | 58.2 | 18.6 | 45.6 | 15.8 | 13.5 | 25.2 |
+| ours m | one-to-one | 28.1 | 57.6 | 20.7 | 47.7 | 15.8 | 19.1 | 28.0 |
 | dronefreak m | one-to-many | 28.0 | 60.2 | 20.2 | 46.8 | 16.9 | 14.3 | 26.6 |
 | **ours m** | **one-to-many** | **29.1** | 59.0 | 21.8 | 49.4 | 16.0 | 19.3 | 29.1 |
 
-- **The shared recipe beats community DET training on the same head, for both sizes**: s
-  +1.2/+0.8 pt and m +1.4/+1.1 pt (end2end/one-to-many) on the 13 sequences. That is above the
-  0.34 pt test seed spread. 79% of DET-train (`9999xxx`) is unchecked for overlap, and any leakage
-  it holds can only favour them, so the win stands.
-- **They lead on mAP50 in every row** (+0.6–1.8 pt) yet trail on mAP50-95, so their boxes find
-  objects but sit looser. Small-object AP is 3.9–5.6 pt ours.
-- **The DET-overlap sequences cost them, not us.** Dropping them lifts dronefreak by 1.4–1.6 pt
-  and ours by 0.0–0.4. No sign that the overlap helps them.
-- **Latency is the same as ours** (same architecture): measured back to back, s is 29.7 ms p50
-  on both sides and m is 39.3 vs 39.6. These come from a slower GPU session than the trials' own
-  stubs, so they are not comparable with the latency columns above.
+**Result:**
+- **Ours wins on the same head, for both sizes:** s by 1.2/0.8 pt and m by 1.4/1.1 pt
+  (one-to-one/one-to-many). Any leakage from the unchecked DET images could only favour them.
+- **They lead on mAP50** (+0.6–1.8 pt) but trail on mAP50-95: they find the objects but place the
+  boxes less tightly. Small-object AP is 3.9–5.6 pt higher for ours.
+- **Latency is the same** (same architecture).
 
-Published numbers for context. Each row's protocol differs from this repo's, and none is
-comparable. On the same weights, the official toolkit reads 4.3–4.8 AP above pycocotools
-(PP-YOLOE on DET test-dev).
+Published numbers, for context only. Every row uses a different protocol, and none is directly
+comparable. On the same weights, the official VisDrone toolkit reads 4.3–4.8 AP above pycocotools.
 
 | Model | Data | Protocol | mAP50-95 |
 |---|---|---|---|
 | dronefreak YOLO26 s / m @1280 | DET test-dev, 10 classes | ultralytics val, 500 boxes | 26.43 / 29.24 |
-| the same weights, read here | VID test, 17 seq, merged | this repo, one-to-many | 25.7 / 26.6 |
+| the same weights, read here | VID test, 17 videos, merged | this repo, one-to-many | 25.7 / 26.6 |
 | XS-VID YOLOv8-S / YOLOv8-L / YOLOv9-C @1024 | VID test-dev or val (the paper says both) | COCO-style, unstated | 13.2 / 16.0 / 15.5 |
 | arXiv 2605.22605 YOLOv8n / YOLOv8s / YOLO11n @640 | VID val | unstated | 10.4 / 13.6 / 12.2 |
 | FGFA / D&T / FPN | VID test-dev | official toolkit | 14.44 / 14.21 / 12.93 |
 
-## Train frame stride
+## 14. Train frame stride
 
-Does a denser train split help? n@1280 on the shared recipe trains at train strides 10, 5 and 2,
-each on its own subset built with `--train-frame-stride` (val and test stay at 20, row for row).
-Each stride is its own stage, `configs/tuning/stride<N>.yaml`, run with `DATA__SUBSET_DIR` set to
-that subset. Stride 20 is `stage2-n1280`. Every trial runs `auto` (AdamW lr0 0.001429), 30 epochs.
-Values are in %.
+**What:** n at 1280 on the final recipe, trained on denser train splits: every 10th, 5th and 2nd
+frame instead of every 20th. Val and test stay at every 20th frame, identical in every subset.
+
+**Why:** the full dataset holds 20× more train frames than the subset. This checks whether more of
+them help.
+
+```bash
+SUBSETS=<datasets>/subsets
+for s in 10 5 2; do
+  uv run python -m mlops_cv.pipelines.ingest_pipeline --runner DirectRunner \
+    --train-frame-stride $s --output-dir $SUBSETS/visdrone-vid-train-s$s
+  export DATA__SUBSET_DIR=$SUBSETS/visdrone-vid-train-s$s
+  uv run python -m mlops_cv.pipelines.profile_pipeline --runner DirectRunner   # data version tag
+  uv run python -m mlops_cv.tuning.tune configs/tuning/yolo26-visdrone-vid/stride$s.yaml
+done
+unset DATA__SUBSET_DIR
+uv run python -m mlops_cv.tuning.test_read stride10-n1280
+uv run python -m mlops_cv.tuning.test_read --o2m stride10-n1280
+```
 
 | Train stride | train frames | val mAP50-95 | person | vehicle | two-three-wheeler | mAP50-95_small | last six | best epoch | GPU h |
 |---|---|---|---|---|---|---|---|---|---|
-| 20 | 1238 | 28.4 | 24.4 | 41.5 | 19.5 | 13.9 | 28.2 | 29 | 0.34 |
+| 20 (`stage2-n1280`) | 1238 | 28.4 | 24.4 | 41.5 | 19.5 | 13.9 | 28.2 | 29 | 0.34 |
 | **10** | 2446 | **29.4** | 25.5 | 41.4 | 21.2 | 14.1 | 28.7 | 22 | 0.67 |
 | 5 | 4868 | 29.1 | 25.2 | 42.4 | 19.7 | 12.4 | 28.2 | 14 | 1.33 |
 | 2 | 12112 | 29.1 | 24.3 | 42.1 | 21.0 | 12.7 | 26.6 | 8 | 3.27 |
 
-- **Stride 10 wins on val**, 1.0 pt over stride 20. The next halving loses 0.3, and stride 2 ties
-  stride 5, so stride 1 doesn't run.
-- **Denser strides peak earlier and then fall.** The best epoch moves from 29 to 8, and stride 2's
-  last six epochs sit 2.5 pt below its best. Thirty epochs of a denser split are more steps on the
-  same 56 sequences, so the extra frames add steps, not new sequences.
+**Result:**
+- **Stride 10 wins on val**, 1.0 pt over stride 20. Going denser doesn't help further, so stride 1
+  was not run.
+- **Denser splits peak earlier and then decline.** The best epoch moves from 29 to 8. The extra
+  frames are near-duplicates from the same 56 videos: more steps, not more variety.
 - **Test doesn't confirm it.** Stride 10 reads 24.7 (one-to-many 25.8) against stride 20's 25.0
-  (26.2): 0.3 / 0.4 pt below, about test's 0.34 pt seed spread. Per class on test: person 16.1,
-  vehicle 45.0, two-three-wheeler 12.9, small 14.7 (stride 20: 17.4, 44.5, 13.1, 14.7).
-- **Not adopted.** The test read selects nothing, but stride 10 doubles training time for a win
-  test doesn't show, so the subset keeps stride 20. That is a cost call, not the grid's rule.
-
-## The grid
-
-Each stage is a full grid of its own factors, run against the winner so far. Stages 2 and 3 run
-every size. Stages 4–7 run on s only, and the confirmation stage carries s's settings to n and m.
-
-| Stage | Sizes | Factor | New levels (winner so far) |
-|---|---|---|---|
-| 2 | n, s, m | imgsz | 960, 1280 (640) |
-| 3 | n, s, m | epochs | 60, 100 (30) |
-| 4 | s | optimizer, lr0 | AdamW 0.0007, AdamW 0.003, MuSGD 0.01 (AdamW 0.001429) |
-| 5 | s | `scale` × `mosaic` | {0.5, 0.25, (0.75, 1.5)} × {1.0, 0.5} (0.5 × 1.0) |
-| 6 | s | `close_mosaic` | 0 (10) |
-| 7 | s | `cls_pw` | 0.5, 1.0 (0) |
-| Confirmation | n, m | s's settings from stages 4–7 | `freeze=11` on m, only if m@1280 won stage 2 |
-
-- **Every trial:** seed 0, `patience=0`, `close_mosaic=10` (except in stage 6), `nbs=64` and the
-  pinned batch below. Every trial trains on the subset's own manifest, so there are no background
-  images and no derived lists.
-- **Workers:** from stage 2 on, trials use the `Settings` default of 4 workers. That is 34% faster
-  than `workers=0` at s@1280 (66.7 vs 89.5 s/epoch), and 8 workers is no faster (GPU at 96%). With
-  workers the seed no longer varies augmentation, but each setup still gets one augmentation draw
-  from the same distribution, so the noise floor and the win margin still hold.
-- **Confirmation:** a size keeps s's settings only if they beat that size's stage-3 winner by
-  the win margin.
-- **Evaluation-only arms** run on the three final winners and never select: SAHI sliced inference
-  (slices at the trial's imgsz, overlap 0.2, plus the full frame), reported by source resolution,
-  and `val(end2end=False)` (the one-to-many head with NMS, on the same weights).
-- **Cost:** estimated at 22–40 GPU-hours, depending mostly on the epoch winner. With 30 epochs
-  winning, stages 2 to confirmation took 20.9.
-
-### Pinned batch per setup
-
-These are measured ceilings. One step up, s and m run out of memory, and n's label assignment
-falls back to the CPU at 2–7× the epoch time. At 1280 ultralytics' first-epoch halve-and-retry
-crashes instead of recovering (`CUBLAS_STATUS_ALLOC_FAILED`), so the pin is required.
-
-| Model | 640 | 960 | 1280 |
-|---|---|---|---|
-| yolo26n | 16 | 8 | 4 |
-| yolo26s | 16 | 8 | 4 |
-| yolo26m | 8 | 4 | 2 |
-
-`nbs=64` keeps about 19 optimizer steps per epoch at every setup. BatchNorm still sees the small
-batch, and 8 GB can't avoid that confound. With `workers=0`, an epoch took n/s/m 40.8/59.5/80.9 s
-at 960 and 65.4/89.5/138.3 s at 1280.
+  (26.2), within test's seed noise.
+- **Not adopted.** Stride 10 doubles training time for a gain test doesn't show, so the subset
+  keeps stride 20. That is a cost call, not the win-margin rule.
 
 ## Confidence floor
 
-The floor never ranks trials. Ranked metrics (mAP, AR, the grid's val mAP50-95) are scored at
-conf 0.001 and 300 boxes per frame, and a higher floor can only lower them. Point metrics
-(precision, recall, F1, false positives per frame, the anomaly rule's counts, prediction health,
-tracker metrics) exist only at a floor. The logged `val/precision` and `val/recall` sit at
-ultralytics' max-F1 confidence at IoU 0.5, not at the serving floor. Scored at the serving default
-0.25, the champion reads about 3.3 pt lower on mAP50-95 from truncation alone, so online accuracy
-is scored at a floor of 0.01 or lower.
+The confidence floor (the minimum confidence for a detection to be reported) never changes which
+trial wins. mAP is scored at confidence 0.001 with up to 300 boxes per frame, and a higher floor
+can only lower it. Only point metrics depend on the floor: precision, recall, F1, false positives
+per frame, the anomaly rule's counts and tracker metrics.
 
-The serving default stays 0.25 during tuning. A tuned floor is not a one-off reading: if one
-replaces 0.25, the pipeline computes it for every model version. That is decided with the
-production default for model size and imgsz.
+The logged `val/precision` and `val/recall` are read at the confidence where F1 peaks, not at the
+serving floor. Scored at the serving default of 0.25, the champion reads about 3.3 pt lower on
+mAP50-95 from the cut alone, so online accuracy is scored at a floor of 0.01 or lower. Serving
+keeps 0.25.
+
+## Summary
+
+- **Recipe for every size:** the ultralytics defaults at imgsz 1280 and 30 epochs. Batch is 4/4/2
+  for n/s/m on the 8 GB GPU, with `nbs=64`.
+- **What mattered:**
+  - Training on VisDrone: +7–9 pt over the pretrained models.
+  - Image size 1280: +4.3–7.4 pt over 640. It was the only setting that won for every size.
+- **What didn't help:**
+  - more epochs (overfitting);
+  - optimizer and learning rate;
+  - the zoom augmentation (won on s only), mosaic and `close_mosaic`;
+  - class-weighted loss;
+  - a frozen backbone;
+  - sliced training;
+  - a denser train split (won on val, not confirmed on test, 2× the cost).
+- **Inference:**
+  - The one-to-many head adds 1.1–1.8 pt on val and 1.2 on test with the same weights.
+  - SAHI helps only on 4K frames, at 8–10× the latency, so it is not adopted.
+- **Final scores** (n/s/m):
+
+  | | n | s | m |
+  |---|---|---|---|
+  | val | 28.4 | 30.8 | 32.9 |
+  | test, one-to-one | 25.0 | 26.6 | 28.3 |
+  | test, one-to-many | 26.2 | 27.8 | 29.5 |
+
+  The current champion (s at 640, 3 epochs) reads 21.6 on test.
+- **Against public VisDrone checkpoints:** the recipe beats dronefreak's DET-trained YOLO26 s and m
+  by 1.2 and 1.4 pt on the test videos they didn't train on.
+- **Cost:** about 21 GPU-hours for stages 2–9, 8 for sliced training and 5 for the stride runs.

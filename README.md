@@ -198,6 +198,7 @@ src/mlops_cv/
   pipelines/      Beam pipelines: ingest and profile
   training/       YOLO26s training + MLflow logging
   evaluation/     metrics, gate, report, demo videos, error crops
+  tuning/         tuning experiments (trials, baselines, SAHI); never used in production
   optimize/       serving variants (ONNX, TensorRT, NCNN) + benchmarks
   serving/        FastAPI detection service + pre/post-processing
   streaming/      Kafka producer and consumers, message schemas
@@ -208,7 +209,7 @@ dags/             Airflow DAGs
 docker/           Dockerfiles
 docker-compose/   the four stacks
 observability/    Prometheus config + Grafana dashboards (as code)
-configs/          dataset YAML, demo clip list
+configs/          dataset YAML, demo clip list, tuning stages per case
 docs/             one page per component
 tests/            unit tests (CPU) and integration tests (GPU / Docker, skipped in CI)
 ```

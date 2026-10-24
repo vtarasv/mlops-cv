@@ -40,7 +40,7 @@ Every trial, latency reading and score was measured on one laptop:
 
 GPU-hours and latencies are for this GPU and won't carry over to another one.
 
-Table columns that need a word:
+Clarification for table columns:
 
 | Column | Meaning |
 |---|---|
@@ -230,7 +230,10 @@ double), and YOLO26's MuSGD at 0.01. The baseline is `optimizer=auto` (AdamW at 
 run copies the momentum (0.9) and `warmup_bias_lr` (0) that auto sets, so only the optimizer and
 lr0 change. A cosine schedule (`cos_lr`) was to follow only if an arm won.
 
-**Why:** the learning rate is the usual next knob after image size.
+**Why:** `auto` picks the optimizer and lr0 from a formula (class count and iteration count), not
+from this data. YOLO26 also ships a new optimizer, MuSGD, which its paper credits with +0.4 AP.
+The research behind the stage order ranked optimizer and lr0 third by expected effect, after image
+size and epochs, at a small-to-medium effect.
 
 ```bash
 uv run python -m mlops_cv.tuning.tune configs/tuning/yolo26-visdrone-vid/stage4.yaml

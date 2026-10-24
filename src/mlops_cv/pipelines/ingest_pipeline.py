@@ -2,8 +2,9 @@
 
 Keeps **every** train/val/test sequence (max scene diversity) and shrinks the set by
 ``--frame-stride`` (keep every Nth 1-based frame), which removes near-duplicate consecutive
-video frames. Kept frames land as flattened ``images|labels/{split}/<seq>_<NNNNNNN>.{jpg,txt}``
-plus a ``manifest.csv``; each consumer stamps its own dataset YAML. Only frames with at least one
+video frames; ``--train-frame-stride`` sets train's alone, so val and test stay comparable.
+Kept frames land as flattened ``images|labels/{split}/<seq>_<NNNNNNN>.{jpg,txt}`` plus a
+``manifest.csv``; each consumer stamps its own dataset YAML. Only frames with at least one
 surviving box are materialized.
 
 The pipeline also materializes the **demo store**: for the clips in ``configs/demo_clips.yaml``
@@ -73,6 +74,12 @@ class IngestOptions(PipelineOptions):
             "--frame-stride", type=int, default=20, help="keep every Nth frame (all splits)"
         )
         parser.add_argument(
+            "--train-frame-stride",
+            type=int,
+            default=None,
+            help="keep every Nth train frame (default: --frame-stride)",
+        )
+        parser.add_argument(
             "--sequences", nargs="+", default=None, help="restrict to these sequences"
         )
         parser.add_argument(
@@ -102,10 +109,11 @@ def _read_text(path: str) -> str:
 class ConvertSequenceDoFn(beam.DoFn):
     """Convert one ``(split, sequence)`` into per-frame records for the strided subset."""
 
-    def __init__(self, raw_dir: str, stride: int) -> None:
+    def __init__(self, raw_dir: str, stride: int, train_stride: int) -> None:
         super().__init__()
         self.raw_dir = raw_dir
         self.stride = stride
+        self.train_stride = train_stride
         self.sequences_processed = Metrics.counter(COUNTER_NAMESPACE, "sequences_processed")
         self.sequences_empty = Metrics.counter(COUNTER_NAMESPACE, "sequences_empty")
         self.frames_kept = Metrics.counter(COUNTER_NAMESPACE, "frames_kept")
@@ -123,8 +131,9 @@ class ConvertSequenceDoFn(beam.DoFn):
             width, height = _image_size_from_bytes(fh.read())
         text = _read_text(FileSystems.join(base, "annotations", f"{seq}.txt"))
         by_frame = convert_sequence_text(text, (width, height))
+        stride = self.train_stride if split == "train" else self.stride
         for idx in sorted(by_frame):  # only frames that have surviving boxes
-            if (idx - 1) % self.stride != 0 or idx not in frames:
+            if (idx - 1) % stride != 0 or idx not in frames:
                 continue
             name = frame_name(seq, idx)
             boxes = by_frame[idx]
@@ -266,7 +275,10 @@ def run(options: IngestOptions) -> int:
         _ = (
             p
             | "CreateSequences" >> beam.Create(elements)
-            | "ConvertSequences" >> beam.ParDo(ConvertSequenceDoFn(raw_dir, options.frame_stride))
+            | "ConvertSequences"
+            >> beam.ParDo(
+                ConvertSequenceDoFn(raw_dir, options.frame_stride, options.train_frame_stride)
+            )
             # Fusion break: sequences can be heavily skewed; rebalance the per-frame IO.
             | "RebalanceFrames" >> beam.Reshuffle()
             | "MaterializeFrames" >> beam.ParDo(MaterializeFrameDoFn(output_dir))
@@ -303,8 +315,10 @@ def main(argv: list[str] | None = None) -> int:
     settings = get_settings()
     logging.basicConfig(level=settings.log_level.upper(), format="%(message)s")
     options = IngestOptions(beam_argv(argv))
-    if options.frame_stride < 1:
-        raise ValueError("--frame-stride must be >= 1")
+    if options.train_frame_stride is None:
+        options.train_frame_stride = options.frame_stride
+    if min(options.frame_stride, options.train_frame_stride) < 1:
+        raise ValueError("--frame-stride and --train-frame-stride must be >= 1")
     # Settings-backed defaults, resolved at run time (never at class definition).
     options.raw_dir = options.raw_dir or str(settings.data.raw_dir)
     options.output_dir = options.output_dir or str(settings.data.subset_dir)

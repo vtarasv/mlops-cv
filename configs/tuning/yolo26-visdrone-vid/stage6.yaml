@@ -1,0 +1,4 @@
+# Stage 6: close_mosaic 0 (mosaic every epoch) on s's stage-5 winner, against its close_mosaic=10 run.
+defaults: {patience: 0, model: yolo26s, imgsz: 1280, epochs: 30, batch: 4, seed: 0, scale: [0.75, 1.5]}
+trials:
+  - {name: s1280-zoom-close0, close_mosaic: 0}

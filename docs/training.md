@@ -31,11 +31,12 @@ uv run python -m mlops_cv.evaluation --model runs:/<run_id>/weights/best.pt --ru
 
 ```
 
-CLI flags `--epochs --imgsz --batch --device --no-amp` override the `Settings` defaults (the
-dataset is always `DATA__SUBSET_DIR`, so the manifest and data-version lineage match the weights); the
-run logs to the server named by `MLFLOW__TRACKING_URI` (the local stack by default). ultralytics
-keeps its settings in the repo's `.ultralytics/` (`YOLO_CONFIG_DIR`, set when `mlops_cv` is
-imported).
+CLI flags `--model --epochs --imgsz --batch --seed --device --no-amp` override the `Settings`
+defaults. `--set key=value` (repeatable, YAML-parsed) passes any other `model.train()` argument,
+and `--no-register` makes the run a [trial](tuning.md). The dataset is always `DATA__SUBSET_DIR`,
+so the manifest and data-version lineage match the weights. The run logs to the server named by
+`MLFLOW__TRACKING_URI` (the local stack by default). ultralytics keeps its settings in the repo's
+`.ultralytics/` (`YOLO_CONFIG_DIR`, set when `mlops_cv` is imported).
 With [direnv](https://direnv.net), the repo's `.envrc` sets it for shell tools too (the `yolo`
 CLI, notebooks); run `direnv allow` once.
 

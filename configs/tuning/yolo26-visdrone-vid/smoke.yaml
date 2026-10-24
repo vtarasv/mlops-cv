@@ -1,0 +1,10 @@
+# One n@640 epoch: proves a trial lands in the tune experiment, unregistered, with its keys.
+defaults:
+  patience: 0
+  close_mosaic: 10
+trials:
+  - name: n640-e1
+    model: yolo26n
+    imgsz: 640
+    epochs: 1
+    batch: 16

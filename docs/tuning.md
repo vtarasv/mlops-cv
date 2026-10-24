@@ -369,6 +369,15 @@ uv run python -m mlops_cv.tuning.sahi_eval --slice 640 stage2-n1280 stage5-s1280
 The first command runs `<trial>-o2m` and `<trial>-sahi`; `--slice 640` runs `<trial>-sahi640`. s
 ran on its zoom trial, its winner at the time. `sahi` comes with the `tuning` uv group.
 
+**Full frame** is SAHI's control: the same weights and one-to-one head on the whole frame with no
+tiles, scored through the same path as SAHI (`model.predict`, then the validator's scoring). It
+differs from the trial column, which comes from `model.val`, by 0.1–0.3 pt because the two paths
+pad frames differently. `model.val` pads each batch of 8 frames to one shared shape plus half a
+stride; `model.predict` pads one frame at a time to the next multiple of 32. The image then sits
+differently on the network's 32-px grid, which moves some detections of tiny objects. So SAHI is
+read against full frame, never against the trial column. s's trial column is
+`stage5-s1280-zoom0.75-1.5` (31.4), not `stage2-s1280` (30.8).
+
 | Model | one-to-one (trial) | one-to-many | full frame | SAHI | SAHI − full frame: 3840 / 2720 / ≤1904 px | SAHI p50 ms |
 |---|---|---|---|---|---|---|
 | yolo26n | 28.4 | **30.2** | 28.5 | 29.8 | +8.5 / +1.6 / +0.3 | 95 |
@@ -451,8 +460,6 @@ uv run python -m mlops_cv.tuning.test_read --o2m stage2-n1280 stage2-s1280 stage
 - **Test reads 2.5–4.6 pt below val.**
 - **The one-to-many head gains 1.2 pt for every size**, as on val.
 - **Seed noise on test is 0.34 pt** (s at 640), close to val's 0.25, so the margin holds.
-- **The recipe beats the current champion** (v2: s at 640, 3 epochs, test 21.6) by 5.0 pt at s
-  and 6.7 pt at m.
 
 ## 13. Third-party comparison
 
@@ -464,8 +471,10 @@ AGPL-3.0, so they are evaluated here and never redistributed. Their ten classes 
 our three, and our models go through the same scoring path. That path reads our models 0.2–0.4 pt
 below the test read.
 
-**Why:** these are the only YOLO26 VisDrone checkpoints available. Nobody publishes YOLO26 numbers
-on VisDrone-VID.
+**Why:** nobody publishes a YOLO26 model or score for VisDrone-VID, and every public VisDrone YOLO
+checkpoint is DET-trained. DET shares VID's drones, categories and labelling, so this tests whether
+a small tuned VID model beats the best public YOLO26 on our footage. It can't separate recipe from
+training data.
 
 ```bash
 uv run python -m mlops_cv.tuning.third_party
@@ -545,18 +554,6 @@ uv run python -m mlops_cv.tuning.test_read --o2m stride10-n1280
 - **Not adopted.** Stride 10 doubles training time for a gain test doesn't show, so the subset
   keeps stride 20. That is a cost call, not the win-margin rule.
 
-## Confidence floor
-
-The confidence floor (the minimum confidence for a detection to be reported) never changes which
-trial wins. mAP is scored at confidence 0.001 with up to 300 boxes per frame, and a higher floor
-can only lower it. Only point metrics depend on the floor: precision, recall, F1, false positives
-per frame, the anomaly rule's counts and tracker metrics.
-
-The logged `val/precision` and `val/recall` are read at the confidence where F1 peaks, not at the
-serving floor. Scored at the serving default of 0.25, the champion reads about 3.3 pt lower on
-mAP50-95 from the cut alone, so online accuracy is scored at a floor of 0.01 or lower. Serving
-keeps 0.25.
-
 ## Summary
 
 - **Recipe for every size:** the ultralytics defaults at imgsz 1280 and 30 epochs. Batch is 4/4/2
@@ -583,7 +580,6 @@ keeps 0.25.
   | test, one-to-one | 25.0 | 26.6 | 28.3 |
   | test, one-to-many | 26.2 | 27.8 | 29.5 |
 
-  The current champion (s at 640, 3 epochs) reads 21.6 on test.
 - **Against public VisDrone checkpoints:** the recipe beats dronefreak's DET-trained YOLO26 s and m
   by 1.2 and 1.4 pt on the test videos they didn't train on.
 - **Cost:** about 21 GPU-hours for stages 2–9, 8 for sliced training and 5 for the stride runs.

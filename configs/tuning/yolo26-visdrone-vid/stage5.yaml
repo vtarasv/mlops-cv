@@ -1,0 +1,9 @@
+# Stage 5: scale x mosaic on s@1280x30. The 0.5 x 1.0 cell is stage 2's s1280 run.
+# A [min, max] scale is ultralytics' absolute zoom range: the grid's one tiling trial.
+defaults: {patience: 0, close_mosaic: 10, model: yolo26s, imgsz: 1280, epochs: 30, batch: 4, seed: 0}
+trials:
+  - {name: s1280-scale0.25, scale: 0.25}
+  - {name: s1280-zoom0.75-1.5, scale: [0.75, 1.5]}
+  - {name: s1280-mosaic0.5, mosaic: 0.5}
+  - {name: s1280-scale0.25-mosaic0.5, scale: 0.25, mosaic: 0.5}
+  - {name: s1280-zoom0.75-1.5-mosaic0.5, scale: [0.75, 1.5], mosaic: 0.5}

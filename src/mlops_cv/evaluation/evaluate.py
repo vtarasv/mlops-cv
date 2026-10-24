@@ -1,7 +1,7 @@
 """Evaluate a model from MLflow (a registry ref or a run URI) on the data subset and log a
-reproducible report to MLflow: P/R/mAP50/mAP50-95 (overall + per merged class), a comparison table,
-a pass/fail gate (floors + champion/challenger), a latency stub, and the qualitative artifacts —
-the fixed demo-clip and the TP/FP error-analysis crops.
+reproducible report to MLflow: P/R/mAP50/mAP50-95 (overall + per merged class), mAP50-95_small,
+a comparison table, a pass/fail gate (floors + champion/challenger), a latency stub, and the
+qualitative artifacts — the fixed demo-clip and the TP/FP error-analysis crops.
 
 The exit code is ``0`` on a gate pass and ``1`` on a fail (``--exit-zero`` forces ``0`` for
 orchestrators that branch on the verdict, not the exit code); the last stdout line is a
@@ -14,6 +14,7 @@ import argparse
 import logging
 import tempfile
 from pathlib import Path
+from typing import Any
 
 from mlops_cv import benchmark as benchmark_mod
 from mlops_cv.config import Settings, get_settings
@@ -24,13 +25,16 @@ from mlops_cv.data.subset import (
     dataset_yaml,
     demo_store_present,
 )
+from mlops_cv.evaluation import ap_small as ap_small_mod
 from mlops_cv.evaluation import gate as gate_mod
 from mlops_cv.evaluation import report as report_mod
+from mlops_cv.evaluation.score_detections import split_labels
 from mlops_cv.orchestration.handoff import GateVerdict
 from mlops_cv.startup import exits_on_startup_error
 from mlops_cv.tracking import client
 from mlops_cv.tracking.metric_keys import (
     LATENCY_PREFIX,
+    MAP_SMALL,
     PRIMARY,
     headline_metrics,
     metric_key,
@@ -81,6 +85,61 @@ def build_parser(settings: Settings) -> argparse.ArgumentParser:
     return p
 
 
+def split_metrics(
+    model: Any,
+    data_yaml: Path,
+    split: str,
+    *,
+    imgsz: int,
+    device: str,
+    batch: int,
+    name: str | None = None,
+    **overrides: Any,
+) -> dict[str, float]:
+    """``model.val`` on one split -> headline, per-class and mAP50-95_small keyed ``<split>/...``.
+
+    ``name`` picks the val save dir. ``overrides`` go to ``model.val`` as is (``end2end=False``).
+    """
+    results = model.val(
+        data=str(data_yaml),
+        split=split,
+        imgsz=imgsz,
+        device=device,
+        batch=batch,
+        name=name,
+        save_json=True,  # predictions.json, for mAP50-95_small
+        **overrides,
+    )
+    metrics = headline_metrics(results.box, prefix=split)
+    metrics[metric_key(split, MAP_SMALL)] = ap_small_mod.ap_small(
+        ap_small_mod.load_predictions(results.save_dir),
+        split_labels(data_yaml, split),
+        results.names,
+    )
+    return metrics | per_class_metrics(
+        results.maps, results.ap_class_index, results.names, prefix=metric_key(split, PRIMARY)
+    )
+
+
+def latency_stub(
+    model: Any, images_dir: Path, *, imgsz: int, device: str, runs: int = 50
+) -> dict[str, float]:
+    """A quick single-configuration latency (batch 1, pre/post included) at imgsz/device.
+
+    The rigorous multi-variant benchmark is the optimization harness's job.
+    """
+    return benchmark_mod.benchmark_model(
+        model,
+        [str(p) for p in sorted(images_dir.glob("*.jpg"))],
+        imgsz=imgsz,
+        device=device,
+        prefix=LATENCY_PREFIX,
+        warmup=3,
+        iterations=runs,
+        ps=(50.0, 95.0),
+    )
+
+
 @exits_on_startup_error
 def main(argv: list[str] | None = None) -> int:
     settings = get_settings()
@@ -103,19 +162,8 @@ def main(argv: list[str] | None = None) -> int:
         mlflow.set_tags({"eval.model": model_ref, "eval.split": args.split})
         model = YOLO(str(weights))
 
-        results = model.val(
-            data=str(data_yaml),
-            split=args.split,
-            imgsz=args.imgsz,
-            device=args.device,
-            batch=args.batch,
-        )
-        candidate = headline_metrics(results.box, prefix=args.split)
-        candidate |= per_class_metrics(
-            results.maps,
-            results.ap_class_index,
-            results.names,
-            prefix=metric_key(args.split, PRIMARY),
+        candidate = split_metrics(
+            model, data_yaml, args.split, imgsz=args.imgsz, device=args.device, batch=args.batch
         )
         mlflow.log_metrics(candidate)
 
@@ -135,18 +183,8 @@ def main(argv: list[str] | None = None) -> int:
 
         latency = None
         if args.latency_enabled:
-            # A quick single-configuration number beside the accuracy (batch 1, pre/post
-            # included), measured at the evaluated imgsz/device — the rigorous multi-variant
-            # benchmark is the optimization harness's job.
-            latency = benchmark_mod.benchmark_model(
-                model,
-                [str(p) for p in sorted(images_dir.glob("*.jpg"))],
-                imgsz=args.imgsz,
-                device=args.device,
-                prefix=LATENCY_PREFIX,
-                warmup=3,
-                iterations=args.latency_runs,
-                ps=(50.0, 95.0),
+            latency = latency_stub(
+                model, images_dir, imgsz=args.imgsz, device=args.device, runs=args.latency_runs
             )
             mlflow.log_metrics(latency)
 

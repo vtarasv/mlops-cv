@@ -7,7 +7,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from mlops_cv.evaluation.gate import GateResult
-from mlops_cv.tracking.metric_keys import HEADLINE_ATTRS, PRIMARY, metric_key
+from mlops_cv.tracking.metric_keys import HEADLINE_ATTRS, MAP_SMALL, PRIMARY, metric_key
 
 
 def _fmt(value: float | None) -> str:
@@ -18,7 +18,7 @@ def comparison_table_md(
     candidate: Mapping[str, float],
     champion: Mapping[str, float] | None,
     *,
-    metric_order: Sequence[str] = tuple(HEADLINE_ATTRS),
+    metric_order: Sequence[str] = (*HEADLINE_ATTRS, MAP_SMALL),
     prefix: str = "test",
 ) -> str:
     """Markdown table of the headline metrics: ``Candidate`` (+ ``Champion``/``Δ`` if present)."""

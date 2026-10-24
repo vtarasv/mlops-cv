@@ -1,17 +1,17 @@
 # Evaluation & benchmark harness
 
-Evaluate a model from a registry/run URI on a dataset split and log a reproducible record to
-MLflow: **precision, recall, mAP50, mAP50-95** (overall + per merged class), a comparison table, a
-pass/fail **gate**, a **latency** stub, and the qualitative artifacts — three **demo videos** and
-the **error-analysis crops**. The harness is the single quality-inspection surface: training
-produces the model, evaluation measures and inspects it. The same harness is the baseline for
-experiment comparison and the promotion gate for continuous training.
+Evaluate a model from a registry/run URI on a dataset split and log a reproducible record to MLflow:
+**precision, recall, mAP50, mAP50-95** (overall + per merged class), **mAP50-95_small**, a
+comparison table, a pass/fail **gate**, a **latency** stub, and the qualitative artifacts — three
+**demo videos** and the **error-analysis crops**. The harness is the single quality-inspection
+surface: training produces the model, evaluation measures and inspects it. The same harness is the
+baseline for experiment comparison and the promotion gate for continuous training.
 
 ```mermaid
 flowchart LR
   model[("model<br/>MLflow URI")] --> val
   subgraph eval["mlops_cv.evaluation.evaluate"]
-    val["ultralytics<br/>model.val()"] --> metrics["P / R / mAP50 / mAP50-95<br/>(overall + per class)"]
+    val["ultralytics<br/>model.val()"] --> metrics["P / R / mAP50 / mAP50-95<br/>(overall + per class)<br/>mAP50-95_small"]
     val --> lat["latency stub<br/>P50 / P95"]
     val --> vis["demo videos +<br/>TP/FP crops"]
     metrics --> gate{"gate<br/>floors + champion/challenger"}
@@ -61,6 +61,7 @@ module `mlops_cv.orchestration.handoff`, which both the emitter and the orchestr
 | Logged | Source |
 |---|---|
 | `<split>/precision`, `recall`, `mAP50`, `mAP50-95` (overall + per merged class) | ultralytics `model.val()` |
+| `<split>/mAP50-95_small` (COCO small-object AP, below) | `faster-coco-eval` over val's `predictions.json` |
 | `gate/passed` metric + `gate.passed` / `gate.challenger_win` tags | the gate |
 | `latency/p50_ms`, `p95_ms`, `mean_ms` | the latency stub |
 | 3 demo videos (`demo/`) | the GT-vs-prediction renderer (below) |
@@ -71,6 +72,14 @@ module `mlops_cv.orchestration.handoff`, which both the emitter and the orchestr
 The metric-key strings are authored once, in `mlops_cv.tracking.metric_keys`, and every producer
 and reader (evaluation, the per-epoch training callback, the gate, the report) builds keys through
 it.
+
+## mAP50-95_small
+
+`<split>/mAP50-95_small` is COCO's small-object AP: boxes under 32² **source** pixels, IoU
+0.50:0.95, averaged over classes. `faster-coco-eval` (the library ultralytics itself calls for
+`mAP_small`) scores ultralytics' own `predictions.json` against a COCO ground truth bridged from the
+subset's YOLO labels, at 300 boxes per frame, matching val. It is recorded only: never a gate floor
+or a selection criterion.
 
 ## The gate
 
@@ -125,14 +134,15 @@ Each pick is a padded, annotated crop (the box drawn with its class + confidence
 `segments.csv`. Predictions are labelled TP/FP by a greedy **per-class IoU matcher**: each prediction
 (highest confidence first) claims the unused same-class ground-truth box of greatest IoU; `IoU ≥ 0.5`
 is a TP (that GT is consumed), otherwise an FP. The matcher is qualitative **crop selection only** —
-never AP math (metrics come only from ultralytics' metric code: `model.val()`, or
-`evaluation.score_detections` for stored detections).
+never AP math (metrics come from `model.val()`, `evaluation.score_detections` for stored
+detections, and faster-coco-eval for mAP50-95_small).
 
 ## Scoring stored detections
 
 `evaluation.score_detections.score(detections, data_yaml, split)` scores detections produced
 elsewhere (`{frame file name: (n, 6) x1 y1 x2 y2 conf cls}` in source pixels) by feeding them
-through ultralytics' own validator; it has no AP code. The edge gate uses it
+through ultralytics' own validator; it has no AP code. `score_with_ap_small` adds
+`mAP50-95_small` from the same pass. The edge gate uses `score`
 ([edge.md](edge.md)). It reads about 0.1 pt off `model.val` on the same model, because val
 resizes some frames one row differently from predict.
 Detections are keyed by bare file name, so a split whose file names repeat across directories (the

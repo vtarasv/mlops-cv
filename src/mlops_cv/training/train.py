@@ -1,4 +1,4 @@
-"""Train YOLO26s on the VisDrone-VID subset, log to MLflow, and register the model.
+"""Train YOLO26 on the subset, log to MLflow, and register the model (or record a trial).
 
 Training is pure model production (train + per-epoch val); the held-out test metrics, report,
 gate, and qualitative artifacts are the evaluation harness's job
@@ -15,7 +15,9 @@ import logging
 import os
 import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+
+import yaml
 
 from mlops_cv.config import Settings, get_settings
 from mlops_cv.data.subset import dataset_yaml
@@ -30,17 +32,49 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+MODELS = ("yolo26n", "yolo26s", "yolo26m")
+
+# A trial's final val and latency both read this split.
+TRIAL_SPLIT = "val"
+TRIAL_VAL_BATCH = 8
+
+
+def _override(text: str) -> tuple[str, Any]:
+    """``key=value`` -> ``(key, YAML-parsed value)``: ``scale=[0.5,3.0]`` arrives as a list."""
+    key, sep, value = text.partition("=")
+    if not (key and sep):
+        raise argparse.ArgumentTypeError(f"expected key=value, got {text!r}")
+    return key, yaml.safe_load(value)
+
 
 def build_parser(settings: Settings) -> argparse.ArgumentParser:
     """CLI parser whose defaults come from ``settings.training``."""
     t = settings.training
-    p = argparse.ArgumentParser(description="Train YOLO26s on a dataset with MLflow logging.")
+    p = argparse.ArgumentParser(description="Train YOLO26 on a dataset with MLflow logging.")
+    p.add_argument("--model", choices=MODELS, default=Path(t.weights).stem)
     p.add_argument("--epochs", type=int, default=t.epochs)
     p.add_argument("--imgsz", type=int, default=t.imgsz)
     p.add_argument("--batch", type=int, default=t.batch, help="-1 = ultralytics autobatch")
     p.add_argument("--device", default=t.device)
     p.add_argument("--no-amp", dest="amp", action="store_false", help="disable AMP (fp32 fallback)")
     p.set_defaults(amp=t.amp)
+    p.add_argument("--seed", type=int, default=0)
+    p.add_argument(
+        "--set",
+        dest="overrides",
+        type=_override,
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="extra model.train() argument, value parsed as YAML (repeatable; wins over flags)",
+    )
+    p.add_argument("--run-name", default=None)
+    p.add_argument(
+        "--no-register",
+        dest="register",
+        action="store_false",
+        help="a trial: record val metrics on the run instead of registering a model version",
+    )
     return p
 
 
@@ -110,14 +144,15 @@ def main(argv: list[str] | None = None) -> int:
     yolo_settings.update({"mlflow": True})  # enable the built-in MLflow callback
     os.environ["MLFLOW_EXPERIMENT_NAME"] = settings.mlflow.experiment
 
-    run_name = f"{Path(t.weights).stem}-imgsz{args.imgsz}-e{args.epochs}"
-    logger.info(f"training {t.weights} on {data_yaml} -> MLflow {settings.mlflow.tracking_uri}")
+    weights = Path(t.weights).with_name(f"{args.model}.pt")
+    run_name = args.run_name or f"{args.model}-imgsz{args.imgsz}-e{args.epochs}"
+    logger.info(f"training {weights} on {data_yaml} -> MLflow {settings.mlflow.tracking_uri}")
 
     with mlflow.start_run(run_name=run_name) as run:
-        model = YOLO(t.weights)
+        model = YOLO(weights)
         model.add_callback("on_train_start", log_batch_params)
         model.add_callback("on_fit_epoch_end", log_per_class)
-        model.train(
+        train_args = dict(
             data=str(data_yaml),
             epochs=args.epochs,
             imgsz=args.imgsz,
@@ -128,12 +163,32 @@ def main(argv: list[str] | None = None) -> int:
             workers=t.workers,
             device=args.device,
             patience=t.patience,
-        )
+            seed=args.seed,
+            name=run_name,
+        ) | dict(args.overrides)
+        model.train(**train_args)
         mlflow.autolog(disable=True)  # the built-in callback enabled autolog
         _log_dataset(mlflow, settings.data.subset_dir / "manifest.csv")
         _log_data_version(mlflow, settings)
-        version = _register_model(run, settings.mlflow.registered_model)
         run_id = run.info.run_id
+        if not args.register:
+            from mlops_cv.evaluation.evaluate import split_metrics
+
+            # model now holds best.pt; latency is the runner's, measured alone after training
+            mlflow.log_metrics(
+                split_metrics(
+                    model,
+                    data_yaml,
+                    TRIAL_SPLIT,
+                    imgsz=int(train_args["imgsz"]),
+                    device=args.device,
+                    batch=TRIAL_VAL_BATCH,
+                    name=f"{run_name}-{TRIAL_SPLIT}",
+                )
+            )
+            logger.info(f"trial {run_name} recorded on run {run_id}, not registered")
+            return 0
+        version = _register_model(run, settings.mlflow.registered_model)
 
     # Machine-readable handoff: orchestrators read the last stdout line (DockerOperator XCom).
     print(TrainHandoff(version=version, run_id=run_id).to_line(), flush=True)

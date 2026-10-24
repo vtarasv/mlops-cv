@@ -1,0 +1,9 @@
+# Stage 2: imgsz 960 and 1280 per size, against stage 1's 640 rows. Batches are the pinned ceilings.
+defaults: {patience: 0, close_mosaic: 10, epochs: 30, seed: 0}
+trials:
+  - {name: n960, model: yolo26n, imgsz: 960, batch: 8}
+  - {name: s960, model: yolo26s, imgsz: 960, batch: 8}
+  - {name: m960, model: yolo26m, imgsz: 960, batch: 4}
+  - {name: n1280, model: yolo26n, imgsz: 1280, batch: 4}
+  - {name: s1280, model: yolo26s, imgsz: 1280, batch: 4}
+  - {name: m1280, model: yolo26m, imgsz: 1280, batch: 2}

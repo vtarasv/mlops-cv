@@ -117,8 +117,9 @@ too.
 _Avoid_: experiment (in tracking, an experiment holds many runs)
 
 **Champion**:
-The model version that the champion alias currently points at, and the only one that is served
-and monitored.
+The model version that a deployment target's champion alias currently points at, and the only one
+that target serves and monitors. Each deployment target has its own registered model, champion
+and gate.
 _Avoid_: production model, best model, latest model
 
 **Challenger**:
@@ -173,6 +174,58 @@ A crop of one low-confidence true positive or one high-confidence false positive
 show where the model is unsure or confidently wrong.
 _Avoid_: failure sample, hard example
 
+### Tuning
+
+**Tuning grid**:
+The fixed, staged list of trials. Each stage varies one or two factors and carries its winner
+into the next.
+_Avoid_: sweep, search space, hyperparameter search
+
+**Trial**:
+One training run of one tuning-grid point. It is compared on val and never registered as a
+model version.
+_Avoid_: experiment (that holds many runs), training run (that produces a model version)
+
+**Zero-shot baseline**:
+A COCO-pretrained model scored without training, its COCO classes mapped onto the merged
+classes. It shows what fine-tuning adds.
+_Avoid_: out-of-the-box model, pretrained baseline
+
+**Third-party baseline**:
+A VisDrone-trained checkpoint from outside this repo, scored on this repo's test split, its
+classes mapped onto the merged classes. It shows how the tuned recipe compares with community
+training on other VisDrone data.
+_Avoid_: published model, VisDrone baseline (a published result is a number, not a model scored here)
+
+**Noise floor**:
+The spread of val mAP50-95 across seeds of one trial setup. The win margin is set above it.
+_Avoid_: variance, seed noise
+
+**Win margin**:
+How far a trial must beat its stage's winner so far on val mAP50-95 to count as a win. It sits
+above the noise floor, which is measured on one val sample with the data order held fixed.
+_Avoid_: threshold, tolerance
+
+**Confirmation stage**:
+The last stage of the tuning grid. It tries the settings found on one model size on the other
+sizes, and each size keeps them only if they beat its own winner so far by the win margin.
+_Avoid_: transfer stage, validation stage
+
+**Production default**:
+The model size, imgsz and detection head a deployment target trains and serves unless told
+otherwise. The model is trained at the imgsz it is served at.
+_Avoid_: production model, default model
+
+**Detection head**:
+Which of YOLO26's two heads produces the boxes: **one-to-one** (end2end, no NMS) or
+**one-to-many** (NMS after). Evaluation scores the head that is served.
+_Avoid_: end2end mode, NMS mode
+
+**Evaluation-only arm**:
+A different way of scoring a trial's weights, such as sliced inference or the other detection
+head. It is recorded beside the trial and never picks a winner.
+_Avoid_: variant (that is a serving variant), ablation
+
 ### Optimization and serving
 
 **Serving variant**:
@@ -210,7 +263,12 @@ _Avoid_: prediction, box (unqualified)
 **Confidence floor**:
 The minimum confidence for a detection to be reported. It has the same default on HTTP and on
 the stream.
-_Avoid_: confidence threshold, conf cutoff
+_Avoid_: confidence threshold, conf cutoff, operating point
+
+**Max-F1 confidence**:
+The confidence at which a model's class-mean F1 on a split peaks; the logged precision and recall
+are read there. A candidate for the confidence floor, not the floor itself.
+_Avoid_: operating point, optimal threshold, tuned floor
 
 ### Streaming
 

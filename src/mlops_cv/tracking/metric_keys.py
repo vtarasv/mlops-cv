@@ -26,6 +26,9 @@ HEADLINE_ATTRS: dict[str, str] = {
 # The primary metric: the one headline reading the champion/challenger comparison branches on.
 PRIMARY = "mAP50-95"
 
+# COCO small-object AP (boxes under 32² source pixels), from faster-coco-eval.
+MAP_SMALL = "mAP50-95_small"
+
 # The prefix ultralytics' MLflow callback logs per-epoch val metrics under.
 TRAIN_PREFIX = "metrics"
 

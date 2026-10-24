@@ -29,6 +29,11 @@ def test_comparison_table_no_champion_is_two_columns() -> None:
     assert "precision" in md and "mAP50-95" in md
 
 
+def test_comparison_table_shows_ap_small_when_recorded() -> None:
+    md = comparison_table_md(_metrics(0.8, 0.7, 0.6, 0.5) | {"test/mAP50-95_small": 0.25}, None)
+    assert "| mAP50-95_small | 0.2500 |" in md
+
+
 def test_comparison_table_with_champion_has_delta() -> None:
     md = comparison_table_md(_metrics(0.8, 0.7, 0.6, 0.5), _metrics(0.6, 0.6, 0.5, 0.4))
     assert "Champion" in md and "Δ" in md

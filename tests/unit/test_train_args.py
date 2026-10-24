@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from mlops_cv.config import load_settings
 from mlops_cv.training.train import build_parser
 
@@ -30,3 +32,21 @@ def test_flag_overrides() -> None:
 def test_batch_override() -> None:
     args = build_parser(_settings()).parse_args(["--batch", "8"])
     assert args.batch == 8
+
+
+def test_trial_flags() -> None:
+    args = build_parser(_settings()).parse_args(
+        ["--model", "yolo26n", "--seed", "2", "--set", "scale=[0.5,3.0]", "--no-register"]
+    )
+    assert (args.model, args.seed, args.register) == ("yolo26n", 2, False)
+    assert args.overrides == [("scale", [0.5, 3.0])]
+
+
+def test_production_defaults_register_the_settings_model() -> None:
+    args = build_parser(_settings()).parse_args([])
+    assert (args.model, args.register, args.overrides) == ("yolo26s", True, [])
+
+
+def test_set_needs_key_equals_value() -> None:
+    with pytest.raises(SystemExit):
+        build_parser(_settings()).parse_args(["--set", "scale"])

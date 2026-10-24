@@ -1,0 +1,7 @@
+# Confirmation stage: s's tuned settings (scale=[0.75, 1.5]) on n and m at their stage-3 winners
+# (1280, 30 epochs), plus m with the whole YOLO26 backbone frozen, since m@1280 won stage 2.
+defaults: {patience: 0, close_mosaic: 10, imgsz: 1280, epochs: 30, seed: 0, scale: [0.75, 1.5]}
+trials:
+  - {name: n1280-zoom, model: yolo26n, batch: 4}
+  - {name: m1280-zoom, model: yolo26m, batch: 2}
+  - {name: m1280-zoom-freeze11, model: yolo26m, batch: 2, freeze: 11}

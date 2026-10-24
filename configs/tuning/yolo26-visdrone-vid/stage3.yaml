@@ -1,0 +1,9 @@
+# Stage 3: 60 and 100 epochs per size at its stage-2 imgsz (1280), against stage 2's 30-epoch rows.
+defaults: {patience: 0, close_mosaic: 10, imgsz: 1280, seed: 0}
+trials:
+  - {name: n1280-e60, model: yolo26n, batch: 4, epochs: 60}
+  - {name: s1280-e60, model: yolo26s, batch: 4, epochs: 60}
+  - {name: m1280-e60, model: yolo26m, batch: 2, epochs: 60}
+  - {name: n1280-e100, model: yolo26n, batch: 4, epochs: 100}
+  - {name: s1280-e100, model: yolo26s, batch: 4, epochs: 100}
+  - {name: m1280-e100, model: yolo26m, batch: 2, epochs: 100}

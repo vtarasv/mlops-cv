@@ -1,0 +1,5 @@
+# Stage 7: cls_pw (inverse-frequency classification-loss weights) on s's stage-6 winner (close_mosaic=10).
+defaults: {patience: 0, close_mosaic: 10, model: yolo26s, imgsz: 1280, epochs: 30, batch: 4, seed: 0, scale: [0.75, 1.5]}
+trials:
+  - {name: s1280-zoom-clspw0.5, cls_pw: 0.5}
+  - {name: s1280-zoom-clspw1.0, cls_pw: 1.0}

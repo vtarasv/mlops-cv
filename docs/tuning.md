@@ -27,6 +27,19 @@ was decided. Scores are mAP50-95 in %, on val unless a section says test.
   the last 10 epochs, the ultralytics default) and the largest batch that fits the 8 GB GPU (table
   below), on ultralytics 8.4.72.
 
+### Hardware
+
+Every trial, latency reading and score was measured on one laptop:
+
+| Part | Spec |
+|---|---|
+| GPU | NVIDIA GeForce RTX 5070 Laptop, 8 GB, driver 615.71.09 |
+| CPU | Intel Core Ultra 9 275HX, 24 cores |
+| RAM | 32 GB |
+| Software | PyTorch 2.12.1 (CUDA 13.0), ultralytics 8.4.72 |
+
+GPU-hours and latencies are for this GPU and won't carry over to another one.
+
 Table columns that need a word:
 
 | Column | Meaning |

@@ -62,12 +62,28 @@ class GateVerdict(_HandoffPayload):
     champion_primary: float | None = None
 
 
-def train_cmd(epochs: int | str) -> list[str]:
-    """Train-container argv; the container replies with a ``TrainHandoff`` line."""
-    return ["python", "-m", "mlops_cv.training", "--epochs", str(epochs)]
+def train_cmd(
+    target: str, model: str, imgsz: int | str, epochs: int | str, batch: int | str
+) -> list[str]:
+    """Train-container argv (``model`` is the size letter: n, s, m); replies ``TrainHandoff``."""
+    return [
+        "python",
+        "-m",
+        "mlops_cv.training",
+        "--target",
+        target,
+        "--model",
+        f"yolo26{model}",
+        "--imgsz",
+        str(imgsz),
+        "--epochs",
+        str(epochs),
+        "--batch",
+        str(batch),
+    ]
 
 
-def evaluate_cmd(run_id: str, batch: int | str = 8) -> list[str]:
+def evaluate_cmd(run_id: str, target: str, head: str, batch: int | str = 8) -> list[str]:
     """Evaluate-container argv; the container replies with a ``GateVerdict`` line.
 
     Standing policy lives here, not in the DAG: the model under test is the training
@@ -85,10 +101,14 @@ def evaluate_cmd(run_id: str, batch: int | str = 8) -> list[str]:
         "--exit-zero",
         "--batch",
         str(batch),
+        "--target",
+        target,
+        "--head",
+        head,
     ]
 
 
-def optimize_cmd(run_id: str) -> list[str]:
+def optimize_cmd(run_id: str, target: str, head: str) -> list[str]:
     """Optimize-container argv: build + benchmark a promoted model's serving variants. No reply."""
     return [
         "python",
@@ -98,6 +118,10 @@ def optimize_cmd(run_id: str) -> list[str]:
         best_weights_uri(run_id),
         "--run-id",
         run_id,
+        "--target",
+        target,
+        "--head",
+        head,
     ]
 
 

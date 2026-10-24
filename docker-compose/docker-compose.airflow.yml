@@ -72,7 +72,7 @@ services:
       timeout: 3s
       retries: 10
 
-  # One-shot: create dirs, run DB migrations, create the admin user, then exit.
+  # One-shot: create dirs, run DB migrations, create the admin user and the gpu pool, then exit.
   airflow-init:
     <<: *airflow-common
     container_name: airflow-init
@@ -82,7 +82,7 @@ services:
       - |
         mkdir -p /opt/airflow/logs
         chown -R "${AIRFLOW_UID}:0" /opt/airflow/logs
-        exec /entrypoint airflow version
+        exec /entrypoint airflow pools set gpu 1 "One GPU task at a time across the CT DAGs"
     environment:
       <<: *airflow-common-env
       _AIRFLOW_DB_MIGRATE: "true"

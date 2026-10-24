@@ -90,27 +90,43 @@ def test_best_weights_uri() -> None:
 def test_train_cmd_parses_with_real_parser() -> None:
     from mlops_cv.training.train import build_parser
 
-    cmd = train_cmd(epochs=7)
+    cmd = train_cmd(target="edge", model="s", imgsz=960, epochs=7, batch=-1)
     assert cmd[:3] == ["python", "-m", "mlops_cv.training"]
     args = build_parser(_settings()).parse_args(cmd[3:])
-    assert args.epochs == 7
+    assert (args.target, args.model, args.imgsz, args.epochs, args.batch) == (
+        "edge",
+        "yolo26s",
+        960,
+        7,
+        -1,
+    )
 
 
 def test_train_cmd_passes_jinja_through() -> None:
     # The DAG hands Airflow templates as values; the builder must not mangle them.
-    assert "{{ params.epochs }}" in train_cmd(epochs="{{ params.epochs }}")
+    cmd = train_cmd(
+        target="server",
+        model="{{ params.model }}",
+        imgsz=1280,
+        epochs="{{ params.epochs }}",
+        batch=-1,
+    )
+    assert "{{ params.epochs }}" in cmd
+    assert "yolo26{{ params.model }}" in cmd
 
 
 def test_evaluate_cmd_parses_with_real_parser() -> None:
     from mlops_cv.evaluation.evaluate import build_parser
 
-    cmd = evaluate_cmd(run_id="abc123")
+    cmd = evaluate_cmd(run_id="abc123", target="edge", head="one-to-one")
     assert cmd[:3] == ["python", "-m", "mlops_cv.evaluation"]
     args = build_parser(_settings()).parse_args(cmd[3:])
     assert args.model == best_weights_uri("abc123")
     assert args.run_id == "abc123"
     assert args.exit_zero is True
     assert args.batch == 8
+    assert (args.target, args.head) == ("edge", "one-to-one")
+    assert args.imgsz is None  # read from the training run
 
 
 def test_ingest_cmd_parses_with_real_options() -> None:
@@ -144,20 +160,22 @@ def test_optimize_cmd_parses_with_real_parser() -> None:
     """optimize shares evaluate's addressing: one run_id keys the whole container chain."""
     from mlops_cv.optimize.optimize import build_parser, model_uri
 
-    cmd = optimize_cmd(run_id="abc123")
+    cmd = optimize_cmd(run_id="abc123", target="edge", head="one-to-many")
     assert cmd[:3] == ["python", "-m", "mlops_cv.optimize"]
     settings = _settings()
     args = build_parser(settings).parse_args(cmd[3:])
     assert args.model == best_weights_uri("abc123")  # never the alias — no promotion race
     assert args.run_id == "abc123"
+    assert (args.target, args.head) == ("edge", "one-to-many")
     assert model_uri(args, settings) == best_weights_uri("abc123")
 
 
 def test_optimize_cmd_renders_an_airflow_template() -> None:
     template = "{{ ti.xcom_pull(task_ids='parse_train_output')['run_id'] }}"
-    cmd = optimize_cmd(run_id=template)
+    cmd = optimize_cmd(run_id=template, target="server", head="{{ params.head }}")
     assert best_weights_uri(template) in cmd
     assert template in cmd
+    assert "{{ params.head }}" in cmd
 
 
 def test_optimize_defaults_to_the_champion_alias_without_addressing() -> None:

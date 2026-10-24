@@ -1,19 +1,20 @@
 # Orchestration (Airflow continuous training)
 
-An Airflow **3.2.2** stack (LocalExecutor, Docker Compose) runs the continuous-training loop as a
-DAG: ensure the dataset exists and is valid (rebuilding it from raw via the Beam **ingestion**
+An Airflow **3.2.2** stack (LocalExecutor, Docker Compose) runs the continuous-training loop as
+two DAGs from one factory, one per deployment target: `aerial_object_detection_ct_server` and
+`aerial_object_detection_ct_edge`. Each one runs the same graph: ensure the dataset exists and is valid (rebuilding it from raw via the Beam **ingestion**
 pipeline if not), **profile** it (quality report + drift baseline, skipped when already up to
 date — see [batch-pipeline.md](batch-pipeline.md)), validate what training will consume, train a
 challenger, evaluate it against the champion, and **only on a champion/challenger win** build
-and benchmark its serving variants, then promote it to the `champion` registry alias.
-The DAG fires weekly **or** on an external *new data* asset event — the hook whatever admits new
+and benchmark its serving variants, then promote it to the `champion` alias of its target's
+registered model. Both DAGs fire weekly **or** on an external *new data* asset event — the hook whatever admits new
 labeled data POSTs when the dataset actually changes.
 
 ```mermaid
 flowchart LR
   cron["weekly cron<br/>(Mon 03:00 UTC)"] --> dagrun
   asset["asset event<br/>new-training-data"] --> dagrun
-  subgraph dagrun["aerial_object_detection_ct"]
+  subgraph dagrun["aerial_object_detection_ct_server / _edge"]
     cs{"check_subset"} -->|missing / invalid| bs["build_subset<br/>(Beam ingest, CPU container)"]
     cs -->|ok| cp{"check_profiled"}
     bs --> cp
@@ -45,14 +46,20 @@ make airflow-up      # brings the MLflow stack up, builds the GPU train image, s
 `make airflow-up` depends on the MLflow stack (shared Docker network + tracking server), on
 `make train-image` (the GPU image the DAG launches), and on `make beam-image` (the CPU data-prep
 image for the ingestion and profiling tasks). DAGs start **paused**: unpause/trigger
-`aerial_object_detection_ct` from the UI.
+them from the UI, or from the CLI with params:
+
+```bash
+docker exec airflow-scheduler airflow dags unpause aerial_object_detection_ct_edge
+docker exec airflow-scheduler airflow dags trigger aerial_object_detection_ct_edge \
+  --conf '{"epochs": 3}'   # demo-short; omitted params take the DAG's defaults
+```
 
 ## Topology
 
 | Service | Role |
 |---|---|
 | `airflow-postgres` | metadata DB (`postgres:15.18`; in-network only, no host port) |
-| `airflow-init` | one-shot: dirs, DB migrations, admin user |
+| `airflow-init` | one-shot: dirs, DB migrations, admin user, the `gpu` pool |
 | `airflow-apiserver` | UI + REST + task-execution API (`:8080`) |
 | `airflow-scheduler` | schedules **and runs** tasks (LocalExecutor) |
 | `airflow-dag-processor` | parses DAG files (required standalone component in Airflow 3) |
@@ -121,16 +128,44 @@ Every task is a thin wrapper over `mlops_cv` code — the DAG contains orchestra
     **child** of the training run (see [optimization.md](optimization.md)). Runs **only on a gate
     pass**, so only a winner earns the GPU minutes. A failed optimize fails the run and leaves the
     alias where it was; retry by clearing `optimize`.
-11. **`promote`** (in-process) — points the `champion` registry alias at the challenger version.
-    Today the DAG trains, gates and promotes into the server target's registered model.
-    It refuses a version whose training run lacks a passing `gate.passed` tag or that is not
+11. **`promote`** (in-process) — points the target's `champion` registry alias at the challenger
+    version. It refuses a version whose training run lacks a passing `gate.passed` tag or that is not
     **servable**, so the alias never points at a version the services cannot start on.
+
+### Params, pool and timeouts
+
+Each DAG's trigger form takes these params. JSON-schema enums make the form reject anything
+else. Defaults are static per DAG (one param's default can't follow another's), which is why
+the target is a DAG and not a param.
+
+| Param | Values | Server default | Edge default |
+|---|---|---|---|
+| `model` | `n`, `s`, `m` (YOLO26 size) | `m` | `n` |
+| `imgsz` | 640, 960, 1280 (training and export) | 1280 | 1280 |
+| `head` | `one-to-one`, `one-to-many` | `one-to-many` | `one-to-many` |
+| `epochs` | integer ≥ 1 | 30 | 30 |
+| `batch` | integer, -1 = ultralytics autobatch | -1 | -1 |
+
+`head` reaches only evaluate (the head it scores) and optimize (the head it exports). The edge's
+NCNN always runs one-to-many, and the run's `eval.head` tag records that. Evaluate and optimize
+read imgsz from the training run. Seed, optimizer, augmentation and `nbs` stay fixed in code.
+`batch` defaults to autobatch because the pinned batches in [tuning.md](tuning.md) § Batch size
+per setup were measured on one 8 GB GPU. Pin it when a run OOMs. A demo-short run
+is a manual trigger with `epochs=3`.
+
+`train`, `evaluate` and `optimize` of both DAGs share the 1-slot `gpu` pool, which
+`airflow-init` creates. Two trainings at once spill label assignment onto the CPU and run about
+10× slower ([tuning.md](tuning.md) § 3). `train` times out after 3 h (m@1280 × 30 epochs
+took about 1 GPU-hour), the other GPU tasks after 2 h, the CPU tasks after 1 h.
+
+The edge DAG never talks to the Pi. It publishes the NCNN ladder, and promotion needs only the
+served NCNN variant. The on-device check (`edge.bench`, `make edge-gate`) stays out-of-band.
 
 ### The container contract
 
 The DAG↔container seam is owned by one module — `mlops_cv.orchestration.handoff` — imported by
 both ends. The DAG builds every container command with it (`train_cmd`, `evaluate_cmd`,
-`ingest_cmd`, `profile_cmd`); standing policy is the module's body — `--exit-zero`, the
+`ingest_cmd`, `profile_cmd`, `optimize_cmd`); standing policy is the module's body — `--exit-zero`, the
 DirectRunner choice, deriving the model under test from the training run
 (`best_weights_uri(run_id)` → `runs:/<id>/weights/best.pt`) — and the DAG passes only per-run
 values (some of them Airflow Jinja templates, rendered before the container starts). The replying
@@ -165,7 +200,7 @@ wrong path or launching a stale image.
 
 ## Scheduling: cron + asset events
 
-The DAG uses `AssetOrTimeSchedule`: a weekly `CronTriggerTimetable` **or** an update to the
+Both DAGs use `AssetOrTimeSchedule`: a weekly `CronTriggerTimetable` **or** an update to the
 `new-training-data` asset. The asset means *the dataset changed*, so its producer is whatever
 admits new data — a data-ingest job, a labeling handoff, or you:
 
@@ -173,7 +208,7 @@ admits new data — a data-ingest job, a labeling handoff, or you:
 > parsed CT DAG never auto-starts a GPU run). While paused, neither the weekly cron nor an asset
 > event schedules it — the event is *recorded* but creates zero runs. Unpause it once (toggle it
 > in the UI at `localhost:8080`, or `docker exec airflow-scheduler airflow dags unpause
-> aerial_object_detection_ct`) before triggering.
+> aerial_object_detection_ct_server`) before triggering.
 
 ```bash
 BASE=http://localhost:8080

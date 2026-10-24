@@ -136,9 +136,9 @@ def _params(target: str) -> dict[str, Param]:
             ONE_TO_MANY,
             type="string",
             enum=list(HEADS),
-            description="scored and exported; edge's NCNN always runs one-to-many",
+            description="YOLO26 heads: one-to-one - no NMS, one-to-many - NMS on the head outputs",
         ),
-        "epochs": Param(30, type="integer", minimum=1, description="3 for a demo-short run"),
+        "epochs": Param(30, type="integer", minimum=1, description="decrease for a smoke/demo run"),
         "batch": Param(
             -1, type="integer", minimum=-1, description="-1 = autobatch; pin it if a run OOMs"
         ),

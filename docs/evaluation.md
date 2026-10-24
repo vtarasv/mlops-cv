@@ -134,8 +134,8 @@ Each pick is a padded, annotated crop (the box drawn with its class + confidence
 `segments.csv`. Predictions are labelled TP/FP by a greedy **per-class IoU matcher**: each prediction
 (highest confidence first) claims the unused same-class ground-truth box of greatest IoU; `IoU ≥ 0.5`
 is a TP (that GT is consumed), otherwise an FP. The matcher is qualitative **crop selection only** —
-never AP math (metrics come only from ultralytics' metric code: `model.val()`, or
-`evaluation.score_detections` for stored detections).
+never AP math (metrics come from `model.val()`, `evaluation.score_detections` for stored
+detections, and faster-coco-eval for mAP50-95_small).
 
 ## Scoring stored detections
 

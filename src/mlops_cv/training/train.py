@@ -36,6 +36,7 @@ MODELS = ("yolo26n", "yolo26s", "yolo26m")
 
 # A trial's final val and latency both read this split.
 TRIAL_SPLIT = "val"
+TRIAL_VAL_BATCH = 8
 
 
 def _override(text: str) -> tuple[str, Any]:
@@ -181,7 +182,7 @@ def main(argv: list[str] | None = None) -> int:
                     TRIAL_SPLIT,
                     imgsz=int(train_args["imgsz"]),
                     device=args.device,
-                    batch=8,
+                    batch=TRIAL_VAL_BATCH,
                     name=f"{run_name}-{TRIAL_SPLIT}",
                 )
             )

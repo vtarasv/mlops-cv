@@ -21,6 +21,7 @@ SPLIT = "test"
 
 @exits_on_startup_error
 def main(argv: list[str] | None = None) -> int:
+    from mlops_cv.training.train import TRIAL_VAL_BATCH
     from mlops_cv.training.tune import TUNE_EXPERIMENT, finished_trial
 
     p = argparse.ArgumentParser(description="Score tuning trials' best.pt on test.")
@@ -57,7 +58,7 @@ def main(argv: list[str] | None = None) -> int:
             SPLIT,
             imgsz=imgsz,
             device=settings.training.device,
-            batch=8,  # the trial's own val batch
+            batch=TRIAL_VAL_BATCH,
             name=name,
             **overrides,
         )

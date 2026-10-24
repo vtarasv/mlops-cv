@@ -106,7 +106,6 @@ pydantic + yaml: the Airflow and serving images import them.
 - A container task's last stdout line is its JSON result (the Airflow XCom). Print nothing after it.
 - Airflow `@task`s are thin wrappers around `src/mlops_cv`. Pass small values via XCom and large
   artifacts via MLflow URIs.
-- Metrics come only from ultralytics' metric code: `model.val()`, or
 - Never hand-roll AP math: score with an established evaluator (ultralytics' validator, or
   faster-coco-eval for COCO size buckets). Compare numbers only within one evaluator's scale.
 - Thresholds (anomaly, drift bars, `--shift` defaults) are measured values. Remeasure them when the

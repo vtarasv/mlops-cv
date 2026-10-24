@@ -165,7 +165,7 @@ def sahi_arm(
 
 @exits_on_startup_error
 def main(argv: list[str] | None = None) -> int:
-    from mlops_cv.training.train import TRIAL_SPLIT
+    from mlops_cv.training.train import TRIAL_SPLIT, TRIAL_VAL_BATCH
     from mlops_cv.training.tune import TUNE_EXPERIMENT, finished_trial
 
     p = argparse.ArgumentParser(description="Evaluation-only arms on tuning trials' best.pt.")
@@ -196,6 +196,7 @@ def main(argv: list[str] | None = None) -> int:
         run = finished_trial(mlflow, trial)
         imgsz = int(run.data.params["imgsz"])
         weights, _ = resolve_model(best_weights_uri(run.info.run_id))
+        slice_size = args.slice or imgsz
         for arm in ("sahi",) if args.slice else ("o2m", "sahi"):
             model = YOLO(str(weights))
             if arm == "o2m":
@@ -205,12 +206,11 @@ def main(argv: list[str] | None = None) -> int:
                     TRIAL_SPLIT,
                     imgsz=imgsz,
                     device=device,
-                    batch=8,  # the trial's own val batch
+                    batch=TRIAL_VAL_BATCH,
                     name=f"{trial}-o2m",
                     end2end=False,
                 )
             else:
-                slice_size = args.slice or imgsz
                 readings = sahi_arm(
                     model, images_dir, data_yaml, imgsz=imgsz, slice_size=slice_size, device=device
                 )

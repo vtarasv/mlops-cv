@@ -27,8 +27,6 @@ import pendulum
 from airflow.providers.docker.operators.docker import DockerOperator
 from airflow.providers.standard.operators.empty import EmptyOperator
 from airflow.sdk import Asset, Param, dag, task
-from airflow.timetables.assets import AssetOrTimeSchedule
-from airflow.timetables.trigger import CronTriggerTimetable
 from docker.types import DeviceRequest, Mount
 
 from mlops_cv.data.subset import demo_store_present
@@ -153,10 +151,12 @@ def ct_dag(target: str) -> None:
     @dag(
         dag_id=f"aerial_object_detection_ct_{target}",
         description=f"Continuous training for the {target} target: data, train, gate, promote.",
-        schedule=AssetOrTimeSchedule(
-            timetable=CronTriggerTimetable("0 3 * * 1", timezone="UTC"),  # weekly, Mon 03:00 UTC
-            assets=NEW_DATA_ASSET,  # type: ignore[arg-type]
-        ),
+        # Weekly runs off for now (asset event or manual trigger only); to restore:
+        # schedule=AssetOrTimeSchedule(
+        #     timetable=CronTriggerTimetable("0 3 * * 1", timezone="UTC"),  # Mon 03:00 UTC
+        #     assets=NEW_DATA_ASSET,
+        # ),
+        schedule=[NEW_DATA_ASSET],
         start_date=pendulum.datetime(2026, 1, 1, tz="UTC"),
         catchup=False,
         max_active_runs=1,  # one CT cycle at a time; raise in outside of local-dev

@@ -7,12 +7,11 @@ pipeline if not), **profile** it (quality report + drift baseline, skipped when 
 date — see [batch-pipeline.md](batch-pipeline.md)), validate what training will consume, train a
 challenger, evaluate it against the champion, and **only on a champion/challenger win** build
 and benchmark its serving variants, then promote it to the `champion` alias of its target's
-registered model. Both DAGs fire weekly **or** on an external *new data* asset event — the hook whatever admits new
+registered model. Both DAGs fire on an external *new data* asset event (the weekly cron is off for now) — the hook whatever admits new
 labeled data POSTs when the dataset actually changes.
 
 ```mermaid
 flowchart LR
-  cron["weekly cron<br/>(Mon 03:00 UTC)"] --> dagrun
   asset["asset event<br/>new-training-data"] --> dagrun
   subgraph dagrun["aerial_object_detection_ct_server / _edge"]
     cs{"check_subset"} -->|missing / invalid| bs["build_subset<br/>(Beam ingest, CPU container)"]
@@ -198,14 +197,15 @@ Makefile is their **single source**.
 directly without exporting them **fails loudly** with a hint, rather than silently mounting the
 wrong path or launching a stale image.
 
-## Scheduling: cron + asset events
+## Scheduling: asset events
 
-Both DAGs use `AssetOrTimeSchedule`: a weekly `CronTriggerTimetable` **or** an update to the
-`new-training-data` asset. The asset means *the dataset changed*, so its producer is whatever
+Both DAGs run on an update to the `new-training-data` asset or a manual trigger. The weekly cron
+(Mon 03:00 UTC, `AssetOrTimeSchedule`) is commented out in the DAG for now; restore it there.
+The asset means *the dataset changed*, so its producer is whatever
 admits new data — a data-ingest job, a labeling handoff, or you:
 
 > **Enable the DAG first.** It ships **paused** (`DAGS_ARE_PAUSED_AT_CREATION=true`, so a newly
-> parsed CT DAG never auto-starts a GPU run). While paused, neither the weekly cron nor an asset
+> parsed CT DAG never auto-starts a GPU run). While paused, no asset
 > event schedules it — the event is *recorded* but creates zero runs. Unpause it once (toggle it
 > in the UI at `localhost:8080`, or `docker exec airflow-scheduler airflow dags unpause
 > aerial_object_detection_ct_server`) before triggering.

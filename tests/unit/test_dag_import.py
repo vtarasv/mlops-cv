@@ -96,6 +96,11 @@ def test_ct_dag_run_policy(ct) -> None:
     assert ct.max_active_runs == 1  # one CT cycle at a time
 
 
+def test_ct_dags_run_on_new_data_only(ct) -> None:
+    assert type(ct.timetable).__name__ == "AssetTriggeredTimetable"  # weekly cron off for now
+    assert "new-training-data" in str(ct.timetable.asset_condition)
+
+
 def test_params_default_to_the_targets_recipe(ct, target) -> None:
     from mlops_cv.training.train import TARGET_MODELS
 

@@ -1,4 +1,4 @@
-"""Run one tuning-grid stage: ``configs/tuning/<stage>.yaml`` -> one training process per trial.
+"""Run one tuning stage: ``configs/tuning/<case>/<stage>.yaml`` -> one training process per trial.
 
 Trials train one at a time, never register, and log to the tune experiment. Each trial's
 latency is measured afterwards, alone on the GPU, onto its run.
@@ -100,7 +100,7 @@ def _record_latency(mlflow: Any, name: str, imgsz: int, since_ms: int) -> None:
 @exits_on_startup_error
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="Run one tuning-grid stage, one process per trial.")
-    p.add_argument("stage", type=Path, help="configs/tuning/<stage>.yaml")
+    p.add_argument("stage", type=Path, help="configs/tuning/<case>/<stage>.yaml")
     args = p.parse_args(argv)
 
     os.environ["MLFLOW__EXPERIMENT"] = TUNE_EXPERIMENT  # trials inherit it: never production's

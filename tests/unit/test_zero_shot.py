@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from mlops_cv.evaluation.zero_shot import class_lut, merge_classes
+from mlops_cv.tuning.zero_shot import class_lut, merge_classes
 
 COCO = {0: "person", 1: "bicycle", 2: "car", 3: "motorcycle", 5: "bus", 7: "truck", 9: "bird"}
 
@@ -34,7 +34,7 @@ def test_merge_drops_unmapped_and_keeps_one_copy_of_a_same_box_duplicate() -> No
 
 def test_visdrone_table_merges_like_ingest_and_drops_others() -> None:
     """A DET-trained checkpoint's 10 raw categories (+ empty ``others``) merge as ingest does."""
-    from mlops_cv.evaluation.third_party import VISDRONE_TO_MERGED
+    from mlops_cv.tuning.third_party import VISDRONE_TO_MERGED
 
     raw = ["pedestrian", "people", "bicycle", "car", "van", "truck", "tricycle"]
     raw += ["awning-tricycle", "bus", "motor", "others"]

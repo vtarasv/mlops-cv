@@ -1,6 +1,6 @@
 # The sliced stage at the baselines' step count: frames + slices are 3.7x an epoch, so 30 -> 8
 # epochs (9080 vs 9300 batches), and close_mosaic and warmup scale with them (10 -> 3, 3 -> 0.8).
-# Run with `make tune-sliced STAGE=sliced-e8`.
+# Commands: docs/tuning.md § Sliced training.
 defaults: {patience: 0, close_mosaic: 3, warmup_epochs: 0.8, imgsz: 1280, epochs: 8, seed: 0}
 trials:
   - {name: s1280-zoom0.75-1.5, model: yolo26s, batch: 4, scale: [0.75, 1.5]}

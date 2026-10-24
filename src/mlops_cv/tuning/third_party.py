@@ -72,7 +72,7 @@ def _download(repo: str, revision: str, sha256: str, dest: Path) -> Path:
 
 @exits_on_startup_error
 def main() -> int:
-    from mlops_cv.training.tune import TUNE_EXPERIMENT, finished_trial
+    from mlops_cv.tuning.tune import TUNE_EXPERIMENT, finished_trial
 
     os.environ["MLFLOW__EXPERIMENT"] = TUNE_EXPERIMENT  # never production's experiment
     from mlops_cv.config import get_settings
@@ -85,7 +85,10 @@ def main() -> int:
     from mlops_cv.data.convert_visdrone_vid import YOLO_NAMES
     from mlops_cv.data.subset import IMAGES_DIRNAME, dataset_yaml
     from mlops_cv.evaluation.evaluate import latency_stub
-    from mlops_cv.evaluation.zero_shot import (
+    from mlops_cv.orchestration.handoff import best_weights_uri
+    from mlops_cv.tracking import client
+    from mlops_cv.tracking.resolve import resolve_model
+    from mlops_cv.tuning.zero_shot import (
         CONF,
         MAX_DET,
         class_lut,
@@ -93,9 +96,6 @@ def main() -> int:
         readings,
         result_rows,
     )
-    from mlops_cv.orchestration.handoff import best_weights_uri
-    from mlops_cv.tracking import client
-    from mlops_cv.tracking.resolve import resolve_model
 
     mlflow = client.connect(settings)
     data_yaml = dataset_yaml(settings)

@@ -98,7 +98,7 @@ def readings(
 @exits_on_startup_error
 def main() -> int:
     from mlops_cv.training.train import MODELS, TRIAL_SPLIT
-    from mlops_cv.training.tune import TUNE_EXPERIMENT
+    from mlops_cv.tuning.tune import TUNE_EXPERIMENT
 
     os.environ["MLFLOW__EXPERIMENT"] = TUNE_EXPERIMENT  # never production's experiment
     from mlops_cv.config import get_settings

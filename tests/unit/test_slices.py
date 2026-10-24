@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from mlops_cv.data.slices import slice_labels
+from mlops_cv.tuning.slices import slice_labels
 
 
 def test_boxes_are_renormalised_clipped_and_dropped_per_window() -> None:

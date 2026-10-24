@@ -8,7 +8,7 @@ import pytest
 
 from mlops_cv.config import load_settings
 from mlops_cv.training.train import build_parser
-from mlops_cv.training.tune import load_stage, trial_argv
+from mlops_cv.tuning.tune import load_stage, trial_argv
 
 STAGE = """
 defaults: {patience: 0, close_mosaic: 10, imgsz: 640}

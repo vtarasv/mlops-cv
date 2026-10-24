@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from mlops_cv.evaluation.sahi_eval import groups, resolution_group, top_k
+from mlops_cv.tuning.sahi_eval import groups, resolution_group, top_k
 
 
 def test_resolution_groups_split_val_by_source_width() -> None:

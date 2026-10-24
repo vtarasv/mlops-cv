@@ -1,5 +1,5 @@
 # Slicing-aided fine-tuning (SAHI's training half): each size's final winner, trained on its train
-# frames plus their 1280 slices. Run with `make tune-sliced`; score with `make sahi-eval`.
+# frames plus their 1280 slices. Commands: docs/tuning.md § Sliced training.
 defaults: {patience: 0, close_mosaic: 10, imgsz: 1280, epochs: 30, seed: 0}
 trials:
   - {name: s1280-zoom0.75-1.5, model: yolo26s, batch: 4, scale: [0.75, 1.5]}

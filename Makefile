@@ -1,5 +1,5 @@
 .PHONY: setup lint fmt typecheck test test-all ci clean gpu-smoke \
-	train tune tune-sliced sahi-eval test-read zero-shot third-party eval ingest profile optimize edge-gate serve \
+	train tune eval ingest profile optimize edge-gate serve \
 	beam-image train-image optimize-image serve-image stream-image monitor-image \
     mlflow-up mlflow-down mlflow-logs \
 	airflow-up airflow-down airflow-logs airflow-env \
@@ -89,32 +89,10 @@ mlflow-logs:
 train: mlflow-up
 	uv run python -m mlops_cv.training
 
-# Run one tuning-grid stage (configs/tuning/$(STAGE).yaml) -> unregistered trial runs in the tune experiment.
+# Run one tuning stage (configs/tuning/$(STAGE).yaml, e.g. STAGE=yolo26-visdrone-vid/stage2)
+# -> unregistered trial runs in the tune experiment. Other experiment commands: docs/tuning.md.
 tune: mlflow-up
-	uv run python -m mlops_cv.training.tune configs/tuning/$(STAGE).yaml
-
-# Slicing-aided fine-tuning: slice train into 1280 windows, then STAGE (default sliced) on frames + slices.
-tune-sliced: mlflow-up
-	uv run python -m mlops_cv.data.slices --imgsz 1280
-	DATA__DATASET_YAML=configs/datasets/VisDrone-VID-merged-sliced1280.yaml \
-		uv run python -m mlops_cv.training.tune configs/tuning/$(or $(STAGE),sliced).yaml
-
-# Evaluation-only arms (SAHI sliced inference, end2end=False head) on tuning trials' best.pt -> one run per arm, never selecting.
-# Pass TRIALS="<trial run name> ...".
-sahi-eval: mlflow-up
-	uv run python -m mlops_cv.evaluation.sahi_eval $(TRIALS)
-
-# Score tuning trials' best.pt on test (end2end head; TRIALS="--o2m ..." for end2end=False) -> tune experiment.
-test-read: mlflow-up
-	uv run python -m mlops_cv.evaluation.test_read $(TRIALS)
-
-# COCO-pretrained yolo26n/s/m x imgsz 640/1280 on val, zero-shot -> one run each in the tune experiment.
-zero-shot: mlflow-up
-	uv run python -m mlops_cv.evaluation.zero_shot
-
-# dronefreak's DET-trained YOLO26 s/m @1280 + stage2-s1280/m1280 on test, both heads, remapped -> tune experiment.
-third-party: mlflow-up
-	uv run python -m mlops_cv.evaluation.third_party
+	uv run python -m mlops_cv.tuning.tune configs/tuning/$(STAGE).yaml
 
 # Evaluate an MLflow model -> test metrics + report + gate + demo videos + TP/FP crops in MLflow.
 # Pass MODEL=<models:/aerial-object-detector@champion | runs:/<run_id>/weights/best.pt>.

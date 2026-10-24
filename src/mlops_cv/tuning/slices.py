@@ -2,7 +2,8 @@
 
 The windows are the ones ``sahi_eval``'s sliced inference uses (imgsz squares, overlap 0.2).
 Slices land in ``images/train-sliced<imgsz>`` (labels alongside); the full frames stay in
-``images/train`` and train with them (``configs/datasets/VisDrone-VID-merged-sliced1280.yaml``).
+``images/train`` and train with them
+(``configs/tuning/yolo26-visdrone-vid/datasets/VisDrone-VID-merged-sliced1280.yaml``).
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ import shutil
 import numpy as np
 
 from mlops_cv.data.subset import IMAGES_DIRNAME, image_relpath, label_relpath
-from mlops_cv.evaluation.sahi_eval import OVERLAP
+from mlops_cv.tuning.sahi_eval import OVERLAP
 
 logger = logging.getLogger(__name__)
 

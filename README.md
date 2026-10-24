@@ -198,7 +198,7 @@ src/mlops_cv/
   pipelines/      Beam pipelines: ingest and profile
   training/       YOLO26s training + MLflow logging
   evaluation/     metrics, gate, report, demo videos, error crops
-  tuning/         tuning experiments (trials, baselines, SAHI); never used in production
+  tuning/         tuning experiments (trials, baselines, SAHI)
   optimize/       serving variants (ONNX, TensorRT, NCNN) + benchmarks
   serving/        FastAPI detection service + pre/post-processing
   streaming/      Kafka producer and consumers, message schemas

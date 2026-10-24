@@ -23,7 +23,7 @@ from typing import Any
 import numpy as np
 
 from mlops_cv.startup import exits_on_startup_error
-from mlops_cv.tuning.zero_shot import CONF, MAX_DET
+from mlops_cv.tuning.zero_shot import CONF, MAX_DET, readings
 
 logger = logging.getLogger(__name__)
 
@@ -58,24 +58,11 @@ def _scored(
     frame_groups: Mapping[str, Collection[str]],
 ) -> dict[str, float]:
     """Headline, per-class and mAP50-95_small under ``prefix``; headline per resolution group."""
-    from mlops_cv.evaluation.score_detections import score, score_with_ap_small
-    from mlops_cv.tracking.metric_keys import (
-        MAP_SMALL,
-        PRIMARY,
-        headline_metrics,
-        metric_key,
-        per_class_metrics,
-    )
+    from mlops_cv.evaluation.score_detections import score
+    from mlops_cv.tracking.metric_keys import headline_metrics, metric_key
     from mlops_cv.training.train import TRIAL_SPLIT
 
-    metrics, ap_s = score_with_ap_small(detections, data_yaml, TRIAL_SPLIT)
-    out = (
-        headline_metrics(metrics.box, prefix=prefix)
-        | {metric_key(prefix, MAP_SMALL): ap_s}
-        | per_class_metrics(
-            metrics.maps, metrics.ap_class_index, metrics.names, prefix=metric_key(prefix, PRIMARY)
-        )
-    )
+    out = readings(detections, data_yaml, TRIAL_SPLIT, prefix)
     for group, frames in frame_groups.items():
         box = score(detections, data_yaml, TRIAL_SPLIT, frames=frames).box
         out |= headline_metrics(box, prefix=metric_key(prefix, group))

@@ -56,6 +56,17 @@ local_conf_header:
     BB_GIT_SHALLOW:pn-linux-raspberrypi = "1"
     # sshd.service, not the per-connection sshd.socket default
     PACKAGECONFIG:pn-openssh = "systemd-sshd-service-mode hostkey-ecdsa"
+    # Camera: rpicam-vid's libav encoder needs ffmpeg with x264
+    LICENSE_FLAGS_ACCEPTED += "commercial_ffmpeg commercial_x264"
+    PACKAGECONFIG:append:pn-ffmpeg = " gpl x264"
+    # x264's CLI reads input through ffmpeg: a dependency loop once ffmpeg links libx264
+    PACKAGECONFIG:remove:pn-x264 = "ffmpeg"
+    # meta-raspberrypi's rpidistro-ffmpeg also provides libav
+    PREFERRED_PROVIDER_libav = "ffmpeg"
+    # OpenCV only reads images; commercial_ffmpeg would otherwise turn on its libav
+    PACKAGECONFIG:remove:pn-opencv = "libav"
+    # IMX219 on CAM0 (RASPBERRYPI_CAMERA_V2 writes the CAM1 overlay)
+    RPI_EXTRA_CONFIG = "dtoverlay=imx219,cam0"
     # Sized for a 30 GB RAM host (Yocto asks for 32 GB)
     BB_NUMBER_THREADS = "12"
     PARALLEL_MAKE = "-j 12"

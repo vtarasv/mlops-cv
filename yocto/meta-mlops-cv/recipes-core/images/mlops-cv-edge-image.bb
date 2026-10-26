@@ -12,6 +12,14 @@ IMAGE_INSTALL += " \
     linux-firmware-rpidistro-bcm43455 linux-firmware-rpidistro-bcm43456 \
     bluez-firmware-rpidistro-bcm4345c0-hcd bluez-firmware-rpidistro-bcm4345c5-hcd \
     kernel-module-brcmfmac kernel-module-brcmfmac-wcc \
+    kernel-module-pwm-fan \
+"
+
+# Camera: IMX219 on CAM0 through the downstream rp1-cfe driver and the PiSP back end.
+IMAGE_INSTALL += " \
+    libcamera libcamera-apps \
+    kernel-module-rp1-cfe-downstream kernel-module-pisp-be \
+    kernel-module-imx219 kernel-module-i2c-designware-platform \
 "
 
 # Set in kas/local.yml (see kas/local.yml.example).

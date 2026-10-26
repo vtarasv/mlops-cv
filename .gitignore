@@ -9,6 +9,7 @@
 *.tfstate
 *.tfstate.*
 *.tfvars
+yocto/kas/local.yml
 
 # Local-only agent workspace: specs, tickets, agent-skill config
 .scratch/

@@ -68,8 +68,7 @@ on the served tag alone. Bench and gate run out-of-band, adding readings to the 
 ## Raspberry Pi 5 setup
 
 The Pi installs the `edge` dependency group, exported from the lock, into a plain-pip venv (the
-lock is platform-specific, and Raspberry Pi OS ships a newer Python than the project's pin). The
-camera library only exists as an apt package, so the venv sees system site-packages.
+lock is platform-specific, and Raspberry Pi OS ships a newer Python than the project's pin).
 
 From the desktop, once — a key, an ssh alias, and agent forwarding so the Pi can clone from
 GitHub with the desktop's key:
@@ -92,11 +91,11 @@ On the Pi:
 
 ```bash
 ssh -T git@github.com && git clone git@github.com:<owner>/mlops-cv.git
-sudo apt install -y python3-picamera2
-python3 -m venv --system-site-packages ~/.venvs/mlops-cv && source ~/.venvs/mlops-cv/bin/activate
+sudo apt install -y rpicam-apps      # the camera; ships on full Pi OS, rpicam-apps-lite on Lite
+python3 -m venv ~/.venvs/mlops-cv && source ~/.venvs/mlops-cv/bin/activate
 pip install --no-cache-dir -r ~/requirements-edge.txt
 pip install --no-cache-dir --no-deps --ignore-requires-python -e ~/mlops-cv
-python -c "import ncnn, cv2, picamera2; print(cv2.__version__)"   # the lock's version
+python -c "import ncnn, cv2; print(cv2.__version__)"   # the lock's version
 ```
 
 `--ignore-requires-python` steps over the project's Python pin; the device imports only plain-Python
@@ -126,6 +125,7 @@ allows LAN hosts in `MLFLOW_SERVER_ALLOWED_HOSTS` (without that, 403 "Invalid Ho
 `python -m mlops_cv.edge.live_view` runs the camera through one NCNN variant and draws the
 boxes, always on the newest frame, with stats (frames/s, inference ms, frame age, counts per
 class).
+Frames come from an `rpicam-vid` child piping raw I420, so `--size` widths are multiples of 64.
 
 ```bash
 python -m mlops_cv.edge.live_view                       # web: http://<pi-host>:8090/

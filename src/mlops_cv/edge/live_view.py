@@ -6,6 +6,7 @@ import argparse
 import json
 import logging
 import os
+import subprocess
 import threading
 import time
 import traceback
@@ -216,21 +217,42 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(404)
 
 
-def open_camera(size: str) -> Any:
-    """The started camera at ``size`` (WxH), BGR frames; StartupError when none is attached."""
-    from picamera2 import Picamera2  # pyright: ignore[reportMissingImports]  # apt-only, on the Pi
+class PipeCamera:
+    """BGR frames off the raw I420 stdout of an ``rpicam-vid`` child."""
 
-    if not Picamera2.global_camera_info():
+    def __init__(self, width: int, height: int) -> None:
+        self.width, self.height = width, height
+        cmd = ["rpicam-vid", "-t", "0", "-n", "--codec", "yuv420"]
+        cmd += ["--width", str(width), "--height", str(height), "-o", "-"]
+        self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+
+    def capture_array(self) -> np.ndarray:
+        n = self.width * self.height * 3 // 2
+        buf = self.proc.stdout.read(n)  # pyright: ignore[reportOptionalMemberAccess]
+        if len(buf) < n:
+            raise EOFError(f"rpicam-vid stopped (exit {self.proc.poll()})")
+        yuv = np.frombuffer(buf, np.uint8).reshape(self.height * 3 // 2, self.width)
+        return cv2.cvtColor(yuv, cv2.COLOR_YUV2BGR_I420)
+
+    def stop(self) -> None:
+        self.proc.terminate()
+        self.proc.wait()
+        self.proc.stdout.close()  # pyright: ignore[reportOptionalMemberAccess]
+
+
+def open_camera(size: str) -> PipeCamera:
+    """The started camera at ``size`` (WxH); StartupError when none is attached."""
+    width, height = (int(v) for v in size.split("x"))
+    if width % 64:  # rpicam-vid pads the I420 stride otherwise
+        raise StartupError(f"--size width {width} isn't a multiple of 64 — try 640, 1280 or 1920")
+    cam = PipeCamera(width, height)
+    try:
+        cam.capture_array()  # rpicam-vid exits before its first frame when no camera is attached
+    except EOFError:
+        cam.stop()
         raise StartupError(
             "no camera found — check the ribbon cable with `rpicam-hello --list-cameras`"
-        )
-    width, height = (int(v) for v in size.split("x"))
-    cam = Picamera2()
-    # RGB888 lands in memory as BGR, what OpenCV draws and encodes.
-    cam.configure(
-        cam.create_preview_configuration(main={"size": (width, height), "format": "RGB888"})
-    )
-    cam.start()
+        ) from None
     return cam
 
 

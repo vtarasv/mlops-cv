@@ -40,8 +40,8 @@ make promote RUN_ID=<run_id>
 ```
 
 `--target server|edge` (default `server`) picks whose champion the challenger is gated against:
-each deployment target has its own registered model, champion and gate. `--head one-to-one|
-one-to-many` (default `one-to-many`) is the detection head scored, the one optimization exports;
+each deployment target has its own registered model, champion and gate.
+`--head one-to-one|one-to-many` (default `one-to-many`) is the detection head scored, the one optimization exports;
 the edge always scores one-to-many (NCNN has no end2end export). The run is tagged `eval.head`.
 The split is scored at the model's training imgsz, read off its training run (`--imgsz`
 overrides). The champion's reading was taken at its own imgsz, so a 640 challenger can be gated

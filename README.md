@@ -77,8 +77,8 @@ Details: [docs/training.md](docs/training.md), [docs/evaluation.md](docs/evaluat
 
 ### 3. Continuous training: Airflow runs the loop
 
-An Airflow DAG per deployment target runs when a *new training data* event arrives (the weekly cron is off for now). Each heavy step runs in
-its own Docker container with GPU access:
+An Airflow DAG per deployment target runs when a *new training data* event arrives (or weekly cron; off for now).
+Each heavy step runs in its own Docker container with GPU access:
 
 ```mermaid
 flowchart LR

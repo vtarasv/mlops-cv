@@ -50,7 +50,7 @@ them from the UI, or from the CLI with params:
 ```bash
 docker exec airflow-scheduler airflow dags unpause aerial_object_detection_ct_edge
 docker exec airflow-scheduler airflow dags trigger aerial_object_detection_ct_edge \
-  --conf '{"epochs": 3}'   # demo-short; omitted params take the DAG's defaults
+  --conf '{"epochs": 3}'   # omitted params take the DAG's defaults
 ```
 
 ## Topology
@@ -148,14 +148,10 @@ the target is a DAG and not a param.
 `head` reaches only evaluate (the head it scores) and optimize (the head it exports). The edge's
 NCNN always runs one-to-many, and the run's `eval.head` tag records that. Evaluate and optimize
 read imgsz from the training run. Seed, optimizer, augmentation and `nbs` stay fixed in code.
-`batch` defaults to autobatch because the pinned batches in [tuning.md](tuning.md) § Batch size
-per setup were measured on one 8 GB GPU. Pin it when a run OOMs. A demo-short run
-is a manual trigger with `epochs=3`.
 
 `train`, `evaluate` and `optimize` of both DAGs share the 1-slot `gpu` pool, which
-`airflow-init` creates. Two trainings at once spill label assignment onto the CPU and run about
-10× slower ([tuning.md](tuning.md) § 3). `train` times out after 3 h (m@1280 × 30 epochs
-took about 1 GPU-hour), the other GPU tasks after 2 h, the CPU tasks after 1 h.
+`airflow-init` creates. Two local trainings at once spill label assignment onto the CPU and run about
+much slower.
 
 The edge DAG never talks to the Pi. It publishes the NCNN ladder, and promotion needs only the
 served NCNN variant. The on-device check (`edge.bench`, `make edge-gate`) stays out-of-band.

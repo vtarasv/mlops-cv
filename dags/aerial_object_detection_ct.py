@@ -217,7 +217,6 @@ def ct_dag(target: str) -> None:
                 epochs="{{ params.epochs }}",
                 batch="{{ params.batch }}",
             ),
-            # m@1280 x 30 epochs on the subset took ~1 GPU-hour.
             **{**_GPU_DOCKER_COMMON, "execution_timeout": timedelta(hours=3)},
         )
 

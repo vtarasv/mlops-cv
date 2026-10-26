@@ -86,9 +86,8 @@ flowchart LR
 
 Each deployment target has its own registered model, `aerial-object-detector-<target>`
 (`MLFLOW__REGISTERED_MODEL_PREFIX`), with its own champion alias and gate: the server's
-services and the drift monitor resolve `-server`, the edge tools `-edge`. The old
-`aerial-object-detector` stays in the registry as history. The training run's `imgsz` param is
-the size the champion is served at (`champion.training_imgsz`).
+services and the drift monitor resolve `-server`, the edge tools `-edge`.
+The training run's `imgsz` param is the size the champion is served at (`champion.training_imgsz`).
 
 ## Persistence & teardown
 

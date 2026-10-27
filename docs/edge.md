@@ -76,8 +76,16 @@ The bench times each variant and dumps its test-split detections onto the versio
 record run. The gate scores those dumps with ultralytics' validator and compares them with the
 desktop's NCNN mAP50-95. It passes, and sets `optimize.measured.pi5` on the run, when every |Δ| is
 within 0.5 pt (`OPTIMIZE__DEVICE_TOLERANCE_PT`); otherwise it exits 1. The run gets an
-`edge/pi5.md` report. A second device keeps its readings apart with `--device-label` on the bench
-and `DEVICE_LABEL=` on the gate.
+`edge/pi5.md` report.
+
+**Another device:** run the bench with `--device-label <label>` and the gate with
+`DEVICE_LABEL=<label>`. The bench decides the label (default `pi5`) and the gate can't relabel, so a
+bench run without it overwrites the Pi 5's readings: re-run it with the label, then bench and gate
+the Pi 5 again.
+
+**Running again** replaces the readings: the bench clears the pass tag and overwrites the dumps,
+and the gate rescores every published variant. After a reflash or a package change, re-bench every
+variant (no `--variants`) before gating.
 
 Last results on the edge image: the gate passed at 1280 (Δ −0.06 pt fp32, −0.09 pt fp16), with
 `ncnn-fp16-1280` at p50 351 ms; `ncnn-fp16-640` runs at 195 ms against Raspberry Pi OS's 186 ms.

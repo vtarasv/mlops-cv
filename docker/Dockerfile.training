@@ -2,6 +2,14 @@
 #   train    — train/eval for the CT DAG's DockerOperator tasks (training group)
 #   optimize — graph export, ahead-of-time compilation, benchmarking (training + optimize groups)
 
+# The deps layers key on their groups' export, not on the raw pyproject.toml/uv.lock: an edit
+# that leaves a group's resolved set alone (tool config, another group) keeps its layer cached.
+FROM ghcr.io/astral-sh/uv:0.11.26 AS lock
+WORKDIR /lock
+COPY pyproject.toml uv.lock ./
+RUN ["/uv", "export", "--frozen", "--no-default-groups", "--group", "training", "--no-emit-project", "--format", "pylock.toml", "-o", "pylock.training.toml"]
+RUN ["/uv", "export", "--frozen", "--no-default-groups", "--group", "training", "--group", "optimize", "--no-emit-project", "--format", "pylock.toml", "-o", "pylock.optimize.toml"]
+
 FROM ubuntu:noble-20260930.1 AS training-base
 
 COPY --from=ghcr.io/astral-sh/uv:0.11.26 /uv /uvx /bin/
@@ -27,14 +35,15 @@ WORKDIR /app
 # ultralytics' runs dir is cwd-relative, and the cwd stays /app for the relative configs/ paths
 RUN mkdir -m 1777 /app/runs
 
-COPY .python-version pyproject.toml uv.lock ./
+COPY .python-version ./
+COPY --from=lock /lock/pylock.training.toml ./
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-default-groups --group training --no-install-project
+    uv venv && uv pip sync pylock.training.toml
 
 
 FROM training-base AS train
 
-COPY README.md ./
+COPY pyproject.toml uv.lock README.md ./
 COPY src/ src/
 COPY configs/ configs/
 RUN --mount=type=cache,target=/root/.cache/uv \
@@ -46,10 +55,11 @@ ENV PATH="/app/.venv/bin:$PATH"
 FROM training-base AS optimize
 
 # The export toolchain on top of the shared gpu venv.
+COPY --from=lock /lock/pylock.optimize.toml ./
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-default-groups --group training --group optimize --no-install-project
+    uv pip sync pylock.optimize.toml
 
-COPY README.md ./
+COPY pyproject.toml uv.lock README.md ./
 COPY src/ src/
 COPY configs/ configs/
 RUN --mount=type=cache,target=/root/.cache/uv \

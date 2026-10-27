@@ -10,8 +10,8 @@ Two tools run on the Pi, neither with torch or ultralytics:
 Both act on `aerial-object-detector-edge`, the edge target's registered model, and pull its NCNN
 variants (published by [optimization](optimization.md)) from the desktop's MLflow.
 
-`<pi>` below is the Pi's ssh target: `root@raspberrypi5.local` on the edge image, your user and
-host on Raspberry Pi OS.
+`<pi>` below is the Pi's ssh target: `root@raspberrypi5.local` on the edge image (this repo's
+Yocto build), your user and host on the stock Raspberry Pi OS.
 
 ## Set up the Pi
 

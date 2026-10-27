@@ -1,13 +1,14 @@
 # Edge device: Raspberry Pi 5
 
-Two tools run on the Pi, neither with torch or ultralytics:
+What the Pi is for, none of it with torch or ultralytics:
 
 | To | Run |
 |---|---|
 | measure a model on the Pi and gate it | `edge.bench` on the Pi, then `make edge-gate` on the desktop |
 | watch the model on the camera | `edge.live_view` on the Pi, then open `http://<pi-host>:8090/` |
+| stream the camera into the desktop's streaming pipeline | `rpicam-vid` on the Pi, the producer on the desktop: [streaming.md](streaming.md#example-streaming-from-an-edge-devices-camera-raspberry-pi-5) |
 
-Both act on `aerial-object-detector-edge`, the edge target's registered model, and pull its NCNN
+The two edge tools act on `aerial-object-detector-edge`, the edge target's registered model, and pull its NCNN
 variants (published by [optimization](optimization.md)) from the desktop's MLflow.
 
 `<pi>` below is the Pi's ssh target: `root@raspberrypi5.local` on the edge image (this repo's

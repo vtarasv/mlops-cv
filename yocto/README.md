@@ -2,8 +2,10 @@
 
 A headless Yocto 6.0 "wrynose" image for the Raspberry Pi 5, reachable as `root@raspberrypi5.local`
 by ssh key over Ethernet and Wi-Fi. It carries the camera stack (`rpicam-vid`) and the Python
-runtime `mlops_cv.edge` needs; the code itself is rsynced (see
-[docs/edge.md](../docs/edge.md#set-up-the-pi)). `kas/pi5.yml` pins the layers,
+runtime `mlops_cv.edge` needs, so it can run the edge tools
+([docs/edge.md](../docs/edge.md#set-up-the-pi)) or stream its camera to the desktop's streaming
+pipeline ([docs/streaming.md](../docs/streaming.md#example-streaming-from-an-edge-devices-camera-raspberry-pi-5));
+the code itself is rsynced. `kas/pi5.yml` pins the layers,
 `meta-mlops-cv/` holds the image and Python recipes.
 
 ## Prerequisites

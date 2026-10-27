@@ -183,8 +183,8 @@ uv run python -m mlops_cv.streaming.producer --shift brightness --loops 2 --fps 
 `--link` decodes a live drone or UGV video link (PyAV, host only) into the same Frame
 messages, so nothing downstream changes. It sets its own pace, so it refuses the demo-store
 flags; `--shift` still applies. Run one producer per link, each with its own `--link-name`.
-Like any producer it needs the broker up (`make streaming-up`) and, to see detections, the
-consumers from the [Quick start](#quick-start) running first.
+Like any producer it needs the broker and the consumers up first: `make serving-up`, or the
+[Quick start](#quick-start)'s Option A.
 
 | The receiver sends to the producer host as | `--link` |
 |---|---|
@@ -233,7 +233,7 @@ demo-store clip (default: `<DATA__SUBSET_DIR>/demo/images/uav0000073_00600_v`, b
 # On the Pi (set --intra: its default of 60 is a 2 s GOP, so each loss drops up to 2 s):
 rpicam-vid -t 0 -n --width 1920 --height 1080 --framerate 30 --bitrate 8000000 --intra 5 \
   --low-latency --inline --codec libav --libav-format mpegts -o "udp://<host>:5600?pkt_size=1316"
-# On the producer host (<host> above), after make streaming-up and the Quick start's consumers:
+# On the producer host (<host> above), after make serving-up (broker + consumers):
 uv run python -m mlops_cv.streaming.producer --link udp://0.0.0.0:5600 --link-name pi5cam
 ```
 

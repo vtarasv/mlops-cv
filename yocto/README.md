@@ -19,7 +19,9 @@ runtime `mlops_cv.edge` needs; the code itself is rsynced (see
 cp kas/local.yml.example kas/local.yml   # gitignored
 ```
 
-Fill in the Wi-Fi SSID/PSK/country and the root ssh public key (generate one).
+Fill in the Wi-Fi SSID/PSK/country and the root ssh public key (generate one). The firmware
+detects an official camera module; for one it misses (a clone, a third-party board), uncomment
+the `RPI_EXTRA_CONFIG` line with its sensor's overlay.
 
 ## Build
 

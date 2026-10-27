@@ -239,7 +239,7 @@ uv run python -m mlops_cv.streaming.producer --link udp://0.0.0.0:5600 --link-na
 |---|---|
 | Raspberry Pi OS | `apt install rpicam-apps` |
 | Buildroot | Raspberry Pi's libcamera fork (`raspberrypi/libcamera`, `rpi/pisp` pipeline) plus libpisp; `rpicam-apps` with `ffmpeg` (GPL), `x264` and `libdrm`. `camera_auto_detect=1`, or `dtoverlay=<sensor>,cam0` for a board it misses. No udev: `modprobe -a i2c-designware-platform rp1-cfe pisp_be <sensor>` |
-| Yocto (meta-raspberrypi) | `RPI_EXTRA_CONFIG = "dtoverlay=<sensor>,cam0"`; Raspberry Pi's libcamera fork (the layer builds upstream libcamera, which doesn't drive the Pi kernel's camera) plus libpisp; `rpicam-apps` with libav (`ffmpeg` with `gpl x264`); the camera-module packages `kernel-module-{rp1-cfe-downstream,pisp-be,i2c-designware-platform,<sensor>}`. The edge image in [`yocto/`](../yocto/README.md) builds this for an IMX219. |
+| Yocto (meta-raspberrypi) | `RPI_EXTRA_CONFIG = "dtoverlay=<sensor>,cam0"`; Raspberry Pi's libcamera fork (the layer builds upstream libcamera, which doesn't drive the Pi kernel's camera) plus libpisp; `rpicam-apps` with libav (`ffmpeg` with `gpl x264`); the camera-module packages `kernel-module-{rp1-cfe-downstream,pisp-be,i2c-designware-platform,<sensor>}`. The edge image in [`yocto/`](../yocto/README.md) builds this with `camera_auto_detect=1` and the official modules' sensors; a board auto-detect misses sets its overlay in `kas/local.yml`. |
 
 Measured on a Pi 5 (IMX219, 1080p30, 4 Mbit/s) under bursty ~2% packet loss (netem `gemodel`):
 1.4% of frames dropped as damaged at `--intra 5`, 8.9% at `--intra 30`.

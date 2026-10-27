@@ -15,11 +15,13 @@ IMAGE_INSTALL += " \
     kernel-module-pwm-fan \
 "
 
-# Camera: IMX219 on CAM0 through the downstream rp1-cfe driver and the PiSP back end.
+# Camera: the downstream rp1-cfe driver, the PiSP back end and the official modules' sensors
+# (dw9807-vcm: Camera Module 3's focus); udev loads only the one an overlay declares.
 IMAGE_INSTALL += " \
     libcamera libcamera-apps \
-    kernel-module-rp1-cfe-downstream kernel-module-pisp-be \
-    kernel-module-imx219 kernel-module-i2c-designware-platform \
+    kernel-module-rp1-cfe-downstream kernel-module-pisp-be kernel-module-i2c-designware-platform \
+    kernel-module-imx219 kernel-module-imx477 kernel-module-imx708 kernel-module-dw9807-vcm \
+    kernel-module-imx296 kernel-module-ov5647 \
 "
 
 # Python runtime for mlops_cv.edge (rsynced, run with PYTHONPATH): no pip on the device.

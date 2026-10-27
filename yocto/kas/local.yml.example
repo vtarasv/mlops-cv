@@ -9,3 +9,5 @@ local_conf_header:
     MLOPS_CV_WIFI_PSK = "CHANGEME"
     MLOPS_CV_WIFI_COUNTRY = "CHANGEME"  # ISO 3166 code, e.g. UA: unlocks 5 GHz channels
     MLOPS_CV_ROOT_PUBKEY = "ssh-ed25519 AAAA... you@desktop"
+    # A camera camera_auto_detect misses (a clone, a third-party board): its overlay and port
+    # RPI_EXTRA_CONFIG = "camera_auto_detect=0\ndtoverlay=imx219,cam0"

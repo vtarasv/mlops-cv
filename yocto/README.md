@@ -37,7 +37,13 @@ The image lands in `$KAS_WORK_DIR/build/tmp/deploy/images/raspberrypi5/`. A chan
 
 ## Flash
 
+Find the card with `lsblk -d -o NAME,SIZE,TRAN,RM,MODEL`: it is the new removable (`RM 1`)
+entry of the card's size, `sdX` behind a USB reader or `mmcblk0` in a built-in slot. Write to
+the whole disk, not a partition, and unmount any automounted partitions first.
+`bmaptool` is in Fedora's `bmap-tools` package.
+
 ```bash
+sudo umount /dev/sdX?*
 cd $KAS_WORK_DIR/build/tmp/deploy/images/raspberrypi5
 sudo bmaptool copy mlops-cv-edge-image-raspberrypi5.rootfs.wic.bz2 /dev/sdX
 # or: bzcat mlops-cv-edge-image-raspberrypi5.rootfs.wic.bz2 | sudo dd of=/dev/sdX bs=4M conv=fsync status=progress

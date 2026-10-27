@@ -26,10 +26,11 @@ flowchart LR
 
 ## Runtime
 
-`edge/runtime.py` runs an NCNN variant with `ncnn` + numpy + OpenCV: `serving.prepost` for pre-
-and post-processing, plus a numpy port of ultralytics' NMS (NCNN export drops YOLO26's NMS-free
+`edge/runtime.py` runs an NCNN variant with `ncnn` + numpy + OpenCV + PyYAML: `serving.prepost`
+for pre- and post-processing, plus a numpy port of ultralytics' NMS (NCNN export drops YOLO26's NMS-free
 head, so the graph's output still needs it). It matches `YOLO(dir).predict` exactly, pinned by
-a golden fixture.
+a golden fixture. Every edge tool (bench, live view) also needs pydantic-settings for the
+**Settings**, and the MLflow pull needs mlflow-skinny.
 
 Byte-exact preprocessing needs the lock's OpenCV.
 `pip install ncnn` pulls an unpinned `opencv-python`, so the device installs the lock's pins (see
@@ -67,8 +68,9 @@ on the served tag alone. Bench and gate run out-of-band, adding readings to the 
 
 ## Raspberry Pi 5 setup
 
-The Pi installs the `edge` dependency group, exported from the lock, into a plain-pip venv (the
-lock is platform-specific, and Raspberry Pi OS ships a newer Python than the project's pin).
+On Raspberry Pi OS, the Pi installs the `edge` dependency group, exported from the lock, into a
+plain-pip venv (the lock is platform-specific, and Raspberry Pi OS ships a newer Python than the
+project's pin). The [edge image](#edge-image-yocto) skips the venv and the clone.
 
 From the desktop, once — a key, an ssh alias, and agent forwarding so the Pi can clone from
 GitHub with the desktop's key:
@@ -138,19 +140,23 @@ Without `--model` it pulls from MLflow, so it needs the `MLFLOW__TRACKING_URI` e
 Other flags: `--model-version`, `--variant`, `--size 1280x720`, `--conf 0.3`, `--port 8090`.
 `DISPLAY=:0` targets the desktop session logged in on the Pi.
 
-## Custom image (Yocto / Buildroot): notes
+## Edge image (Yocto)
 
-Not a built image. Without torch, every runtime piece has a recipe except one:
+The **edge image** is a headless Yocto image for the Pi 5 that carries the runtime
+instead of a venv: Python 3.14 with `ncnn`, numpy, OpenCV, PyYAML, pydantic-settings and
+mlflow-skinny, plus the camera stack (`rpicam-vid`). It has no pip, torch or git. The rootfs is
+416,292 KiB (about 407 MiB, 327 packages). Building and flashing: [yocto/README.md](../yocto/README.md).
 
-- **Exist:** `python3` and `python3-numpy` (openembedded-core), `opencv` with Python bindings
-  (meta-oe), `python3-pybind11` (meta-python), the `raspberrypi5` machine (meta-raspberrypi).
-- **Missing:** a recipe for ncnn, in every layer checked. ncnn ships prebuilt aarch64 wheels for
-  glibc and musl (cp38–cp314), so a small recipe can install the wheel (`--no-deps`). A
-  from-source CMake recipe is only needed for different build flags. mlflow-skinny and
-  pydantic-settings have no recipes either, but only the bench and model pull need them.
-- **Buildroot:** the same picture. `raspberrypi5_defconfig` uses a glibc toolchain and there are
-  packages for `opencv4` (Python bindings), `python-numpy` and `python-pybind`, but none for ncnn:
-  package the prebuilt wheel the same way. Versions come from Buildroot's packages, not the lock
-  export.
-- **Before it serves:** the image's numpy and OpenCV differ from the lock, so it must pass the
-  prepost and NCNN decode golden tests, then the edge gate.
+The device workflow replaces the venv steps above: rsync the code, run it with
+`PYTHONPATH`. The test-split copy and the session exports are as in the setup.
+
+```bash
+rsync -a --delete src root@raspberrypi5.local:/root/mlops-cv/   # desktop, after every change
+export PYTHONPATH=/root/mlops-cv/src                              # on the Pi
+python3 -m mlops_cv.edge.bench --device-label pi5
+```
+
+**Before it serves:** the image's numpy and OpenCV come from Yocto's recipes, not the lock, so
+`make edge-gate` is the bar. If the gate fails, the prepost and NCNN decode golden tests
+(`tests/unit/test_serving_prepost.py`, `tests/unit/test_edge_runtime.py`, run on the Pi) show
+where the numerics drift. The image is built; these on-device checks haven't run yet.

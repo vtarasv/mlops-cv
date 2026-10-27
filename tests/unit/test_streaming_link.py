@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import io
 import itertools
+import os
 import re
+import signal
 import socket
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -14,6 +17,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
+from mlops_cv.streaming import link
 from mlops_cv.streaming.link import link_frames, next_dropping
 
 FRAMES = 15
@@ -64,6 +68,18 @@ def test_a_frame_the_decoder_refuses_is_a_dropped_frame_not_a_lost_link(tmp_path
     assert [frame.frame_index for frame in got] == [0, 1, 2, 3, 4]
     assert len({frame.sequence for frame in got}) == 1
     assert [frame.jpeg is None for frame in got] == [False, False, False, False, True]
+
+
+def test_ctrl_c_while_waiting_on_the_link_stops_instead_of_reopening(monkeypatch) -> None:
+    """PyAV's err_check drops a KeyboardInterrupt its open/demux wait was hit by."""
+    monkeypatch.setattr(link, "OPEN_TIMEOUT_S", 1.0)
+    monkeypatch.setattr(link.time, "sleep", lambda s: pytest.fail("reopened after Ctrl-C"))
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        s.bind(("127.0.0.1", 0))  # a port nothing sends to
+        port = s.getsockname()[1]
+    threading.Timer(0.3, os.kill, (os.getpid(), signal.SIGINT)).start()
+    with pytest.raises(KeyboardInterrupt):
+        next(link_frames(f"udp://127.0.0.1:{port}", name="uav1"))
 
 
 def _replay(frames: list[tuple[bool, int, bool]]) -> list[bool]:

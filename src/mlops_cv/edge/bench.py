@@ -93,7 +93,7 @@ def main(argv: list[str] | None = None) -> int:
     if not frames:
         raise StartupError(
             f"no {SPLIT} frames in {images_dir} (DATA__SUBSET_DIR) — rsync the split from the "
-            "desktop, see 'Raspberry Pi 5 setup' in docs/edge.md"
+            "desktop, see 'Set up the Pi' in docs/edge.md"
         )
 
     mlflow = client.connect(settings, experiment=False)

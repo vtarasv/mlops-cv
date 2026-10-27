@@ -242,6 +242,15 @@ A platform a serving variant is built for: the GPU **server**, or the Raspberry 
 device.
 _Avoid_: backend, host
 
+**Device label**:
+The name an edge device's readings are logged under, such as `pi5`. It names the hardware, not
+the OS image it runs, so a reflashed device keeps its label.
+_Avoid_: device name, hostname
+
+**Edge image**:
+The OS image the edge device boots, built for it rather than installed onto a stock OS.
+_Avoid_: firmware, distro, rootfs
+
 **Published graph**:
 A model version's portable ONNX graph as published by optimization. Both the detection service
 and the inference consumer serve the champion's.

@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import io
 import logging
+import signal
+import threading
 import time
 from collections.abc import Iterator
 from datetime import UTC, datetime
+from types import FrameType
 from typing import TYPE_CHECKING, NamedTuple
 
 from mlops_cv.streaming.shift import JPEG_QUALITY
@@ -53,14 +56,32 @@ def link_frames(
         options.setdefault("protocol_whitelist", "file,udp,rtp")
         # RTP reads its socket inline, so the kernel's default buffer overflows after the probe.
         options.setdefault("buffer_size", str(RTP_BUFFER_BYTES))
-    while True:
-        try:
-            yield from _session(url, name, fmt, options, timeout)
-            reason = "stream ended"
-        except FFmpegError as exc:
-            reason = str(exc)
-        logger.warning(f"link lost ({reason}); reopening in {REOPEN_WAIT_S:g} s")
-        time.sleep(REOPEN_WAIT_S)
+    # A Ctrl-C during an open/demux wait lands only when the deadline fires, inside PyAV's
+    # err_check, which drops it (exceptval check=False) and raises ExitError: note it ourselves.
+    interrupted = threading.Event()
+    previous = signal.getsignal(signal.SIGINT)
+    hooked = callable(previous) and threading.current_thread() is threading.main_thread()
+    if hooked:
+
+        def on_sigint(signum: int, frame: FrameType | None) -> None:
+            interrupted.set()
+            previous(signum, frame)
+
+        signal.signal(signal.SIGINT, on_sigint)
+    try:
+        while True:
+            try:
+                yield from _session(url, name, fmt, options, timeout)
+                reason = "stream ended"
+            except FFmpegError as exc:
+                if interrupted.is_set():
+                    raise KeyboardInterrupt from exc
+                reason = str(exc)
+            logger.warning(f"link lost ({reason}); reopening in {REOPEN_WAIT_S:g} s")
+            time.sleep(REOPEN_WAIT_S)
+    finally:
+        if hooked:
+            signal.signal(signal.SIGINT, previous)
 
 
 def _session(

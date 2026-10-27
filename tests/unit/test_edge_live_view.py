@@ -1,8 +1,9 @@
-"""Live view: the pure parts — stats, variant → imgsz, the web handler, the CLI defaults."""
+"""Live view: stats, variant → imgsz, the web handler, the CLI defaults, the camera pipe."""
 
 from __future__ import annotations
 
 import json
+import subprocess
 import threading
 import urllib.error
 import urllib.request
@@ -10,10 +11,12 @@ from collections.abc import Iterator
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
+import cv2
 import numpy as np
 import pytest
 
 from mlops_cv.edge import live_view
+from mlops_cv.startup import StartupError
 
 NAMES = {0: "car", 1: "person"}
 DETS = np.array(
@@ -95,3 +98,96 @@ def test_pull_only_prints_the_pulled_dir_and_never_opens_the_camera(
     monkeypatch.setattr(live_view, "open_camera", lambda size: pytest.fail("camera opened"))
     assert live_view.main(["--pull-only"]) == 0
     assert capsys.readouterr().out.strip() == str(pulled)
+
+
+# 64x32 BGR in 8x8 solid blocks, so I420's 2x2 chroma subsampling barely changes it.
+FRAME = np.kron(
+    np.random.default_rng(0).integers(0, 256, (4, 8, 3), np.uint8), np.ones((8, 8, 1), np.uint8)
+)
+
+
+@pytest.fixture
+def fake_rpicam(monkeypatch, tmp_path):
+    """Swap rpicam-vid for ``cat`` of the I420 bytes the test writes."""
+    raw = tmp_path / "frames.i420"
+    popen = subprocess.Popen
+    monkeypatch.setattr(subprocess, "Popen", lambda cmd, **kw: popen(["cat", raw], **kw))
+    return raw
+
+
+def i420(frame: np.ndarray) -> bytes:
+    return cv2.cvtColor(frame, cv2.COLOR_BGR2YUV_I420).tobytes()
+
+
+def test_camera_reads_bgr_frames_off_the_rpicam_pipe(fake_rpicam) -> None:
+    fake_rpicam.write_bytes(i420(FRAME) * 3)
+    cam = live_view.open_camera("64x32")
+    try:
+        frame = cam.capture_array()
+        assert frame.shape == FRAME.shape
+        assert np.abs(frame.astype(int) - FRAME).max() <= 3
+    finally:
+        cam.stop()
+
+
+def test_no_camera_is_a_startup_error(fake_rpicam) -> None:
+    fake_rpicam.write_bytes(b"")  # rpicam-vid exits before the first frame
+    with pytest.raises(StartupError, match="rpicam-hello --list-cameras"):
+        live_view.open_camera("64x32")
+
+
+def test_a_short_read_mid_run_raises(fake_rpicam) -> None:
+    whole = i420(FRAME)
+    fake_rpicam.write_bytes(whole * 2 + whole[: len(whole) // 2])  # rpicam-vid died mid-frame
+    cam = live_view.open_camera("64x32")
+    try:
+        cam.capture_array()
+        with pytest.raises(EOFError):
+            cam.capture_array()
+    finally:
+        cam.stop()
+
+
+def test_a_width_rpicam_vid_would_pad_is_a_startup_error(fake_rpicam) -> None:
+    with pytest.raises(StartupError, match="multiple of 64"):
+        live_view.open_camera("1000x720")
+
+
+@pytest.fixture
+def rpicam_calls(fake_rpicam, monkeypatch) -> list:
+    """The (argv, kwargs) each rpicam-vid start was asked for."""
+    calls = []
+    fake = subprocess.Popen
+    monkeypatch.setattr(
+        subprocess, "Popen", lambda cmd, **kw: calls.append((cmd, kw)) or fake(cmd, **kw)
+    )
+    return calls
+
+
+def test_the_camera_runs_rpicam_vid_raw_to_stdout_in_its_own_session(
+    fake_rpicam, rpicam_calls
+) -> None:
+    fake_rpicam.write_bytes(i420(FRAME))
+    live_view.open_camera("64x32").stop()
+    cmd, kw = rpicam_calls[0]
+    assert " ".join(cmd) == "rpicam-vid -t 0 -n --codec yuv420 --width 64 --height 32 -o -"
+    assert kw["start_new_session"]  # a terminal Ctrl-C reaches Python, not rpicam-vid
+
+
+def test_a_capture_after_stop_parks_instead_of_raising(fake_rpicam) -> None:
+    fake_rpicam.write_bytes(i420(FRAME) * 3)
+    cam = live_view.open_camera("64x32")
+    cam.stop()
+    capture = threading.Thread(target=cam.capture_array, daemon=True)
+    capture.start()
+    capture.join(0.5)
+    assert capture.is_alive()  # a raise would have ended it, and fatal_on_error would exit 1
+
+
+def test_a_missing_rpicam_vid_is_a_startup_error(monkeypatch) -> None:
+    def missing(cmd, **kw):
+        raise FileNotFoundError(cmd[0])
+
+    monkeypatch.setattr(subprocess, "Popen", missing)
+    with pytest.raises(StartupError, match="rpicam-apps"):
+        live_view.open_camera("64x32")

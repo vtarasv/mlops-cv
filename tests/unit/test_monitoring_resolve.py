@@ -43,14 +43,14 @@ def test_resolves_the_champions_baseline_from_the_alias_alone(registry, champion
     assert resolved.scenes[0].means["brightness"] == pytest.approx(116.2)
     assert resolved.data_run_id == "data-run"
     assert resolved.training_run_id == "train-run"
-    assert resolved.model.name == "aerial-object-detector"
+    assert resolved.model.name == "aerial-object-detector-server"
     assert resolved.model.version == "8"
 
 
 def test_the_walk_starts_at_the_champion_alias(registry, champion) -> None:
     """Restart-to-pick-up: the monitor judges whoever is champion now, like the service."""
     resolve_baseline(Settings(), registry=registry)
-    assert registry.asked == [("alias", "aerial-object-detector", "champion")]
+    assert registry.asked == [("alias", "aerial-object-detector-server", "champion")]
 
 
 def test_the_baseline_is_read_from_the_data_versions_profile(

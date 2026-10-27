@@ -51,7 +51,9 @@ def gate(tmp_path, monkeypatch, fake_mlflow):
     monkeypatch.setattr(edge_gate.client, "connect", lambda settings, experiment: fake_mlflow)
     monkeypatch.setattr(edge_gate.client, "registry", lambda settings: fake_mlflow.registry)
     monkeypatch.setattr(
-        edge_gate.champion, "resolve", lambda s, v: SimpleNamespace(version="1", tags=TAGS)
+        edge_gate.champion,
+        "resolve",
+        lambda s, v, target: SimpleNamespace(version="1", tags=TAGS) if target == "edge" else None,
     )
     monkeypatch.setattr("mlflow.artifacts.load_dict", lambda uri: {"a.jpg": []})
 

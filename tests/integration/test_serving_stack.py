@@ -42,9 +42,9 @@ def test_health_reports_the_model_it_resolved_in_network(base_url: str) -> None:
     assert status == 200
     health = json.loads(body)
     assert health["status"] == "ok"
-    assert health["model"]["name"] == get_settings().mlflow.registered_model
+    assert health["model"]["name"] == get_settings().mlflow.registered_model("server")
     assert health["model"]["version"], health  # a resolved registry version, not a blank
-    assert health["imgsz"] == get_settings().optimize.server_imgsz
+    assert health["imgsz"] > 0  # the champion's training imgsz, read off its run
 
 
 def test_metrics_are_scrapeable_through_the_published_port(base_url: str) -> None:

@@ -41,7 +41,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--port", type=int, default=8090, help="web port (8000 is serving's)")
     p.add_argument("--model", type=Path, help="local NCNN model dir (default: pull --variant)")
     p.add_argument("--model-version", default=None, help="version to pull (default: champion)")
-    p.add_argument("--variant", default="ncnn-fp16-640")
+    p.add_argument("--variant", default=None, help="default: the served one, ncnn-fp16-<imgsz>")
     p.add_argument("--pull-only", action="store_true", help="pull, print the model dir, exit")
     p.add_argument("--size", default="1280x720", help="camera capture WxH")
     p.add_argument("--conf", type=float, default=0.3)

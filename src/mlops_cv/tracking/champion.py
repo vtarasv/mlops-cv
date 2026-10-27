@@ -17,9 +17,9 @@ TRAIN_HINT = "Train and promote a model first (`make train`, then evaluation pro
 
 
 def resolve(
-    settings: Settings, version: str | None = None, *, registry: Any | None = None
+    settings: Settings, version: str | None = None, *, target: str, registry: Any | None = None
 ) -> ModelVersion:
-    """The champion — or, given a number, that registered version — as the full entity.
+    """``target``'s champion — or, given a number, that registered version — as the full entity.
 
     The entity, not its number: its tags carry the published-artifact addresses and its
     ``run_id`` names the training run. Raises :class:`StartupError` when the alias points at
@@ -27,7 +27,7 @@ def resolve(
     """
     from mlflow.exceptions import MlflowException
 
-    name = settings.mlflow.registered_model
+    name = settings.mlflow.registered_model(target)
     alias = settings.mlflow.champion_alias
     reg = client.registry(settings, injected=registry)
     try:
@@ -62,4 +62,22 @@ def training_run(version: ModelVersion, *, registry: Any | None = None) -> Run:
         raise StartupError(
             f"model version {version.version}'s training run {version.run_id} cannot be read "
             f"({exc}) — the run behind the promoted model is gone. {TRAIN_HINT}"
+        ) from exc
+
+
+def training_imgsz(run_id: str | None, *, registry: Any | None = None) -> int:
+    """The imgsz a training run trained at: the model is evaluated, exported and served at it.
+
+    ultralytics' MLflow callback logs the train args as run params.
+    """
+    from mlflow.exceptions import MlflowException
+
+    if not run_id:
+        raise StartupError(f"no training run to read the model's imgsz from. {TRAIN_HINT}")
+    try:
+        return int(client.registry(injected=registry).get_run(run_id).data.params["imgsz"])
+    except (MlflowException, KeyError) as exc:
+        raise StartupError(
+            f"training run {run_id} records no imgsz param ({exc!r}), so the size the model "
+            f"was trained and is served at is unknown. {TRAIN_HINT}"
         ) from exc

@@ -37,9 +37,12 @@ class FakeRun:
         experiment_id: str,
         tags: Mapping[str, str] | None = None,
         metrics: Mapping[str, float] | None = None,
+        params: Mapping[str, str] | None = None,
     ) -> None:
         self.info = SimpleNamespace(run_id=run_id, experiment_id=experiment_id, status="RUNNING")
-        self.data = SimpleNamespace(tags=dict(tags or {}), metrics=dict(metrics or {}), params={})
+        self.data = SimpleNamespace(
+            tags=dict(tags or {}), metrics=dict(metrics or {}), params=dict(params or {})
+        )
 
 
 class FakeVersion:
@@ -83,8 +86,9 @@ class FakeRegistry:
         run_id: str,
         tags: Mapping[str, str] | None = None,
         metrics: Mapping[str, float] | None = None,
+        params: Mapping[str, str] | None = None,
     ) -> FakeRun:
-        self.runs[run_id] = FakeRun(run_id, self.EXPERIMENT_ID, tags, metrics)
+        self.runs[run_id] = FakeRun(run_id, self.EXPERIMENT_ID, tags, metrics, params)
         return self.runs[run_id]
 
     def add_version(

@@ -63,10 +63,12 @@ def size_mb(path: str | Path) -> float:
     return target.stat().st_size / 1e6
 
 
-def export_graph(weights: str | Path, imgsz: int, out_dir: str | Path) -> tuple[Path, float]:
+def export_graph(
+    weights: str | Path, imgsz: int, out_dir: str | Path, head: str
+) -> tuple[Path, float]:
     """Export the portable graph at one resolution; return its path and the build seconds."""
-    kwargs = graph_export_kwargs(imgsz)
-    logger.info(f"exporting portable graph at imgsz={imgsz} (opset {kwargs['opset']})")
+    kwargs = graph_export_kwargs(imgsz, head)
+    logger.info(f"exporting portable {head} graph at imgsz={imgsz} (opset {kwargs['opset']})")
     start = time.perf_counter()
     produced = _load_for_export(weights).export(**kwargs)
     elapsed = time.perf_counter() - start
@@ -103,6 +105,7 @@ def build_engine(
     weights: str | Path,
     variant: Variant,
     out_dir: str | Path,
+    head: str,
     *,
     workspace_gb: int,
 ) -> tuple[Path, float]:
@@ -110,7 +113,7 @@ def build_engine(
 
     The export library re-exports the graph internally before compiling.
     """
-    kwargs = engine_export_kwargs(variant, workspace_gb=workspace_gb)
+    kwargs = engine_export_kwargs(variant, head, workspace_gb=workspace_gb)
     logger.info(f"compiling {variant.name}")
     start = time.perf_counter()
     produced = _load_for_export(weights).export(**kwargs)

@@ -52,7 +52,7 @@ def test_parser_defaults() -> None:
     assert args.port == 8090  # 8000 is serving's
     assert args.model is None
     assert args.model_version is None  # champion
-    assert args.variant == "ncnn-fp16-640"
+    assert args.variant is None  # the champion's served ncnn-fp16-<training imgsz>
     assert not args.pull_only
     assert (args.size, args.conf, args.label) == ("1280x720", 0.3, "")
 

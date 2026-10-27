@@ -10,6 +10,7 @@ from collections.abc import Iterable, Mapping
 from mlops_cv.config import Settings, get_settings
 from mlops_cv.data.subset import IMAGES_DIRNAME, stamp_split_yaml
 from mlops_cv.optimize.report import _fmt
+from mlops_cv.optimize.variants import EDGE
 from mlops_cv.startup import StartupError, exits_on_startup_error
 from mlops_cv.tracking import champion, client, edge_record
 from mlops_cv.tracking.metric_keys import (
@@ -36,7 +37,8 @@ def build_parser(settings: Settings) -> argparse.ArgumentParser:
     p.add_argument(
         "--model-version",
         default=None,
-        help=f"registered {settings.mlflow.registered_model} version (default: the champion alias)",
+        help=f"registered {settings.mlflow.registered_model(EDGE)} version "
+        "(default: the champion alias)",
     )
     p.add_argument("--device-label", default="pi5", help="the label the device bench logged under")
     return p
@@ -102,7 +104,7 @@ def main(argv: list[str] | None = None) -> int:
 
     from mlops_cv.evaluation.score_detections import score
 
-    version = champion.resolve(settings, args.model_version)
+    version = champion.resolve(settings, args.model_version, target=EDGE)
     selected = ncnn_artifacts(version.tags, None)
     if not selected:
         raise StartupError(
@@ -150,7 +152,7 @@ def main(argv: list[str] | None = None) -> int:
             if not within:
                 failed.append(reading)
         report = device_report(
-            f"models:/{settings.mlflow.registered_model}/{version.version}",
+            f"models:/{settings.mlflow.registered_model(EDGE)}/{version.version}",
             label,
             selected,
             readings,

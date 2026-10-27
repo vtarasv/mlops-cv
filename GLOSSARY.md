@@ -148,8 +148,8 @@ Pointing the champion alias at a challenger that passed the gate and is servable
 _Avoid_: deploy, release
 
 **Servable**:
-A model version that has the default serving variant of every deployment target published. Only
-a servable model version can be promoted.
+A model version that has its deployment target's served variant published, at the imgsz it was
+trained at. Only a servable model version can be promoted.
 _Avoid_: deployable, ready
 
 **Rollout**:

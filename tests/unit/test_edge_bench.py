@@ -51,12 +51,30 @@ def test_main_refuses_a_missing_test_split_with_the_fix(tmp_path, monkeypatch, c
 def test_pull_model_downloads_the_named_variant_of_the_resolved_version(
     monkeypatch, tmp_path
 ) -> None:
-    versions = {"2": SimpleNamespace(tags=TAGS)}
+    versions = {("2", "edge"): SimpleNamespace(tags=TAGS, run_id="train-2")}
     monkeypatch.setattr(bench.client, "connect", lambda settings, experiment: None)
-    monkeypatch.setattr(bench.champion, "resolve", lambda settings, version: versions[version])
+    monkeypatch.setattr(
+        bench.champion, "resolve", lambda settings, version, target: versions[version, target]
+    )
     monkeypatch.setattr(bench, "download", lambda uri, dst: (uri, dst))
     got = bench.pull_model("2", "ncnn-fp16-640", tmp_path)
     assert got == ("runs:/abc/ncnn/ncnn-fp16-640_ncnn_model", tmp_path)
+
+
+def test_pull_model_defaults_to_the_served_variant_at_the_training_imgsz(
+    monkeypatch, tmp_path
+) -> None:
+    """The edge champion's own training imgsz picks ncnn-fp16-<imgsz>, never a Settings value."""
+    tags = TAGS | {"optimize.ncnn_fp16_1280": "runs:/abc/ncnn/ncnn-fp16-1280_ncnn_model"}
+    monkeypatch.setattr(bench.client, "connect", lambda settings, experiment: None)
+    monkeypatch.setattr(
+        bench.champion,
+        "resolve",
+        lambda settings, version, target: SimpleNamespace(tags=tags, run_id="train-1"),
+    )
+    monkeypatch.setattr(bench.champion, "training_imgsz", lambda run_id: 1280)
+    monkeypatch.setattr(bench, "download", lambda uri, dst: uri)
+    assert bench.pull_model(None) == "runs:/abc/ncnn/ncnn-fp16-1280_ncnn_model"
 
 
 class StubDetector:
@@ -86,7 +104,7 @@ def test_main_dumps_val_settings_detections_times_and_retags(
     monkeypatch.setattr(bench, "get_settings", lambda: settings)
     monkeypatch.setattr(bench.client, "connect", lambda settings, experiment: mlflow)
     monkeypatch.setattr(
-        bench.champion, "resolve", lambda s, v: SimpleNamespace(version="1", tags=TAGS)
+        bench.champion, "resolve", lambda s, v, target: SimpleNamespace(version="1", tags=TAGS)
     )
     monkeypatch.setattr(bench, "download", lambda uri: tmp_path)
     monkeypatch.setattr(bench, "load_image", lambda path: path)

@@ -97,12 +97,14 @@ def test_champion_metrics_are_read_off_its_training_run(registry) -> None:
     registry.promote(version="7", run_id="train-7")
     registry.runs["train-7"].data.metrics["test/mAP50-95"] = 0.41
 
-    assert fetch_champion_metrics(Settings(), registry=registry) == {"test/mAP50-95": 0.41}
+    assert fetch_champion_metrics(Settings(), "server", registry=registry) == {
+        "test/mAP50-95": 0.41
+    }
 
 
 def test_no_champion_is_the_bootstrap_answer(registry) -> None:
     """The one consumer for which an empty registry is an answer, not a refusal."""
-    assert fetch_champion_metrics(Settings(), registry=registry) is None
+    assert fetch_champion_metrics(Settings(), "server", registry=registry) is None
 
 
 def test_a_champion_whose_training_run_is_gone_is_not_mistaken_for_no_champion(registry) -> None:
@@ -111,32 +113,54 @@ def test_a_champion_whose_training_run_is_gone_is_not_mistaken_for_no_champion(r
     del registry.runs["train-7"]
 
     with pytest.raises(StartupError, match="train-7"):
-        fetch_champion_metrics(Settings(), registry=registry)
+        fetch_champion_metrics(Settings(), "server", registry=registry)
 
 
 # --- promotion ---
 
-SERVABLE = {
-    "optimize.onnx_640": "runs:/record-run/onnx/best_640.onnx",
-    "optimize.ncnn_fp16_640": "runs:/record-run/ncnn/ncnn-fp16-640_ncnn_model",
+# Each target needs only its own served tag, at the version's training imgsz (1280).
+SERVED = {
+    "server": {"optimize.onnx_1280": "runs:/record-run/onnx/best_1280.onnx"},
+    "edge": {"optimize.ncnn_fp16_1280": "runs:/record-run/ncnn/ncnn-fp16-1280_ncnn_model"},
 }
 
 
-def _challenger(registry, tags=SERVABLE, gate: str | None = "True") -> None:
+def _challenger(registry, tags=SERVED["server"], gate: str | None = "True") -> None:
     """v7 on its own training run, which evaluation tagged with ``gate``; v6 is the champion."""
     registry.promote(version="6")
-    registry.add_run("train-7", tags={} if gate is None else {"gate.passed": gate})
+    registry.add_run(
+        "train-7", tags={} if gate is None else {"gate.passed": gate}, params={"imgsz": "1280"}
+    )
     registry.add_version(version="7", run_id="train-7", tags=tags)
 
 
-@pytest.mark.parametrize("missing", sorted(SERVABLE))
-def test_promotion_refuses_a_version_that_is_not_servable(registry, missing: str) -> None:
-    """A champion without its published graph or edge model would stop the services starting."""
-    _challenger(registry, tags={k: v for k, v in SERVABLE.items() if k != missing})
+@pytest.mark.parametrize("target", sorted(SERVED))
+def test_promotion_refuses_a_version_missing_its_targets_served_tag(registry, target) -> None:
+    """A champion without its served artifact would stop its services starting."""
+    other = "edge" if target == "server" else "server"
+    _challenger(registry, tags=SERVED[other])
 
-    with pytest.raises(StartupError, match=missing):
-        promote(Settings(), "7", registry=registry)
+    with pytest.raises(StartupError, match=next(iter(SERVED[target]))):
+        promote(Settings(), "7", target, registry=registry)
     assert registry.aliases["champion"] == "6"
+
+
+@pytest.mark.parametrize("target", sorted(SERVED))
+def test_promotion_needs_only_the_targets_own_served_tag(registry, target) -> None:
+    """No other target's artifact and no device measurement: the Pi is never on this path."""
+    _challenger(registry, tags=SERVED[target])
+
+    promote(Settings(), "7", target, registry=registry)
+
+    assert registry.aliases["champion"] == "7"
+
+
+def test_promotion_reads_the_served_tag_at_the_training_imgsz(registry) -> None:
+    """A version trained at 1280 is not servable through a 640 graph."""
+    _challenger(registry, tags={"optimize.onnx_640": "runs:/record-run/onnx/best_640.onnx"})
+
+    with pytest.raises(StartupError, match="optimize.onnx_1280"):
+        promote(Settings(), "7", "server", registry=registry)
 
 
 @pytest.mark.parametrize("gate", ["False", None])
@@ -145,13 +169,13 @@ def test_promotion_refuses_a_version_without_a_passing_gate(registry, gate: str 
     _challenger(registry, gate=gate)
 
     with pytest.raises(StartupError, match="gate"):
-        promote(Settings(), "7", registry=registry)
+        promote(Settings(), "7", "server", registry=registry)
     assert registry.aliases["champion"] == "6"
 
 
 def test_promotion_moves_the_alias_to_a_servable_gate_winner(registry) -> None:
     _challenger(registry)
 
-    promote(Settings(), "7", registry=registry)
+    promote(Settings(), "7", "server", registry=registry)
 
     assert registry.aliases["champion"] == "7"

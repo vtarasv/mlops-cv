@@ -40,14 +40,19 @@ The image lands in `$KAS_WORK_DIR/build/tmp/deploy/images/raspberrypi5/`. A chan
 Find the card with `lsblk -d -o NAME,SIZE,TRAN,RM,MODEL`: it is the new removable (`RM 1`)
 entry of the card's size, `sdX` behind a USB reader or `mmcblk0` in a built-in slot. Write to
 the whole disk, not a partition. A desktop automounts the card's partitions: unmount them first
-(`lsblk /dev/sdX` shows no mountpoints after). `bmaptool` is in the `bmap-tools` package on most
+(`lsblk $CARD` shows no mountpoints after). `bmaptool` is in the `bmap-tools` package on most
 distros; `dd` needs nothing.
 
 ```bash
-sudo umount /dev/sdX?*
+CARD=/dev/sdX                # the whole card from lsblk, e.g. /dev/sda or /dev/mmcblk0
+sudo umount $CARD?*          # every partition: sda1, sda2… (mmcblk0p1…); "not mounted" is harmless
 cd $KAS_WORK_DIR/build/tmp/deploy/images/raspberrypi5
-sudo bmaptool copy mlops-cv-edge-image-raspberrypi5.rootfs.wic.bz2 /dev/sdX
-# or: bzcat mlops-cv-edge-image-raspberrypi5.rootfs.wic.bz2 | sudo dd of=/dev/sdX bs=4M conv=fsync status=progress
+sudo bmaptool copy mlops-cv-edge-image-raspberrypi5.rootfs.wic.bz2 $CARD
+# or: bzcat mlops-cv-edge-image-raspberrypi5.rootfs.wic.bz2 | sudo dd of=$CARD bs=4M conv=fsync status=progress
+
+# Eject safely
+sync
+udisksctl power-off -b $CARD
 ```
 
 ## First boot

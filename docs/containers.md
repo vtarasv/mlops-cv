@@ -33,20 +33,25 @@ monitor-image` build the first-party images; the image tags are single-sourced i
 Makefile and exported to the compose files, so a stack can never launch a tag the Makefile
 didn't build.
 
-## The build pattern: opt-in dependency groups
+## The build pattern: opt-in groups, cached deps
 
-Every first-party Python image follows one recipe: copy `.python-version` +
-`pyproject.toml` + `uv.lock`, then
+Groups are **opt-in per image** (`--no-default-groups --group <x>`), so a group added to the
+project later can never silently leak into an existing image. (CI is the deliberate opposite:
+it *subtracts* the GPU-only groups, so a new group's tests run there by default.)
 
-```dockerfile
-RUN uv sync --locked --no-default-groups --group <exactly-what-this-image-needs>
-```
+Layers are ordered so an edit rebuilds only what it touches:
 
-Groups are **opt-in per image** — starting from `--no-default-groups` means a group added
-to the project later can never silently leak into an existing image. (CI is the deliberate
-opposite: it *subtracts* the GPU-only groups, so a new group's tests run there by
-default.) Dependencies are synced before the source is copied, so the heavy venv layer
-caches across code-only rebuilds.
+1. **Deps**: a `lock` stage exports the image's groups (`uv export --format pylock.toml`), and
+   the deps layer installs that export with `uv pip sync`. Docker keys the layer on the
+   export's content, so it rebuilds only when the image's own resolved set changes; a
+   tool-config edit or another group's pin leaves it cached.
+2. **Deps-only steps**: anything that needs the venv but not the code (beam's Prism
+   warm-up, the ORT images' `ldconfig`).
+3. **Project**: `pyproject.toml`, `uv.lock`, `src/` (and `configs/`), then
+   `uv sync --locked --group <x>`, which installs just `mlops_cv` and fails on a stale lock.
+
+Every image is single-stage: copying the venv out of a build stage re-packs it into one new
+multi-GB layer on every code change.
 
 ## Stack topology
 

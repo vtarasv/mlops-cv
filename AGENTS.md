@@ -60,10 +60,26 @@ Every change ships its unit tests and updates the matching `docs/*.md`.
 - Declare every directly imported package in `pyproject.toml`, in the group that uses it.
 - Lazy-import heavy deps (torch, ultralytics, tensorrt, …) inside functions, so every module
   imports in CI's CPU-only sync.
-- Docker images opt into groups (`--no-default-groups --group <x>`). CI subtracts them
-  (`--no-group training`), so a new group's tests run in CI by default.
 - Beam caps numpy, pyarrow, pillow and cryptography lock-wide. Expect downgrades on `uv lock`, and
   rebuild the images after relocking.
+
+## Dockerfiles
+
+Keep rebuilds to seconds.
+
+- Opt each image into its groups (`--no-default-groups --group <x>`). CI subtracts them
+  (`--no-group training`), so a new group's tests run in CI by default.
+- uv images install deps from the `lock` stage's per-image export (`COPY --from=lock` +
+  `uv pip sync`), so the deps layer keys on the image's resolved set. Copy `pyproject.toml` +
+  `uv.lock` afterwards, with `src/`, for the project's `uv sync --locked`.
+- Order layers by change rate: deps, then deps-only steps (warm-ups, `ldconfig`), then the code
+  and the project sync.
+- Build single-stage, extending a shared base stage (`training-base`, `serving-base`) per target:
+  copying a venv between stages re-packs it into a new multi-GB layer on every code change.
+- A stage adding groups onto its base's venv runs `uv pip sync` alone; `uv venv` there fails on the
+  existing venv.
+- Pin `UV_CACHE_DIR=/root/.cache/uv` in any image that sets `HOME`, so uv stays on the cache
+  mount.
 
 ## Configuration
 

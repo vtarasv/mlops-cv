@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import _thread
 import queue
+import signal
 import sys
 import threading
 import time
@@ -284,7 +285,12 @@ def test_ctrl_c_while_waiting_on_the_oldest_still_emits_it(kafka) -> None:
             second_entered.set()
         return [BOX]
 
-    counts = _run(kafka, infer, frames=3, max_inflight=2)
+    # A background job (`cmd &`) starts with SIGINT ignored, which makes interrupt_main a no-op.
+    previous = signal.signal(signal.SIGINT, signal.default_int_handler)
+    try:
+        counts = _run(kafka, infer, frames=3, max_inflight=2)
+    finally:
+        signal.signal(signal.SIGINT, previous)
 
     assert counts["events"] == 2
     assert kafka.events == [0, 1]

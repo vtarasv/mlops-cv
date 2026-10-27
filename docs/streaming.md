@@ -231,9 +231,9 @@ demo-store clip (default: `<DATA__SUBSET_DIR>/demo/images/uav0000073_00600_v`, b
 
 ```bash
 # On the Pi (set --intra: its default of 60 is a 2 s GOP, so each loss drops up to 2 s):
-rpicam-vid -t 0 -n --width 1920 --height 1080 --framerate 30 --bitrate 8000000 --intra 5 \
+rpicam-vid -t 0 -n --width 1920 --height 1080 --framerate 5 --bitrate 8000000 --intra 5 \
   --low-latency --inline --codec libav --libav-format mpegts -o "udp://<host>:5600?pkt_size=1316"
-# On the producer host (<host> above), after make serving-up (broker + consumers):
+# On the producer host (<host> above), after make stream-view (broker + consumers + browser view):
 uv run python -m mlops_cv.streaming.producer --link udp://0.0.0.0:5600 --link-name pi5cam
 ```
 

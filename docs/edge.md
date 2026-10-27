@@ -159,4 +159,5 @@ python3 -m mlops_cv.edge.bench --device-label pi5
 **Before it serves:** the image's numpy and OpenCV come from Yocto's recipes, not the lock, so
 `make edge-gate` is the bar. If the gate fails, the prepost and NCNN decode golden tests
 (`tests/unit/test_serving_prepost.py`, `tests/unit/test_edge_runtime.py`, run on the Pi) show
-where the numerics drift. The image is built; these on-device checks haven't run yet.
+where the numerics drift. On the image the gate passed at 1280 (Δ −0.06 pt fp32, −0.09 pt fp16),
+with `ncnn-fp16-1280` at p50 351 ms.

@@ -1,2 +1,1 @@
-# Host bytecode (any interpreter) never belongs in an image; the images compile their own.
 **/__pycache__

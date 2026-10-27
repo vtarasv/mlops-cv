@@ -3,7 +3,7 @@
 A headless Yocto 6.0 "wrynose" image for the Raspberry Pi 5, reachable as `root@raspberrypi5.local`
 by ssh key over Ethernet and Wi-Fi. It carries the camera stack (`rpicam-vid`) and the Python
 runtime `mlops_cv.edge` needs; the code itself is rsynced (see
-[docs/edge.md](../docs/edge.md#edge-image-yocto)). `kas/pi5.yml` pins the layers,
+[docs/edge.md](../docs/edge.md#set-up-the-pi)). `kas/pi5.yml` pins the layers,
 `meta-mlops-cv/` holds the image and Python recipes.
 
 ## Prerequisites

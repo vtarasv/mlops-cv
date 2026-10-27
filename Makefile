@@ -85,9 +85,10 @@ mlflow-down:
 mlflow-logs:
 	$(MLFLOW_COMPOSE) logs -f
 
-# Train YOLO26s on the train subset -> MLflow run + registered version.
+# Train a deployment target's production default (TARGET=server: m@1280, edge: n@1280) on the
+# train subset -> MLflow run + a version of that target's registered model.
 train: mlflow-up
-	uv run python -m mlops_cv.training
+	uv run python -m mlops_cv.training $(if $(TARGET),--target "$(TARGET)")
 
 # Run one tuning stage (configs/tuning/$(STAGE).yaml, e.g. STAGE=yolo26-visdrone-vid/stage2)
 # -> unregistered trial runs in the tune experiment. Other experiment commands: docs/tuning.md.
@@ -95,22 +96,26 @@ tune: mlflow-up
 	uv run python -m mlops_cv.tuning.tune configs/tuning/$(STAGE).yaml
 
 # Evaluate an MLflow model -> test metrics + report + gate + demo videos + TP/FP crops in MLflow.
-# Pass MODEL=<models:/aerial-object-detector@champion | runs:/<run_id>/weights/best.pt>.
-# Add RUN_ID=<train run id> to log onto that run (one run per model version) instead of a new one.
+# Pass MODEL=<models:/aerial-object-detector-server@champion | runs:/<run_id>/weights/best.pt>.
+# Add RUN_ID=<train run id> to log onto that run (one run per model version) instead of a new one,
+# TARGET=<server|edge> to gate against that target's champion, HEAD=<one-to-one|one-to-many>.
 eval: mlflow-up
-	uv run python -m mlops_cv.evaluation --model "$(MODEL)" $(if $(RUN_ID),--run-id "$(RUN_ID)")
+	uv run python -m mlops_cv.evaluation --model "$(MODEL)" $(if $(RUN_ID),--run-id "$(RUN_ID)") \
+		$(if $(TARGET),--target "$(TARGET)") $(if $(HEAD),--head "$(HEAD)")
 
 # Build a model's serving variants + benchmark them -> optimization report in MLflow.
 # Defaults to the champion; pass MODEL=<uri> for another, RUN_ID=<train run id> to record on a
-# CHILD of that run (re-runs reuse it), VARIANTS=<a,b> to measure a subset of the ladder.
+# CHILD of that run (re-runs reuse it), VARIANTS=<a,b> to measure a subset of the ladder,
+# TARGET=<server|edge> for that target's ladder and registered model, HEAD=<one-to-one|one-to-many>.
 optimize: mlflow-up
 	uv run python -m mlops_cv.optimize $(if $(MODEL),--model "$(MODEL)") \
-		$(if $(RUN_ID),--run-id "$(RUN_ID)") $(if $(VARIANTS),--variants "$(VARIANTS)")
+		$(if $(RUN_ID),--run-id "$(RUN_ID)") $(if $(VARIANTS),--variants "$(VARIANTS)") \
+		$(if $(TARGET),--target "$(TARGET)") $(if $(HEAD),--head "$(HEAD)")
 
 # Point the champion alias at RUN_ID=<train run>'s model version. Refuses one whose run lacks a
 # passing gate verdict (`make eval ... RUN_ID=<id>`) or that is not servable (`make optimize`).
 promote: mlflow-up
-	uv run python -m mlops_cv.evaluation.promote --run-id "$(RUN_ID)"
+	uv run python -m mlops_cv.evaluation.promote --run-id "$(RUN_ID)" $(if $(TARGET),--target "$(TARGET)")
 
 # Score the edge device's detections dumps on this machine's test split and gate them against
 # the desktop readings -> optimize.measured.<label> on a pass. Run after `python -m

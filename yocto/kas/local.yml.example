@@ -1,0 +1,13 @@
+# Copy to kas/local.yml (gitignored) and fill in. Build with:
+#   kas-container build kas/pi5.yml:kas/local.yml
+header:
+  version: 14
+
+local_conf_header:
+  mlops-cv-local: |
+    MLOPS_CV_WIFI_SSID = "CHANGEME"
+    MLOPS_CV_WIFI_PSK = "CHANGEME"
+    MLOPS_CV_WIFI_COUNTRY = "CHANGEME"  # ISO 3166 code, e.g. UA: unlocks 5 GHz channels
+    MLOPS_CV_ROOT_PUBKEY = "ssh-ed25519 AAAA... you@desktop"
+    # A camera camera_auto_detect misses (a clone, a third-party board): its overlay and port
+    # RPI_EXTRA_CONFIG = "camera_auto_detect=0\ndtoverlay=imx219,cam0"

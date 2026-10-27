@@ -25,12 +25,18 @@ from mlops_cv.optimize import artifacts
 from mlops_cv.optimize import report as report_mod
 from mlops_cv.optimize.report import VariantMeasurement
 from mlops_cv.optimize.variants import (
+    HEADS,
     NCNN,
+    ONE_TO_MANY,
+    ONE_TO_ONE,
     ONNX_ORT,
+    SERVER,
+    TARGETS,
     TORCH,
     TRT,
     Variant,
     artifact_tag,
+    exported_head,
     fingerprint_tag,
     graph_tag,
     ladder,
@@ -40,11 +46,12 @@ from mlops_cv.startup import StartupError, exits_on_startup_error
 from mlops_cv.tracking import champion, client, records
 from mlops_cv.tracking.metric_keys import (
     headline_metrics,
+    variant_head_latency_prefix,
     variant_latency_prefix,
     variant_prefix,
     variant_speed_prefix,
 )
-from mlops_cv.tracking.resolve import model_version, resolve_model
+from mlops_cv.tracking.resolve import model_version, resolve_model, source_run_id
 
 if TYPE_CHECKING:
     from ultralytics import YOLO
@@ -78,9 +85,21 @@ def build_parser(settings: Settings) -> argparse.ArgumentParser:
         "(default: a standalone optimize-* run)",
     )
     p.add_argument(
+        "--target",
+        choices=TARGETS,
+        default=SERVER,
+        help="deployment target: picks the ladder and the registered model",
+    )
+    p.add_argument(
+        "--head",
+        choices=HEADS,
+        default=ONE_TO_MANY,
+        help="detection head the graphs export (edge: always one-to-many, NCNN has no end2end)",
+    )
+    p.add_argument(
         "--variants",
         default=None,
-        help="comma-separated variant names to measure (default: the whole ladder)",
+        help="comma-separated variant names to measure (default: the target's whole ladder)",
     )
     p.add_argument("--split", default="test", help="dataset split to measure on")
     p.add_argument("--device", default=settings.training.device)
@@ -89,14 +108,14 @@ def build_parser(settings: Settings) -> argparse.ArgumentParser:
 
 def model_uri(args: argparse.Namespace, settings: Settings) -> str:
     """Which model to optimize: an explicit URI, else the champion."""
-    return str(args.model) if args.model else client.champion_uri(settings)
+    return str(args.model) if args.model else client.champion_uri(settings, args.target)
 
 
 def record_tags(
-    model_ref: str, split: str, version: str | None, source_run: str | None
+    model_ref: str, split: str, version: str | None, source_run: str | None, head: str
 ) -> dict[str, str]:
     """Provenance for one optimization record: what was measured, and what it resolved to."""
-    tags = {RECORD_TAG: model_ref, "optimize.split": split}
+    tags = {RECORD_TAG: model_ref, "optimize.split": split, "optimize.head": head}
     if version:
         tags["optimize.version"] = version
     if source_run:
@@ -112,8 +131,9 @@ def _measure_variant(
     split: str,
     device: str,
     images: list[str],
+    end2end: bool | None,
 ) -> dict[str, float]:
-    """Detection readings + latency for one variant."""
+    """Detection readings + latency for one variant; ``end2end`` picks the torch rung's head."""
     results = model.val(
         data=str(data_yaml),
         split=split,
@@ -122,6 +142,7 @@ def _measure_variant(
         # Batch 1 for every variant: engines are compiled single-image.
         batch=1,
         verbose=False,
+        end2end=end2end,
     )
     metrics = headline_metrics(results.box, prefix=variant_prefix(variant.name))
     # The library's own per-stage split, alongside the end-to-end timing.
@@ -137,6 +158,7 @@ def _measure_variant(
         imgsz=variant.imgsz,
         device=device,
         prefix=variant_latency_prefix(variant.name),
+        end2end=end2end,
     )
     return metrics
 
@@ -160,36 +182,38 @@ def main(argv: list[str] | None = None) -> int:
         torch.zeros(1, device="cuda")
 
     opt = settings.optimize
+    name = settings.mlflow.registered_model(args.target)
+    head = exported_head(args.target, args.head)
     data_yaml = dataset_yaml(settings)
-    chosen = select(
-        ladder(opt.server_imgsz, opt.edge_imgsz),
-        args.variants.split(",") if args.variants else None,
-    )
     uri = model_uri(args, settings)
     if args.model is None:
         try:
-            registered = champion.resolve(settings)
+            registered = champion.resolve(settings, target=args.target)
         except StartupError as exc:
             raise StartupError(f"{exc} Or name a model explicitly with --model <uri>.") from exc
         weights, model_ref = resolve_model(uri)
     else:
         # An explicit --model that resolves to nothing is the caller's typo.
         try:
-            registered = model_version(uri, settings.mlflow.registered_model)
+            registered = model_version(uri, name)
             weights, model_ref = resolve_model(uri)
         except MlflowException as exc:
             raise StartupError(f"cannot resolve --model {uri}: {exc}") from exc
     version = registered.version if registered else None
-    source_run = registered.run_id if registered else None
+    source_run = registered.run_id if registered else source_run_id(uri)
     if version is None:
         logger.warning(
-            f"{uri} maps to no registered '{settings.mlflow.registered_model}' version — "
+            f"{uri} maps to no registered '{name}' version — "
             "artifacts will publish on the run but no model-version tags will be set"
         )
+    chosen = select(
+        ladder(args.target, champion.training_imgsz(source_run)),
+        args.variants.split(",") if args.variants else None,
+    )
     images = benchmark_mod.latency_frames(settings.data.subset_dir / "images" / args.split)
 
     logger.info(
-        f"optimizing {model_ref} (version {version or 'unregistered'}, "
+        f"optimizing {model_ref} ({name} version {version or 'unregistered'}, {head} head, "
         f"trained on run {source_run or 'unknown'}) on "
         f"{data_yaml.name}[{args.split}]: {', '.join(v.name for v in chosen)}"
     )
@@ -197,7 +221,7 @@ def main(argv: list[str] | None = None) -> int:
     started = time.perf_counter()
     work_dir = Path(tempfile.mkdtemp(prefix="optimize-"))
     with contextlib.ExitStack() as stack:
-        tags = record_tags(model_ref, args.split, version, source_run)
+        tags = record_tags(model_ref, args.split, version, source_run, head)
         if args.run_id:
             # The record goes to a CHILD of the model version's run, never onto it.
             record = records.open_record(
@@ -224,7 +248,7 @@ def main(argv: list[str] | None = None) -> int:
                 artifact_path = f"{artifact_path}/{local.name}"
             if version:
                 mlflow.set_model_version_tag(
-                    settings.mlflow.registered_model,
+                    name,
                     version,
                     tag_key,
                     f"runs:/{run_id}/{artifact_path}",
@@ -239,7 +263,7 @@ def main(argv: list[str] | None = None) -> int:
 
             if variant.needs_graph and variant.imgsz not in graphs:
                 graphs[variant.imgsz], build_s = artifacts.export_graph(
-                    weights, variant.imgsz, work_dir
+                    weights, variant.imgsz, work_dir, head
                 )
                 publish(graphs[variant.imgsz], "onnx", graph_tag(variant.imgsz))
 
@@ -252,6 +276,7 @@ def main(argv: list[str] | None = None) -> int:
                     weights,
                     variant,
                     work_dir / "engines",
+                    head,
                     workspace_gb=opt.workspace_gb,
                 )
                 fingerprint = artifacts.engine_fingerprint(
@@ -281,6 +306,7 @@ def main(argv: list[str] | None = None) -> int:
                 split=args.split,
                 device=device,
                 images=images,
+                end2end=head == ONE_TO_ONE if variant.runtime == TORCH else None,
             )
             mlflow.log_metrics(metrics)
             memory = benchmark_mod.read_gpu_memory() if on_gpu else None
@@ -288,6 +314,19 @@ def main(argv: list[str] | None = None) -> int:
             del model
             if on_gpu:
                 torch.cuda.empty_cache()
+
+            if variant.runtime == ONNX_ORT:
+                # The other head's graph, timed only: what NMS in the graph costs or saves.
+                other = ONE_TO_ONE if head == ONE_TO_MANY else ONE_TO_MANY
+                graph, _ = artifacts.export_graph(weights, variant.imgsz, work_dir / other, other)
+                other_latency = benchmark_mod.benchmark_model(
+                    YOLO(str(graph), task="detect"),
+                    images,
+                    imgsz=variant.imgsz,
+                    device=device,
+                    prefix=variant_head_latency_prefix(variant.name, other),
+                )
+                mlflow.log_metrics(other_latency)
 
             measurements.append(
                 VariantMeasurement(

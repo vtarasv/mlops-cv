@@ -183,6 +183,8 @@ uv run python -m mlops_cv.streaming.producer --shift brightness --loops 2 --fps 
 `--link` decodes a live drone or UGV video link (PyAV, host only) into the same Frame
 messages, so nothing downstream changes. It sets its own pace, so it refuses the demo-store
 flags; `--shift` still applies. Run one producer per link, each with its own `--link-name`.
+Like any producer it needs the broker and the consumers up first: `make serving-up`, or the
+[Quick start](#quick-start)'s Option A.
 
 | The receiver sends to the producer host as | `--link` |
 |---|---|
@@ -229,9 +231,9 @@ demo-store clip (default: `<DATA__SUBSET_DIR>/demo/images/uav0000073_00600_v`, b
 
 ```bash
 # On the Pi (set --intra: its default of 60 is a 2 s GOP, so each loss drops up to 2 s):
-rpicam-vid -t 0 -n --width 1920 --height 1080 --framerate 30 --bitrate 8000000 --intra 5 \
+rpicam-vid -t 0 -n --width 1920 --height 1080 --framerate 5 --bitrate 8000000 --intra 5 \
   --low-latency --inline --codec libav --libav-format mpegts -o "udp://<host>:5600?pkt_size=1316"
-# On the producer host (<host> above):
+# On the producer host (<host> above), after make stream-view (broker + consumers + browser view):
 uv run python -m mlops_cv.streaming.producer --link udp://0.0.0.0:5600 --link-name pi5cam
 ```
 
@@ -239,7 +241,7 @@ uv run python -m mlops_cv.streaming.producer --link udp://0.0.0.0:5600 --link-na
 |---|---|
 | Raspberry Pi OS | `apt install rpicam-apps` |
 | Buildroot | Raspberry Pi's libcamera fork (`raspberrypi/libcamera`, `rpi/pisp` pipeline) plus libpisp; `rpicam-apps` with `ffmpeg` (GPL), `x264` and `libdrm`. `camera_auto_detect=1`, or `dtoverlay=<sensor>,cam0` for a board it misses. No udev: `modprobe -a i2c-designware-platform rp1-cfe pisp_be <sensor>` |
-| Yocto (meta-raspberrypid) | `RASPBERRYPI_CAMERA_V2`/`_V3 = "1"`, or `RPI_EXTRA_CONFIG = "dtoverlay=<sensor>,cam0"` for a board the default misses; `PACKAGECONFIG:append:pn-libcamera-apps = " libav"`. The layer builds upstream libcamera, so point its `SRC_URI` at Raspberry Pi's fork as on Buildroot. |
+| Yocto (meta-raspberrypi) | `RPI_EXTRA_CONFIG = "dtoverlay=<sensor>,cam0"`; Raspberry Pi's libcamera fork (the layer builds upstream libcamera, which doesn't drive the Pi kernel's camera) plus libpisp; `rpicam-apps` with libav (`ffmpeg` with `gpl x264`); the camera-module packages `kernel-module-{rp1-cfe-downstream,pisp-be,i2c-designware-platform,<sensor>}`. The edge image in [`yocto/`](../yocto/README.md) builds this with `camera_auto_detect=1` and the official modules' sensors; a board auto-detect misses sets its overlay in `kas/local.yml`. |
 
 Measured on a Pi 5 (IMX219, 1080p30, 4 Mbit/s) under bursty ~2% packet loss (netem `gemodel`):
 1.4% of frames dropped as damaged at `--intra 5`, 8.9% at `--intra 30`.

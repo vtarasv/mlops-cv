@@ -17,7 +17,8 @@ def test_defaults_from_settings() -> None:
     args = build_parser(s).parse_args(["--model", "best.pt"])
     assert args.model == "best.pt"
     assert args.split == "test"
-    assert args.imgsz == s.training.imgsz
+    assert args.imgsz is None  # the model's training imgsz, read off its run
+    assert (args.target, args.head) == ("server", "one-to-many")
     assert args.device == s.training.device
     assert args.batch == 8
     assert args.latency_enabled is True

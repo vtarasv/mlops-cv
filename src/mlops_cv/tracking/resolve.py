@@ -58,6 +58,13 @@ def run_id_from_uri(uri: str) -> str | None:
     return uri.removeprefix("runs:/").split("/", 1)[0]
 
 
+def source_run_id(model_ref: str, *, registry: Any | None = None) -> str | None:
+    """The training run a model URI's weights came from: a ``runs:/`` URI's own, or a version's."""
+    if model_ref.startswith("models:/"):
+        return _lookup(model_ref.removeprefix("models:/"), registry).run_id
+    return run_id_from_uri(model_ref)
+
+
 def ncnn_artifacts(tags: Mapping[str, str], names: Iterable[str] | None) -> dict[str, str]:
     """A version's published NCNN artifacts, ``{variant name: artifact URI}``, all or ``names``."""
     published = {
@@ -110,8 +117,8 @@ def _check_registry_name(spec: str, registered_model: str) -> None:
     if name != registered_model:
         raise StartupError(
             f"models:/{spec} names registered model '{name}', but this process acts on "
-            f"'{registered_model}' (MLFLOW__REGISTERED_MODEL) — pass a ref on that model, "
-            "or change the setting."
+            f"'{registered_model}' (MLFLOW__REGISTERED_MODEL_PREFIX + --target) — pass a ref on "
+            "that model, or change the target."
         )
 
 

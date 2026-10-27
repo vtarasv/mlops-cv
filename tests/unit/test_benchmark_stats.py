@@ -130,8 +130,10 @@ class _StubModel:
     def __init__(self) -> None:
         self.calls: list[tuple] = []
 
-    def predict(self, src: str, *, imgsz: int, device: str, verbose: bool) -> None:
-        self.calls.append((src, imgsz, device, verbose))
+    def predict(
+        self, src: str, *, imgsz: int, device: str, end2end: bool | None, verbose: bool
+    ) -> None:
+        self.calls.append((src, imgsz, device, end2end, verbose))
 
 
 def test_benchmark_model_pins_the_measurement_configuration() -> None:
@@ -139,10 +141,10 @@ def test_benchmark_model_pins_the_measurement_configuration() -> None:
     defaults, which would make the latency incomparable to the accuracy beside it."""
     model = _StubModel()
     out = benchmark_model(
-        model, ["a.jpg", "b.jpg"], imgsz=320, device="cpu", warmup=1, iterations=3
+        model, ["a.jpg", "b.jpg"], imgsz=320, device="cpu", warmup=1, iterations=3, end2end=False
     )
     assert len(model.calls) == 4  # warmup runs too, untimed
-    assert all(call[1:] == (320, "cpu", False) for call in model.calls)
+    assert all(call[1:] == (320, "cpu", False, False) for call in model.calls)
     assert out["latency/n"] == 3.0
 
 

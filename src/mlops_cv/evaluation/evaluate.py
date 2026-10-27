@@ -29,8 +29,17 @@ from mlops_cv.evaluation import ap_small as ap_small_mod
 from mlops_cv.evaluation import gate as gate_mod
 from mlops_cv.evaluation import report as report_mod
 from mlops_cv.evaluation.score_detections import split_labels
+from mlops_cv.optimize.variants import (
+    HEADS,
+    ONE_TO_MANY,
+    ONE_TO_ONE,
+    SERVER,
+    TARGETS,
+    exported_head,
+)
 from mlops_cv.orchestration.handoff import GateVerdict
 from mlops_cv.startup import exits_on_startup_error
+from mlops_cv.tracking import champion as champion_mod
 from mlops_cv.tracking import client
 from mlops_cv.tracking.metric_keys import (
     LATENCY_PREFIX,
@@ -40,7 +49,7 @@ from mlops_cv.tracking.metric_keys import (
     metric_key,
     per_class_metrics,
 )
-from mlops_cv.tracking.resolve import resolve_model
+from mlops_cv.tracking.resolve import resolve_model, source_run_id
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +67,19 @@ def build_parser(settings: Settings) -> argparse.ArgumentParser:
         help="MLflow URI: models:/name@alias, models:/name/version, or runs:/<id>/path",
     )
     p.add_argument("--split", default="test", help="dataset split to evaluate")
-    p.add_argument("--imgsz", type=int, default=settings.training.imgsz)
+    p.add_argument(
+        "--target",
+        choices=TARGETS,
+        default=SERVER,
+        help="deployment target: whose champion the challenger is gated against",
+    )
+    p.add_argument(
+        "--head",
+        choices=HEADS,
+        default=ONE_TO_MANY,
+        help="detection head to score: the one the target exports (edge: always one-to-many)",
+    )
+    p.add_argument("--imgsz", type=int, default=None, help="default: the model's training imgsz")
     p.add_argument("--device", default=settings.training.device)
     p.add_argument("--batch", type=int, default=8, help="val batch (decrease if OOM)")
     p.add_argument("--latency-runs", type=int, default=50)
@@ -122,7 +143,13 @@ def split_metrics(
 
 
 def latency_stub(
-    model: Any, images_dir: Path, *, imgsz: int, device: str, runs: int = 50
+    model: Any,
+    images_dir: Path,
+    *,
+    imgsz: int,
+    device: str,
+    runs: int = 50,
+    end2end: bool | None = None,
 ) -> dict[str, float]:
     """A quick single-configuration latency (batch 1, pre/post included) at imgsz/device.
 
@@ -137,6 +164,7 @@ def latency_stub(
         warmup=3,
         iterations=runs,
         ps=(50.0, 95.0),
+        end2end=end2end,
     )
 
 
@@ -152,22 +180,30 @@ def main(argv: list[str] | None = None) -> int:
 
     data_yaml = dataset_yaml(settings)
     weights, model_ref = resolve_model(args.model)
+    imgsz = args.imgsz or champion_mod.training_imgsz(source_run_id(args.model))
+    head = exported_head(args.target, args.head)
     images_dir = settings.data.subset_dir / IMAGES_DIRNAME / args.split
 
-    logger.info(f"evaluating {model_ref} on {data_yaml}[{args.split}]")
+    logger.info(f"evaluating {model_ref} ({head} head, imgsz {imgsz}) on {data_yaml}[{args.split}]")
 
     run_kwargs = {"run_id": args.run_id} if args.run_id else {"run_name": f"eval-{model_ref}"}
     with mlflow.start_run(**run_kwargs):  # type: ignore[arg-type]
         mlflow.autolog(disable=True)
-        mlflow.set_tags({"eval.model": model_ref, "eval.split": args.split})
+        mlflow.set_tags({"eval.model": model_ref, "eval.split": args.split, "eval.head": head})
         model = YOLO(str(weights))
 
         candidate = split_metrics(
-            model, data_yaml, args.split, imgsz=args.imgsz, device=args.device, batch=args.batch
+            model,
+            data_yaml,
+            args.split,
+            imgsz=imgsz,
+            device=args.device,
+            batch=args.batch,
+            end2end=head == ONE_TO_ONE,
         )
         mlflow.log_metrics(candidate)
 
-        champion = gate_mod.fetch_champion_metrics(settings)
+        champion = gate_mod.fetch_champion_metrics(settings, args.target)
         thresholds = gate_mod.GateThresholds(
             min_map50_95=args.min_map50_95,
             min_map50=args.min_map50,
@@ -184,7 +220,12 @@ def main(argv: list[str] | None = None) -> int:
         latency = None
         if args.latency_enabled:
             latency = latency_stub(
-                model, images_dir, imgsz=args.imgsz, device=args.device, runs=args.latency_runs
+                model,
+                images_dir,
+                imgsz=imgsz,
+                device=args.device,
+                end2end=head == ONE_TO_ONE,
+                runs=args.latency_runs,
             )
             mlflow.log_metrics(latency)
 

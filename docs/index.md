@@ -11,7 +11,7 @@ page here as it lands.
 - [macOS dev box](macos.md) — what runs on Apple Silicon + Docker Desktop.
 - [VisDrone-VID dataset](data.md) — download, frame/label conversion, 3-class merge, validation.
 - [MLflow tracking & registry](mlflow.md) — Postgres + RustFS + MLflow Compose stack.
-- [Training](training.md) — YOLO26s transfer-learning recipe, MLflow logging.
+- [Training](training.md) — YOLO26 transfer learning per deployment target, MLflow logging.
 - [Tuning](tuning.md) — YOLO26 on VisDrone-VID: each experiment's purpose, command and results,
   and the recipe they chose.
 - [Evaluation](evaluation.md) — metrics (P/R/mAP), promotion gate, demo videos, error analysis,

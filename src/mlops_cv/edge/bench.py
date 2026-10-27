@@ -17,7 +17,7 @@ from mlops_cv import benchmark as benchmark_mod
 from mlops_cv.config import Settings, get_settings
 from mlops_cv.data.subset import IMAGES_DIRNAME
 from mlops_cv.edge.runtime import NcnnDetector
-from mlops_cv.optimize.variants import Variant
+from mlops_cv.optimize.variants import EDGE, Variant, served_variant
 from mlops_cv.serving.prepost import load_image
 from mlops_cv.startup import StartupError, exits_on_startup_error
 from mlops_cv.tracking import champion, client, edge_record
@@ -45,7 +45,8 @@ def build_parser(settings: Settings) -> argparse.ArgumentParser:
     p.add_argument(
         "--model-version",
         default=None,
-        help=f"registered {settings.mlflow.registered_model} version (default: the champion alias)",
+        help=f"registered {settings.mlflow.registered_model(EDGE)} version "
+        "(default: the champion alias)",
     )
     p.add_argument(
         "--variants",
@@ -69,12 +70,15 @@ def installed_versions() -> dict[str, str]:
     return versions
 
 
-def pull_model(version: str | None, variant: str, dst: Path = Path("models")) -> Path:
-    """Download one published NCNN variant of ``version`` (``None``: the champion) into ``dst``."""
+def pull_model(version: str | None, variant: str | None = None, dst: Path = Path("models")) -> Path:
+    """Download one published NCNN variant of an edge ``version`` (``None``: the champion) into
+    ``dst``; ``variant`` defaults to the served one at the version's training imgsz."""
     settings = get_settings()
     client.connect(settings, experiment=False)
-    uri = ncnn_artifacts(champion.resolve(settings, version).tags, [variant])[variant]
-    return download(uri, dst)
+    entity = champion.resolve(settings, version, target=EDGE)
+    if variant is None:
+        variant = served_variant(EDGE, champion.training_imgsz(entity.run_id)).name
+    return download(ncnn_artifacts(entity.tags, [variant])[variant], dst)
 
 
 @exits_on_startup_error
@@ -89,11 +93,11 @@ def main(argv: list[str] | None = None) -> int:
     if not frames:
         raise StartupError(
             f"no {SPLIT} frames in {images_dir} (DATA__SUBSET_DIR) — rsync the split from the "
-            "desktop, see 'Raspberry Pi 5 setup' in docs/edge.md"
+            "desktop, see 'Set up the Pi' in docs/edge.md"
         )
 
     mlflow = client.connect(settings, experiment=False)
-    version = champion.resolve(settings, args.model_version)
+    version = champion.resolve(settings, args.model_version, target=EDGE)
     selected = ncnn_artifacts(version.tags, args.variants.split(",") if args.variants else None)
     if not selected:
         raise StartupError(
@@ -102,8 +106,8 @@ def main(argv: list[str] | None = None) -> int:
         )
     record_run = record_run_id(selected.values())
     logger.info(
-        f"measuring {settings.mlflow.registered_model} v{version.version} on '{label}' -> run "
-        f"{record_run}: {', '.join(selected)}"
+        f"measuring {settings.mlflow.registered_model(EDGE)} v{version.version} on '{label}' "
+        f"-> run {record_run}: {', '.join(selected)}"
     )
 
     tags = mlflow.get_run(record_run).data.tags

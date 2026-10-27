@@ -30,10 +30,10 @@ def configure(settings: Settings | None = None) -> None:
     os.environ[TRACKING_URI_ENV] = _settings(settings).mlflow.tracking_uri
 
 
-def champion_uri(settings: Settings | None = None) -> str:
-    """The registry ref consumers serve by default: ``models:/<registered model>@<alias>``."""
+def champion_uri(settings: Settings | None, target: str) -> str:
+    """``target``'s champion as a registry ref: ``models:/<registered model>@<alias>``."""
     mlflow_settings = _settings(settings).mlflow
-    return f"models:/{mlflow_settings.registered_model}@{mlflow_settings.champion_alias}"
+    return f"models:/{mlflow_settings.registered_model(target)}@{mlflow_settings.champion_alias}"
 
 
 def connect(settings: Settings | None = None, *, experiment: bool = True) -> ModuleType:

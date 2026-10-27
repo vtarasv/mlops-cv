@@ -26,16 +26,20 @@ class MlflowSettings(BaseModel):
 
     tracking_uri: str = "http://localhost:5000"
     experiment: str = "aerial-object-detection"
-    registered_model: str = "aerial-object-detector"
+    registered_model_prefix: str = "aerial-object-detector"
     champion_alias: str = "champion"  # registry alias marking the deployed model
+
+    def registered_model(self, target: str) -> str:
+        """Each deployment target's own registered model (own champion, own gate)."""
+        return f"{self.registered_model_prefix}-{target}"
 
 
 class TrainingSettings(BaseModel):
-    """YOLO26s transfer-learning recipe (tuned for an 8 GB Blackwell GPU)."""
+    """The shared YOLO26 recipe (docs/tuning.md § Final recipe); the target picks the size."""
 
-    weights: str = "yolo26s.pt"
+    weights: str = "yolo26s.pt"  # its directory is the pretrained-weights cache
     epochs: int = 30
-    imgsz: int = 640
+    imgsz: int = 1280
     batch: int = -1  # -1 = ultralytics autobatch; the resolved value is logged as a run param
     nbs: int = 64  # nominal batch size -> accumulate = round(nbs / batch) for the small VRAM budget
     patience: int = 20
@@ -73,10 +77,8 @@ class MonitoringSettings(BaseModel):
 
 
 class OptimizeSettings(BaseModel):
-    """Serving-variant production: the two deployment targets and the compiler's budget."""
+    """Serving-variant production: the compiler's budget and the edge gate's tolerance."""
 
-    server_imgsz: int = 640
-    edge_imgsz: int = 320  # the low-resolution rung of the edge (NCNN) ladder
     workspace_gb: int = 4  # compiler workspace ceiling
     device_tolerance_pt: float = 0.5  # max |device - desktop| mAP gap, in percentage points
 

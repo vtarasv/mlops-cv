@@ -26,9 +26,10 @@ def test_configure_exports_only_the_tracking_uri(monkeypatch: pytest.MonkeyPatch
     assert os.environ["MLFLOW_TRACKING_URI"] == "http://host:1234"
 
 
-def test_champion_uri_names_the_registered_model_at_its_alias() -> None:
+def test_champion_uri_names_the_targets_registered_model_at_its_alias() -> None:
     s = load_settings(base_dir="/nonexistent")
-    assert client.champion_uri(s) == "models:/aerial-object-detector@champion"
+    assert client.champion_uri(s, "server") == "models:/aerial-object-detector-server@champion"
+    assert client.champion_uri(s, "edge") == "models:/aerial-object-detector-edge@champion"
 
 
 @pytest.fixture

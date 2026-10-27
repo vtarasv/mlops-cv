@@ -1,0 +1,74 @@
+# Edge image for the Raspberry Pi 5: Yocto 6.0 "wrynose" LTS.
+# Build: kas-container build kas/pi5.yml:kas/local.yml (see ../README.md).
+header:
+  version: 14
+
+machine: raspberrypi5
+distro: poky
+target: mlops-cv-edge-image
+
+repos:
+  # No poky repo for wrynose: bitbake, oe-core and meta-yocto pin to their yocto-6.0.4 tag commits.
+  bitbake:
+    url: https://git.openembedded.org/bitbake
+    branch: "2.18"
+    commit: 51fd94a67fa17650a9ff623492005972bbc7d26f
+    layers:
+      .: disabled
+  openembedded-core:
+    url: https://git.openembedded.org/openembedded-core
+    branch: wrynose
+    commit: 0f03c732a0a2d0506b41b1abe60b3f368b2300dc
+    layers:
+      meta:
+  meta-yocto:
+    url: https://git.yoctoproject.org/meta-yocto
+    branch: wrynose
+    commit: 7c25b11156553145fa6b241a2d4f65d94438f804
+    layers:
+      meta-poky:
+  meta-openembedded:
+    url: https://github.com/openembedded/meta-openembedded
+    branch: wrynose
+    commit: f28a144aa0a0ae05ca2ee91e1aef6aa05f6a12db
+    layers:
+      meta-oe:
+      meta-python:
+      meta-multimedia:
+  meta-raspberrypi:
+    url: https://github.com/agherzan/meta-raspberrypi
+    branch: wrynose
+    commit: 919588393f41b48cb6c5d832aa35e58a19b6762d
+  mlops-cv:
+    layers:
+      yocto/meta-mlops-cv:
+
+local_conf_header:
+  mlops-cv: |
+    INIT_MANAGER = "systemd"
+    # Pi 5 Wi-Fi/BT firmware (linux-firmware-rpidistro)
+    LICENSE_FLAGS_ACCEPTED += "synaptics-killswitch"
+    DISTRO_FEATURES_OPTED_OUT += "x11 wayland opengl vulkan pulseaudio ptest 3g nfc nfs"
+    INHERIT += "buildhistory"
+    # SSTATE_DIR may be shared across projects: keep the hash-equivalence DB beside it
+    BB_HASHSERVE_DB_DIR = "${SSTATE_DIR}"
+    # The full Raspberry Pi kernel clone (~15M objects) dropped mid-transfer: fetch only SRCREV
+    BB_GIT_SHALLOW:pn-linux-raspberrypi = "1"
+    # sshd.service, not the per-connection sshd.socket default
+    PACKAGECONFIG:pn-openssh = "systemd-sshd-service-mode hostkey-ecdsa"
+    # Camera: rpicam-vid's libav encoder needs ffmpeg with x264
+    LICENSE_FLAGS_ACCEPTED += "commercial_ffmpeg commercial_x264"
+    PACKAGECONFIG:append:pn-ffmpeg = " gpl x264"
+    # x264's CLI reads input through ffmpeg: a dependency loop once ffmpeg links libx264
+    PACKAGECONFIG:remove:pn-x264 = "ffmpeg"
+    # meta-raspberrypi's rpidistro-ffmpeg also provides libav
+    PREFERRED_PROVIDER_libav = "ffmpeg"
+    # OpenCV only reads images; commercial_ffmpeg would otherwise turn on its libav
+    PACKAGECONFIG:remove:pn-opencv = "libav"
+    # The firmware finds an official camera module; a board it misses is set in kas/local.yml
+    RPI_EXTRA_CONFIG = "camera_auto_detect=1"
+    # The layer ships only the imx219/imx477/imx708 sensor overlays
+    RPI_KERNEL_DEVICETREE_OVERLAYS:append = " overlays/ov5647.dtbo overlays/imx296.dtbo"
+    # Sized for a 30 GB RAM host (Yocto asks for 32 GB)
+    BB_NUMBER_THREADS = "12"
+    PARALLEL_MAKE = "-j 12"

@@ -7,6 +7,7 @@ import logging
 
 from mlops_cv.config import get_settings
 from mlops_cv.evaluation.gate import promote
+from mlops_cv.optimize.variants import SERVER, TARGETS
 from mlops_cv.orchestration.handoff import best_weights_uri
 from mlops_cv.startup import StartupError, exits_on_startup_error
 from mlops_cv.tracking.resolve import registered_version
@@ -18,13 +19,14 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=settings.log_level.upper(), format="%(message)s")
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--run-id", required=True, help="the model version's training run")
+    p.add_argument("--target", choices=TARGETS, default=SERVER, help="deployment target")
     args = p.parse_args(argv)
 
-    name = settings.mlflow.registered_model
+    name = settings.mlflow.registered_model(args.target)
     version = registered_version(best_weights_uri(args.run_id), name)
     if version is None:
         raise StartupError(f"run {args.run_id} registered no '{name}' version")
-    promote(settings, version)
+    promote(settings, version, args.target)
     return 0
 
 

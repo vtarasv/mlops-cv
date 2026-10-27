@@ -3,7 +3,9 @@ name: CI
 on:
   push:
     branches: [main, dev]
+    paths-ignore: ['**.md', 'yocto/**']
   pull_request:
+    paths-ignore: ['**.md', 'yocto/**']
 
 permissions:
   contents: read

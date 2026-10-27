@@ -16,6 +16,19 @@ NCNN = "ncnn"
 FP32 = "fp32"
 FP16 = "fp16"
 
+# Deployment targets: each has its own registered model, ladder and served variant.
+SERVER = "server"
+EDGE = "edge"
+TARGETS = (SERVER, EDGE)
+
+# Detection heads: one-to-one is YOLO26's end2end NMS-free head, one-to-many runs NMS after.
+ONE_TO_ONE = "one-to-one"
+ONE_TO_MANY = "one-to-many"
+HEADS = (ONE_TO_ONE, ONE_TO_MANY)
+
+# One-to-many bakes NMS into the graph at val's settings, keeping the (1, max_det, 6) output.
+_ONE_TO_MANY_EXPORT = {"end2end": False, "nms": True, "conf": 0.001, "iou": 0.7, "max_det": 300}
+
 # Graph opset. Back-compatible.
 # The export library derives this from the torch version + CUDA device.
 OPSET = 18
@@ -61,16 +74,22 @@ class Variant:
         return "cpu" if self.runtime == NCNN else cuda_device
 
 
-def ladder(server_imgsz: int, edge_imgsz: int) -> tuple[Variant, ...]:
-    """The measured variants."""
-    return (
-        Variant.of(TORCH, FP32, server_imgsz),
-        Variant.of(ONNX_ORT, FP32, server_imgsz),
-        Variant.of(TRT, FP16, server_imgsz),
-        Variant.of(NCNN, FP32, server_imgsz),
-        Variant.of(NCNN, FP16, server_imgsz),
-        Variant.of(NCNN, FP16, edge_imgsz),
+def ladder(target: str, imgsz: int) -> tuple[Variant, ...]:
+    """A deployment target's measured variants at the model's training imgsz, torch first."""
+    rungs = ((ONNX_ORT, FP32), (TRT, FP16)) if target == SERVER else ((NCNN, FP32), (NCNN, FP16))
+    return tuple(
+        Variant.of(runtime, precision, imgsz) for runtime, precision in ((TORCH, FP32), *rungs)
     )
+
+
+def served_variant(target: str, imgsz: int) -> Variant:
+    """The variant a deployment target serves."""
+    return Variant.of(ONNX_ORT, FP32, imgsz) if target == SERVER else Variant.of(NCNN, FP16, imgsz)
+
+
+def exported_head(target: str, head: str) -> str:
+    """The head a target's graphs run: NCNN can't export end2end, so the edge's is one-to-many."""
+    return ONE_TO_MANY if target == EDGE else head
 
 
 ARTIFACT_TAG_PREFIX = f"{OPTIMIZE_PREFIX}."
@@ -102,9 +121,10 @@ def graph_tag(imgsz: int) -> str:
     return f"{ARTIFACT_TAG_PREFIX}onnx_{imgsz}"
 
 
-def servable_tags(server_imgsz: int) -> tuple[str, ...]:
-    """The tags a servable version carries: each deployment target's default serving variant."""
-    return graph_tag(server_imgsz), artifact_tag(Variant.of(NCNN, FP16, server_imgsz).name)
+def served_tag(target: str, imgsz: int) -> str:
+    """The tag a servable version carries: its target's served variant (server: the graph)."""
+    served = served_variant(target, imgsz)
+    return graph_tag(imgsz) if served.needs_graph else artifact_tag(served.name)
 
 
 def select(variants: Sequence[Variant], names: Iterable[str] | None) -> tuple[Variant, ...]:
@@ -120,9 +140,20 @@ def select(variants: Sequence[Variant], names: Iterable[str] | None) -> tuple[Va
     return tuple(v for v in variants if v.name in wanted)
 
 
-def graph_export_kwargs(imgsz: int) -> dict[str, object]:
+def _head_export_kwargs(head: str) -> dict[str, object]:
+    """The export arguments that pick a graph's detection head (one-to-one is the default)."""
+    return _ONE_TO_MANY_EXPORT if head == ONE_TO_MANY else {}
+
+
+def graph_export_kwargs(imgsz: int, head: str) -> dict[str, object]:
     """Export arguments for the portable graph at one resolution."""
-    return {"format": "onnx", "imgsz": imgsz, "opset": OPSET, **_STATIC_EXPORT}
+    return {
+        "format": "onnx",
+        "imgsz": imgsz,
+        "opset": OPSET,
+        **_STATIC_EXPORT,
+        **_head_export_kwargs(head),
+    }
 
 
 def ncnn_export_kwargs(variant: Variant) -> dict[str, object]:
@@ -139,8 +170,8 @@ def ncnn_export_kwargs(variant: Variant) -> dict[str, object]:
     }
 
 
-def engine_export_kwargs(variant: Variant, *, workspace_gb: int) -> dict[str, object]:
-    """Export arguments for a compiled engine."""
+def engine_export_kwargs(variant: Variant, head: str, *, workspace_gb: int) -> dict[str, object]:
+    """Export arguments for a compiled engine: it re-exports the graph, so it takes its head."""
     return {
         "format": "engine",
         "imgsz": variant.imgsz,
@@ -148,4 +179,5 @@ def engine_export_kwargs(variant: Variant, *, workspace_gb: int) -> dict[str, ob
         "half": variant.precision == FP16,
         "workspace": workspace_gb,
         **_STATIC_EXPORT,
+        **_head_export_kwargs(head),
     }

@@ -96,16 +96,17 @@ def benchmark_model(
     warmup: int = DEFAULT_WARMUP,
     iterations: int = DEFAULT_ITERATIONS,
     ps: Sequence[float] = DEFAULT_PERCENTILES,
+    end2end: bool | None = None,
 ) -> dict[str, float]:
     """Time single-image ``model.predict`` calls at one pinned configuration -> latency metrics.
 
     ``model`` is duck-typed (anything exposing ``predict``). The measurement configuration
-    (``imgsz``, ``device``) is part of the interface on purpose: a latency read at the predict
-    call's own defaults is not comparable to the accuracy it is reported beside. End-to-end
-    timings — batch 1, pre/post-processing included.
+    (``imgsz``, ``device``, a torch model's ``end2end`` head) is part of the interface on
+    purpose: a latency read at the predict call's own defaults is not comparable to the accuracy
+    it is reported beside. End-to-end timings — batch 1, pre/post-processing included.
     """
     timings = time_calls(
-        lambda src: model.predict(src, imgsz=imgsz, device=device, verbose=False),
+        lambda src: model.predict(src, imgsz=imgsz, device=device, end2end=end2end, verbose=False),
         list(images),
         warmup=warmup,
         iterations=iterations,

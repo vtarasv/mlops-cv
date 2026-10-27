@@ -12,7 +12,7 @@ from mlops_cv.config import Settings, load_settings
 from mlops_cv.startup import StartupError
 from mlops_cv.tracking import champion
 
-NAME = "aerial-object-detector"
+NAME = "aerial-object-detector-server"
 
 
 # --- the alias ---
@@ -21,7 +21,7 @@ NAME = "aerial-object-detector"
 def test_resolves_the_alias_to_the_promoted_version(registry) -> None:
     registry.promote(version="9", run_id="train-9")
 
-    found = champion.resolve(Settings(), registry=registry)
+    found = champion.resolve(Settings(), target="server", registry=registry)
 
     assert found.version == "9"
     assert registry.asked == [("alias", NAME, "champion")]
@@ -32,7 +32,7 @@ def test_resolves_a_pinned_version_number_without_touching_the_alias(registry) -
     registry.promote(version="9")
     registry.add_version(version="7")
 
-    found = champion.resolve(Settings(), "7", registry=registry)
+    found = champion.resolve(Settings(), "7", target="server", registry=registry)
 
     assert found.version == "7"
     assert registry.asked == [("version", NAME, "7")]
@@ -41,7 +41,7 @@ def test_resolves_a_pinned_version_number_without_touching_the_alias(registry) -
 def test_no_champion_is_a_named_refusal_not_a_traceback(registry) -> None:
     """The ordinary state of a fresh install."""
     with pytest.raises(StartupError) as exc:
-        champion.resolve(Settings(), registry=registry)
+        champion.resolve(Settings(), target="server", registry=registry)
     message = str(exc.value)
     assert "champion" in message  # which alias
     assert NAME in message  # on which model
@@ -51,7 +51,7 @@ def test_no_champion_is_a_named_refusal_not_a_traceback(registry) -> None:
 def test_a_pinned_version_that_does_not_exist_is_a_named_refusal(registry) -> None:
     registry.promote(version="9")
     with pytest.raises(StartupError) as exc:
-        champion.resolve(Settings(), "7", registry=registry)
+        champion.resolve(Settings(), "7", target="server", registry=registry)
     assert "7" in str(exc.value)
 
 
@@ -89,6 +89,29 @@ def test_a_training_run_that_is_gone_is_a_named_refusal(registry) -> None:
     assert "make train" in message
 
 
+def test_each_target_resolves_its_own_registered_model(registry) -> None:
+    """A challenger is only ever compared with its own target's champion."""
+    registry.promote(version="3")
+    champion.resolve(Settings(), target="edge", registry=registry)
+    assert registry.asked == [("alias", "aerial-object-detector-edge", "champion")]
+
+
+# --- the training imgsz ---
+
+
+def test_training_imgsz_is_read_off_the_runs_train_args(registry) -> None:
+    registry.add_run("train-9", params={"imgsz": "1280"})
+    assert champion.training_imgsz("train-9", registry=registry) == 1280
+
+
+@pytest.mark.parametrize("run_id", [None, "no-params", "gone"])
+def test_an_unknown_training_imgsz_is_a_named_refusal(registry, run_id: str | None) -> None:
+    """Never a Settings fallback: a wrong imgsz serves a graph the model was not trained for."""
+    registry.add_run("no-params")
+    with pytest.raises(StartupError, match="make train"):
+        champion.training_imgsz(run_id, registry=registry)
+
+
 # --- the session ---
 
 
@@ -115,7 +138,7 @@ def test_resolving_without_an_injected_registry_configures_the_session_first(
     monkeypatch.setitem(sys.modules, "mlflow", fake)
     monkeypatch.setitem(sys.modules, "mlflow.exceptions", exceptions)
 
-    found = champion.resolve(load_settings(base_dir="/nonexistent"))
+    found = champion.resolve(load_settings(base_dir="/nonexistent"), target="server")
 
     assert found.version == "1"
     assert seen["env_at_construction"] == "http://host:1234"

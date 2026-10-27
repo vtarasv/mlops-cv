@@ -46,12 +46,14 @@ def test_missing_graph_tag_names_the_command_that_publishes_it(registry) -> None
     assert "version 7" in message  # on which version
 
 
-def test_resolve_graph_downloads_the_tagged_artifact(
+def test_resolve_graph_downloads_the_graph_at_the_training_imgsz(
     registry, monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
+    """The champion's own training imgsz picks the tag, never a Settings value."""
     graph = tmp_path / "best_640.onnx"
     graph.write_bytes(b"onnx")
-    registry.promote(version="7", tags=PUBLISHED)
+    registry.add_run("train-run", params={"imgsz": "640"})
+    registry.promote(version="7", tags=PUBLISHED | {graph_tag(1280): "runs:/r/onnx/best_1280.onnx"})
     asked: list[str] = []
 
     def download(uri: str):
@@ -62,7 +64,7 @@ def test_resolve_graph_downloads_the_tagged_artifact(
 
     path, model = resolve_graph(Settings(), registry=registry)
     assert path == graph
-    assert model.name == "aerial-object-detector"
+    assert model.name == "aerial-object-detector-server"
     assert model.version == "7"
     assert asked == ["runs:/record-run/onnx/best_640.onnx"]
 
@@ -71,12 +73,13 @@ def test_resolve_graph_asks_the_registry_for_the_champion_alias(
     registry, monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
     """Rollout is restart-to-pick-up: the alias is what the service resolves, once."""
+    registry.add_run("train-run", params={"imgsz": "640"})
     registry.promote(version="7", tags=PUBLISHED)
     monkeypatch.setattr(serving_resolve, "download", lambda uri: tmp_path)
 
     settings = Settings()
     resolve_graph(settings, registry=registry)
-    assert registry.asked == [("alias", settings.mlflow.registered_model, "champion")]
+    assert registry.asked == [("alias", "aerial-object-detector-server", "champion")]
 
 
 def test_no_champion_alias_fails_fast_with_the_promotion_hint(registry) -> None:
@@ -85,5 +88,5 @@ def test_no_champion_alias_fails_fast_with_the_promotion_hint(registry) -> None:
         resolve_graph(Settings(), registry=registry)
     message = str(exc.value)
     assert "champion" in message
-    assert "aerial-object-detector" in message
+    assert "aerial-object-detector-server" in message
     assert "make train" in message

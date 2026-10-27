@@ -20,7 +20,7 @@ flowchart LR
     app --> decode["decode\n(cv2.imdecode)"]
     decode --> pre["letterbox + normalize\n(pre/post module)"]
     pre --> ort["onnxruntime session\nCUDA EP, static batch 1"]
-    ort --> post["rescale to source px\n+ confidence filter\n(no NMS - NMS-free head)"]
+    ort --> post["rescale to source px\n+ confidence filter\n(no NMS - done in the graph)"]
     post --> boxes["wire Boxes\n(class name, conf, xywhn)"]
     boxes --> resp(["JSON: model identity\n+ boxes + latency_ms"])
 ```
@@ -39,9 +39,10 @@ flowchart LR
 
 The service resolves the champion **once at startup**:
 
-1. The registry's `champion` alias names the model version.
-2. The version's `optimize.onnx_640` tag carries the full `runs:/…` URI of the ONNX
-   graph the optimization harness exported and published for that version.
+1. The `champion` alias on `aerial-object-detector-server` (the server deployment target's
+   registered model) names the model version.
+2. The version's `optimize.onnx_<imgsz>` tag, at the imgsz its training run trained at, carries
+   the full `runs:/…` URI of the ONNX graph the optimization harness published for it.
 3. The artifact downloads through the tracking server's proxied artifacts — the only
    credential the service needs is `MLFLOW__TRACKING_URI`.
 4. An onnxruntime session is built **CUDA-EP only** and asked back which providers it
@@ -59,9 +60,10 @@ configuring them beside the model.
 
 ## The pre/post contract
 
-The graph is the exported **end2end NMS-free head**: it takes one letterboxed tensor and
-returns final detections, so serving-side math is decode → letterbox → normalize on the
-way in, and box rescale + confidence filter on the way out — **no NMS**.
+The graph returns final detections as `(1, 300, 6)` for either detection head: one-to-one is the
+end2end NMS-free head, one-to-many (the production default) has NMS baked in at val's settings
+(`conf=0.001`, `iou=0.7`, `max_det=300`). Serving-side math is decode → letterbox → normalize on
+the way in, and box rescale + confidence filter on the way out — **no NMS in Python**.
 
 That math lives in one owned pure module (numpy + headless OpenCV) and is pinned
 **byte-for-byte** against golden fixtures generated with real ultralytics preprocessing.
@@ -83,7 +85,7 @@ is unchanged, so an online-accuracy metric must score at a near-zero floor.
 
 ```json
 {
-  "model": {"name": "aerial-object-detector", "version": "3"},
+  "model": {"name": "aerial-object-detector-server", "version": "3"},
   "boxes": [
     {"cls": "vehicle", "conf": 0.87, "xywhn": [0.512, 0.334, 0.041, 0.028]}
   ],

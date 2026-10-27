@@ -554,6 +554,32 @@ uv run python -m mlops_cv.tuning.test_read --o2m stride10-n1280
 - **Not adopted.** Stride 10 doubles training time for a gain test doesn't show, so the subset
   keeps stride 20. That is a cost call, not the win-margin rule.
 
+## 15. Confidence floor
+
+**What:** the production defaults (`stage2-m1280`, `stage2-n1280`, one-to-many head) read on val
+and test: the max-F1 confidence, and the class-mean F1 / P / R (%) at each split's best floor and
+at today's 0.25.
+
+**Why:** to check whether each model version could carry its own floor, read on val. A floor
+changes no mAP, only point metrics.
+
+| Model | floor | val F1 / P / R | test F1 / P / R |
+|---|---|---|---|
+| m | 0.19 (test's max-F1) | 66.6 / 68.4 / 66.0 | **62.2** / 68.1 / 57.6 |
+| m | **0.25** | 67.4 / 72.6 / 63.4 | 61.6 / 72.7 / 54.1 |
+| m | 0.30 (val's max-F1) | **67.5** / 75.7 / 61.3 | 60.4 / 75.7 / 51.1 |
+| n | 0.21 (test's max-F1) | 60.2 / 57.9 / 63.4 | **57.0** / 65.0 / 51.7 |
+| n | **0.25** | 61.8 / 62.5 / 61.6 | 56.8 / 68.9 / 49.5 |
+| n | 0.34 (val's max-F1) | **63.3** / 70.9 / 57.3 | 55.0 / 76.1 / 44.8 |
+
+**Result:**
+- **Val and test disagree by 0.11–0.13.** The best floor follows the split's recall (test's scenes
+  are harder), not the model: m's precision at a given floor is the same on both.
+- **Either split's best floor costs 0.9–3.0 pt F1 on the other.** Tuning on test would also end
+  its unbiased P/R read.
+- **The floor stays 0.25** on every target, within 0.6 pt of either split's best for m. Re-entry:
+  labelled live footage to read it on.
+
 ## Summary
 
 - **Recipe for every size:** the ultralytics defaults at imgsz 1280 and 30 epochs. Batch is 4/4/2

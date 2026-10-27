@@ -8,7 +8,12 @@ import types
 import pytest
 
 from mlops_cv.optimize.variants import artifact_tag
-from mlops_cv.tracking.resolve import ncnn_artifacts, record_run_id, resolve_model
+from mlops_cv.tracking.resolve import (
+    ncnn_artifacts,
+    record_run_id,
+    resolve_model,
+    source_run_id,
+)
 
 
 class _FakeVersion:
@@ -63,6 +68,13 @@ def test_run_uri_passes_through_without_registry_lookup(calls: dict) -> None:
     assert calls["download_uri"] == "runs:/abc123/weights/best.pt"
     assert "alias" not in calls and "version" not in calls
     assert slug == "abc123-weights-best.pt"
+
+
+def test_source_run_is_the_versions_training_run_or_the_run_uris_own(calls: dict) -> None:
+    """Where evaluation and optimization read the training imgsz from."""
+    assert source_run_id("models:/aerial-object-detector-server@champion") == _FakeVersion.run_id
+    assert source_run_id("runs:/abc123/weights/best.pt") == "abc123"
+    assert source_run_id("best.pt") is None
 
 
 # A model version's tags as the optimize driver writes them.

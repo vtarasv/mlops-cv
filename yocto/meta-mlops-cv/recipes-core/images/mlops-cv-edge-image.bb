@@ -22,6 +22,14 @@ IMAGE_INSTALL += " \
     kernel-module-imx219 kernel-module-i2c-designware-platform \
 "
 
+# Python runtime for mlops_cv.edge (rsynced, run with PYTHONPATH): no pip on the device.
+IMAGE_INSTALL += " \
+    python3-ncnn python3-numpy python3-opencv python3-pyyaml python3-pydantic \
+    python3-pydantic-settings python3-mlflow-skinny python3-databricks-sdk \
+    python3-opentelemetry-api python3-opentelemetry-sdk python3-opentelemetry-proto \
+    python3-opentelemetry-semantic-conventions \
+"
+
 # Set in kas/local.yml (see kas/local.yml.example).
 python () {
     for var in ("MLOPS_CV_WIFI_SSID", "MLOPS_CV_WIFI_PSK", "MLOPS_CV_ROOT_PUBKEY"):

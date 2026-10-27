@@ -39,8 +39,9 @@ The image lands in `$KAS_WORK_DIR/build/tmp/deploy/images/raspberrypi5/`. A chan
 
 Find the card with `lsblk -d -o NAME,SIZE,TRAN,RM,MODEL`: it is the new removable (`RM 1`)
 entry of the card's size, `sdX` behind a USB reader or `mmcblk0` in a built-in slot. Write to
-the whole disk, not a partition, and unmount any automounted partitions first.
-`bmaptool` is in Fedora's `bmap-tools` package.
+the whole disk, not a partition. A desktop automounts the card's partitions: unmount them first
+(`lsblk /dev/sdX` shows no mountpoints after). `bmaptool` is in the `bmap-tools` package on most
+distros; `dd` needs nothing.
 
 ```bash
 sudo umount /dev/sdX?*

@@ -18,7 +18,9 @@ Yocto build), your user and host on the stock Raspberry Pi OS.
 Once per card. Pick the OS:
 
 - **Edge image** (this repo's Yocto build): the runtime and the camera stack are in the image.
-  Build and flash it: [yocto/README.md](../yocto/README.md).
+  Build and flash it: [yocto/README.md](../yocto/README.md). The edge image is Python 3.14
+  with the runtime packages above plus `rpicam-vid`; no pip, torch or git. Its rootfs is about 407 MiB (327 packages).
+
 - **Raspberry Pi OS:** install the camera apps and a venv of the lock's `edge` group. On the desktop:
 
   ```bash
@@ -80,15 +82,11 @@ within 0.5 pt (`OPTIMIZE__DEVICE_TOLERANCE_PT`); otherwise it exits 1. The run g
 
 **Another device:** run the bench with `--device-label <label>` and the gate with
 `DEVICE_LABEL=<label>`. The bench decides the label (default `pi5`) and the gate can't relabel, so a
-bench run without it overwrites the Pi 5's readings: re-run it with the label, then bench and gate
-the Pi 5 again.
+bench run without it overwrites the Pi 5's readings.
 
 **Running again** replaces the readings: the bench clears the pass tag and overwrites the dumps,
 and the gate rescores every published variant. After a reflash or a package change, re-bench every
 variant (no `--variants`) before gating.
-
-Last results on the edge image: the gate passed at 1280 (Δ −0.06 pt fp32, −0.09 pt fp16), with
-`ncnn-fp16-1280` at p50 351 ms; `ncnn-fp16-640` runs at 195 ms against Raspberry Pi OS's 186 ms.
 
 ## Live view
 
@@ -151,6 +149,3 @@ against the desktop's NCNN reading, not the training run's `test/*`.
 The device is never on the promotion path: the CT pipeline publishes the edge ladder and promotes
 on the served tag alone. The bench and the gate run out of band, adding readings to the same
 record run.
-
-The edge image is Python 3.14 with the runtime packages above plus `rpicam-vid`; no pip, torch
-or git. Its rootfs is about 407 MiB (327 packages).

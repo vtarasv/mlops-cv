@@ -224,17 +224,25 @@ class PipeCamera:
         self.width, self.height = width, height
         cmd = ["rpicam-vid", "-t", "0", "-n", "--codec", "yuv420"]
         cmd += ["--width", str(width), "--height", str(height), "-o", "-"]
-        self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+        self.stopped = False
+        # Own session: a terminal Ctrl-C stops Python, which then stops the child.
+        self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, start_new_session=True)
 
     def capture_array(self) -> np.ndarray:
         n = self.width * self.height * 3 // 2
-        buf = self.proc.stdout.read(n)  # pyright: ignore[reportOptionalMemberAccess]
+        try:
+            buf = self.proc.stdout.read(n)  # pyright: ignore[reportOptionalMemberAccess]
+        except ValueError:  # stop() closed the pipe
+            buf = b""
         if len(buf) < n:
+            if self.stopped:  # park the daemon capture thread until the process exits
+                threading.Event().wait()
             raise EOFError(f"rpicam-vid stopped (exit {self.proc.poll()})")
         yuv = np.frombuffer(buf, np.uint8).reshape(self.height * 3 // 2, self.width)
         return cv2.cvtColor(yuv, cv2.COLOR_YUV2BGR_I420)
 
     def stop(self) -> None:
+        self.stopped = True
         self.proc.terminate()
         self.proc.wait()
         self.proc.stdout.close()  # pyright: ignore[reportOptionalMemberAccess]
@@ -245,7 +253,12 @@ def open_camera(size: str) -> PipeCamera:
     width, height = (int(v) for v in size.split("x"))
     if width % 64:  # rpicam-vid pads the I420 stride otherwise
         raise StartupError(f"--size width {width} isn't a multiple of 64 — try 640, 1280 or 1920")
-    cam = PipeCamera(width, height)
+    try:
+        cam = PipeCamera(width, height)
+    except FileNotFoundError:
+        raise StartupError(
+            "rpicam-vid not found — `apt install rpicam-apps` (rpicam-apps-lite on Lite)"
+        ) from None
     try:
         cam.capture_array()  # rpicam-vid exits before its first frame when no camera is attached
     except EOFError:

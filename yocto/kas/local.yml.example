@@ -7,4 +7,5 @@ local_conf_header:
   mlops-cv-local: |
     MLOPS_CV_WIFI_SSID = "CHANGEME"
     MLOPS_CV_WIFI_PSK = "CHANGEME"
+    MLOPS_CV_WIFI_COUNTRY = "CHANGEME"  # ISO 3166 code, e.g. UA: unlocks 5 GHz channels
     MLOPS_CV_ROOT_PUBKEY = "ssh-ed25519 AAAA... you@desktop"

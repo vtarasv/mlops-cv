@@ -19,7 +19,7 @@ runtime `mlops_cv.edge` needs; the code itself is rsynced (see
 cp kas/local.yml.example kas/local.yml   # gitignored
 ```
 
-Fill in the Wi-Fi SSID/PSK and the root ssh public key.
+Fill in the Wi-Fi SSID/PSK/country and the root ssh public key (generate one).
 
 ## Build
 
@@ -49,16 +49,12 @@ sudo umount $CARD?*          # every partition: sda1, sda2… (mmcblk0p1…); "n
 cd $KAS_WORK_DIR/build/tmp/deploy/images/raspberrypi5
 sudo bmaptool copy mlops-cv-edge-image-raspberrypi5.rootfs.wic.bz2 $CARD
 # or: bzcat mlops-cv-edge-image-raspberrypi5.rootfs.wic.bz2 | sudo dd of=$CARD bs=4M conv=fsync status=progress
-
-# Eject safely
-sync
-udisksctl power-off -b $CARD
+sync && udisksctl power-off -b $CARD  # eject safely
 ```
 
 ## First boot
 
 ```bash
+ssh-keygen -R raspberrypi5.local   # a reflash generates new host keys
 ssh root@raspberrypi5.local
 ```
-
-Password logins are refused. Using the device (bench, live view) is in [docs/edge.md](../docs/edge.md).

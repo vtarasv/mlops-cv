@@ -5,13 +5,13 @@ require recipes-core/images/core-image-minimal.bb
 IMAGE_FEATURES += "ssh-server-openssh"
 
 # core-image-minimal skips MACHINE_EXTRA_RRECOMMENDS: add its firmware and udev rules, not all
-# kernel-modules. brcmfmac is a module in bcm2712_defconfig.
+# kernel-modules. brcmfmac is a module in bcm2712_defconfig; the CYW43455 needs its cyw vendor module.
 IMAGE_INSTALL += " \
     rsync avahi-daemon wpa-supplicant \
     udev-rules-rpi \
     linux-firmware-rpidistro-bcm43455 linux-firmware-rpidistro-bcm43456 \
     bluez-firmware-rpidistro-bcm4345c0-hcd bluez-firmware-rpidistro-bcm4345c5-hcd \
-    kernel-module-brcmfmac kernel-module-brcmfmac-wcc \
+    kernel-module-brcmfmac kernel-module-brcmfmac-cyw wireless-regdb-static \
     kernel-module-pwm-fan \
 "
 
@@ -32,7 +32,7 @@ IMAGE_INSTALL += " \
 
 # Set in kas/local.yml (see kas/local.yml.example).
 python () {
-    for var in ("MLOPS_CV_WIFI_SSID", "MLOPS_CV_WIFI_PSK", "MLOPS_CV_ROOT_PUBKEY"):
+    for var in ("MLOPS_CV_WIFI_SSID", "MLOPS_CV_WIFI_PSK", "MLOPS_CV_WIFI_COUNTRY", "MLOPS_CV_ROOT_PUBKEY"):
         if not d.getVar(var):
             bb.fatal(f"{var} is unset: copy yocto/kas/local.yml.example to yocto/kas/local.yml")
 }
@@ -54,7 +54,9 @@ mlops_cv_rootfs_config () {
         > ${IMAGE_ROOTFS}${sysconfdir}/systemd/network/80-wlan0.network
 
     install -d -m 0700 ${IMAGE_ROOTFS}${sysconfdir}/wpa_supplicant
-    printf 'network={\n\tssid="%s"\n\tpsk="%s"\n}\n' '${MLOPS_CV_WIFI_SSID}' '${MLOPS_CV_WIFI_PSK}' \
+    # country= sets the regulatory domain: without it 5 GHz channels are passive-only
+    printf 'country=%s\nnetwork={\n\tssid="%s"\n\tpsk="%s"\n}\n' \
+        '${MLOPS_CV_WIFI_COUNTRY}' '${MLOPS_CV_WIFI_SSID}' '${MLOPS_CV_WIFI_PSK}' \
         > ${IMAGE_ROOTFS}${sysconfdir}/wpa_supplicant/wpa_supplicant-wlan0.conf
     chmod 0600 ${IMAGE_ROOTFS}${sysconfdir}/wpa_supplicant/wpa_supplicant-wlan0.conf
     install -d ${IMAGE_ROOTFS}${sysconfdir}/systemd/system/multi-user.target.wants

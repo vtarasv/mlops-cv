@@ -160,4 +160,4 @@ python3 -m mlops_cv.edge.bench --device-label pi5
 `make edge-gate` is the bar. If the gate fails, the prepost and NCNN decode golden tests
 (`tests/unit/test_serving_prepost.py`, `tests/unit/test_edge_runtime.py`, run on the Pi) show
 where the numerics drift. On the image the gate passed at 1280 (Δ −0.06 pt fp32, −0.09 pt fp16),
-with `ncnn-fp16-1280` at p50 351 ms.
+with `ncnn-fp16-1280` at p50 351 ms; `ncnn-fp16-640` runs at 195 ms against Pi OS's 186 ms.

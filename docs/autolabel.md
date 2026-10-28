@@ -82,6 +82,35 @@ uv run python -m mlops_cv.autolabel configs/autolabel/smoke.yaml --set train-sam
 uv run python -m mlops_cv.autolabel configs/autolabel/smoke.yaml --set val-stride20
 ```
 
+## Viewing a trial
+
+The annotation editor is FiftyOne 1.22.1 (`docker-compose/docker-compose.fiftyone.yml`): the App
+and its MongoDB, with raw VID and the scoring sets mounted read-only at their host paths.
+
+```bash
+make fiftyone-up                       # http://localhost:5151
+make autolabel-view RUN=<MLflow run id> # a run in aerial-auto-label
+```
+
+```mermaid
+flowchart LR
+    M[MLflow run] -->|COCO RLE artifact| V["mlops_cv.autolabel.view (host)"]
+    V -->|"scoring set's trials/"| L["load_trial.py (App container)"]
+    L --> D[(FiftyOne dataset)]
+```
+
+- **Datasets.** One FiftyOne dataset per scoring set, `visdrone-vid-<set>`, created on first load
+  with `ground_truth` (after the ignored-region drop) and `ignored`.
+- **Fields.** Each trial adds `<run>_seg` (mask and its tight box) and `<run>_det` (the detector's
+  box), named by its run name without the set suffix; the champion row has only `_det`. Reloading
+  overwrites them. Auto-labels are shown as stored, before the ignored-region drop.
+- **Flags are for browsing only.** Each field gets `evaluate_detections` at IoU 0.5
+  (`eval_<field>`), for TP/FP/FN filters in the App. They count every confidence and match
+  unlike the validator, so the numbers above come from `score_with_ap_small` alone.
+- **Masks.** Settings' *Label opacity* fades mask fills only; at 0 the boxes stay.
+- **Loading takes time.** The flags dominate: `train-sample` with one trial loads in 2.3 min,
+  the champion's 0.001-floor row on `val-stride20` in 4.6 min.
+
 ## Results
 
 F1 at IoU 0.5 in %, under the [auto-labeling scoring convention](#scoring-convention-ignored-regions).

@@ -397,8 +397,8 @@ sequence mode a track.
 _Avoid_: detection (that is the detector's output), pseudo-label
 
 **Image mode**:
-Auto-labeling each image on its own, with no memory of other images. VisDrone-DET is labeled
-this way.
+Auto-labeling each image on its own, with no memory of other images. Single VisDrone-VID frames
+are labeled this way, and sequence mode's key frames reuse it.
 _Also_: image case
 
 **Sequence mode**:

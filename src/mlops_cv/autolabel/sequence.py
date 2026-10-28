@@ -51,22 +51,16 @@ class Track:
     missed: int = 0  # consecutive key frames without a match
 
 
-def greedy_match(iou: np.ndarray, tau: float) -> tuple[dict[int, int], np.ndarray]:
-    """``iou`` (boxes, tracks) -> ``{box: track}`` at IoU >= ``tau``, best first, and new boxes.
+def match(iou: np.ndarray, tau: float) -> tuple[dict[int, int], np.ndarray]:
+    """``iou`` (boxes, tracks) -> one-to-one ``{box: track}`` at IoU >= ``tau``, and the rest.
 
-    A box is new when its best IoU is below ``tau``; one that lost its track to a better box is
-    neither matched nor new, so it can't start a duplicate track.
+    The trackers' convention (SORT, ByteTrack, BoT-SORT): a linear assignment on 1 - IoU gated at
+    ``tau``, through ultralytics' own; every box left unmatched starts a new track.
     """
-    pairs: dict[int, int] = {}
-    taken: set[int] = set()
-    for flat in np.argsort(-iou, axis=None, kind="stable"):
-        box, track = (int(i) for i in np.unravel_index(flat, iou.shape))
-        if iou[box, track] < tau:
-            break
-        if box not in pairs and track not in taken:
-            pairs[box] = track
-            taken.add(track)
-    return pairs, np.flatnonzero(iou.max(1, initial=0.0) < tau)
+    from ultralytics.trackers.utils.matching import linear_assignment
+
+    matches, unmatched, _ = linear_assignment(1 - np.asarray(iou, float), 1 - tau)
+    return {int(b): int(t) for b, t in matches}, np.asarray(unmatched, int)
 
 
 def younger_duplicates(iou: np.ndarray, ids: list[int], threshold: float) -> set[int]:
@@ -114,7 +108,7 @@ class Tracks:
         cfg = self.cfg
         duplicates = younger_duplicates(mask_iou, ids, cfg.duplicate_iou)
         cols = [j for j, i in enumerate(ids) if i not in duplicates]
-        pairs, new = greedy_match(box_iou[:, cols], cfg.new_iou)
+        pairs, new = match(box_iou[:, cols], cfg.new_iou)
         matched = {ids[cols[t]]: b for b, t in pairs.items()}
         for j in cols:
             track = self.live[ids[j]]

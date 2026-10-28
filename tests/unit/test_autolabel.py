@@ -256,15 +256,23 @@ def test_amortised_latency_drops_whole_key_frame_cycles() -> None:
     assert out["latency/total/amortised_ms"] == 30.0
 
 
-def test_greedy_match_pairs_best_first_and_leaves_losers_unmatched() -> None:
+def test_match_assigns_one_to_one_and_every_unmatched_box_is_new() -> None:
+    pytest.importorskip("lap")
     iou = np.array([[0.9, 0.0], [0.6, 0.1], [0.0, 0.4], [0.1, 0.2]])
-    pairs, new = sequence.greedy_match(iou, 0.3)
+    pairs, new = sequence.match(iou, 0.3)
     assert pairs == {0: 0, 2: 1}
-    assert new.tolist() == [3]  # box 1 lost track 0 to box 0: neither matched nor new
+    assert new.tolist() == [1, 3]  # box 1 lost track 0 to box 0, so it starts a track
 
 
-def test_greedy_match_without_tracks_makes_every_box_new() -> None:
-    pairs, new = sequence.greedy_match(np.zeros((2, 0)), 0.3)
+def test_match_maximises_the_total_iou_not_the_best_pair() -> None:
+    pytest.importorskip("lap")
+    pairs, _ = sequence.match(np.array([[0.9, 0.8], [0.85, 0.0]]), 0.3)
+    assert pairs == {0: 1, 1: 0}  # greedy would take 0.9 and leave box 1 without its track
+
+
+def test_match_without_tracks_makes_every_box_new() -> None:
+    pytest.importorskip("lap")
+    pairs, new = sequence.match(np.zeros((2, 0)), 0.3)
     assert pairs == {} and new.tolist() == [0, 1]
 
 

@@ -57,15 +57,16 @@ objects keep one id across frames and the detector runs only on key frames.
 
 ```mermaid
 flowchart LR
-    K[key frame] --> D[detector] --> F[box filter] --> M{IoU with live tracks' mask boxes}
-    M -- "≥ τ" --> U[refresh the track's score]
-    M -- "< τ" --> A[new object in the video tracker]
+    K[key frame] --> D[detector] --> F[box filter] --> M{one-to-one assignment on IoU with live tracks' mask boxes}
+    M -- "matched, IoU ≥ τ" --> U[refresh the track's score]
+    M -- unmatched --> A[new object in the video tracker]
     T[every frame] --> V[video tracker] --> R[COCO RLE + track_id]
 ```
 
 - **Video trackers** (EdgeTAM, SAM 2.1 video, through transformers). Frame 0 and every K-th
-  frame are key frames (`key_interval`). A kept box whose best IoU with the live tracks' mask
-  boxes is below τ (`new_iou`, 0.3) starts a track. The tracker is never reset; its memory is
+  frame are key frames (`key_interval`). Kept boxes are assigned one-to-one to the live tracks'
+  mask boxes on IoU ≥ τ (`new_iou`, 0.3), as SORT, ByteTrack and BoT-SORT match; every box left
+  unmatched starts a track. The tracker is never reset; its memory is
   pruned to each object's seed frame plus the last 16 frames, which keeps it flat. A track ends
   after 25 empty-mask frames (`empty_frames`) or 2 key frames without a match
   (`unmatched_keys`, the drift rule); of two tracks whose masks overlap at IoU > 0.8

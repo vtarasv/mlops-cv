@@ -34,7 +34,7 @@ SUBSET_CAP = 200
 # Images left out of the latency readings.
 WARMUP = 3
 DET, SEG = "det", "seg"
-STAGE_TAG, SET_TAG = "autolabel.stage", "autolabel.set"
+SET_TAG = "autolabel.set"
 
 
 def autolabels_file(scoring_set: str) -> str:
@@ -237,7 +237,7 @@ def run_trial(
         path.write_text(json.dumps(coco_autolabels(images, labels)))
         metrics["autolabels_mb"] = path.stat().st_size / 2**20
         with mlflow.start_run(run_name=f"{name}-{scoring_set}"):
-            mlflow.set_tags({STAGE_TAG: stage, SET_TAG: scoring_set})
+            mlflow.set_tags({"autolabel.stage": stage, SET_TAG: scoring_set})
             mlflow.log_params(params(config) | {"frames": len(images)})
             mlflow.log_metrics(metrics)
             mlflow.log_artifact(str(path))

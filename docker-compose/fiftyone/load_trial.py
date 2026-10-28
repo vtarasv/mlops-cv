@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-GROUND_TRUTH, IGNORED = "ground_truth", "ignored"
+GROUND_TRUTH = "ground_truth"
 
 
 def dataset_name(scoring_set: str) -> str:
@@ -64,7 +64,7 @@ def create(fo: Any, name: str, set_dir: Path) -> Any:
         for im in gt["images"]
     )
     fouc.add_coco_labels(ds, GROUND_TRUTH, gt["annotations"], gt["categories"])
-    fouc.add_coco_labels(ds, IGNORED, ignored["annotations"], ignored["categories"])
+    fouc.add_coco_labels(ds, "ignored", ignored["annotations"], ignored["categories"])
     return ds
 
 

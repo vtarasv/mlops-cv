@@ -13,6 +13,10 @@ objects, so a config tuned on it would fit the wrong labeling protocol.
 |---|---|---|
 | `train-sample` | 560: 10 evenly spaced from each of VID train's 56 sequences (48 recordings) | image-mode tuning; nothing is trained, so train is free to tune on |
 | `val-stride20` | 146: every 20th VID val frame, the repo subset's val | the champion beside the image-mode finalists |
+| `val-full` | 2,846: every frame of VID val's 7 sequences | sequence-mode tuning |
+| `test-dev-full` | 6,635: every frame of VID test-dev's 17 sequences | the finalists, read once |
+
+Each set's `ground_truth.json` carries VID's `track_id` per box.
 
 ## How a labeling trial works
 
@@ -45,6 +49,42 @@ flowchart LR
   `det_bbox` the detector's, and the prompt under `attributes.label`.
 - **Champion row.** The champion YOLO26 runs through the same scoring as a supervised reference
   (boxes only, unfiltered). It trained on VID train, so the runner skips it on `train-sample`.
+
+## Sequence mode
+
+A trial with a `tracker` section labels whole sequences (`val-full`, `test-dev-full`), so
+objects keep one id across frames and the detector runs only on key frames.
+
+```mermaid
+flowchart LR
+    K[key frame] --> D[detector] --> F[box filter] --> M{IoU with live tracks' mask boxes}
+    M -- "≥ τ" --> U[refresh the track's score]
+    M -- "< τ" --> A[new object in the video tracker]
+    T[every frame] --> V[video tracker] --> R[COCO RLE + track_id]
+```
+
+- **Video trackers** (EdgeTAM, SAM 2.1 video, through transformers). Frame 0 and every K-th
+  frame are key frames (`key_interval`). A kept box whose best IoU with the live tracks' mask
+  boxes is below τ (`new_iou`, 0.3) starts a track. The tracker is never reset; its memory is
+  pruned to each object's seed frame plus the last 16 frames, which keeps it flat. A track ends
+  after 25 empty-mask frames (`empty_frames`) or 2 key frames without a match
+  (`unmatched_keys`, the drift rule); of two tracks whose masks overlap at IoU > 0.8
+  (`duplicate_iou`), the younger ends. A tracked frame carries the score of the last detection
+  its track matched. `max_objects` caps live tracks; none by default.
+- **Box-tracker controls** (`botsort`, `bytetrack`: ultralytics' default settings). The
+  detector, box filter and segmenter run on every frame, once per stage: both controls reuse
+  that pass. A detection is an auto-label when the tracker gives it a track.
+- **Scores.** `det` scores the filtered detector boxes on key frames only, and `seg` every frame's
+  auto-label boxes. Tracks go through TrackEval's MOTChallenge adapter
+  (`trackeval==1.3.0`, a numpy-2 fork of upstream), once per merged class after the
+  ignored-region rule, combined det-averaged: `track/HOTA` (DetA, AssA), `track/IDF1`,
+  `track/MOTA`, `track/IDSW`, and per class. Stages that tune tracking settings select on HOTA,
+  the rest on F1. The 3 merged classes aren't VisDrone-MOT's 5, so these numbers don't compare
+  with published ones.
+- **Records.** `latency/<stage>/amortised_ms`: each stage's (detector, filter, segmenter,
+  tracker) total over the frames divided by the frame count, the first key-frame cycle left out
+  as warm-up. `tracks/peak_live` is the most live tracks on any frame. The COCO file adds a
+  `track_id` per auto-label; `det_bbox` appears only where a detection matched it.
 
 ## Scoring convention: ignored regions
 
@@ -80,6 +120,9 @@ uv run python -m mlops_cv.autolabel.visdrone_vid
 # One stage on one set; --limit N labels and scores only the first N frames.
 uv run python -m mlops_cv.autolabel configs/autolabel/smoke.yaml --set train-sample
 uv run python -m mlops_cv.autolabel configs/autolabel/smoke.yaml --set val-stride20
+# Sequence mode on whole sequences; --sequence NAME (repeatable) keeps only those.
+uv run --env-file .env python -m mlops_cv.autolabel configs/autolabel/sequence-smoke.yaml \
+  --set val-full --sequence uav0000305_00000_v
 ```
 
 ## Results

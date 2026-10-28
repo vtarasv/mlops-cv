@@ -40,6 +40,7 @@ RAW_NAMES = {
 }
 IGNORED_CATEGORY = 0
 BOX_COLS = slice(2, 6)  # left, top, width, height
+TRACK_COL = 1  # target_id
 # The toolkit drops a box when at least this share of its w*h lies inside the ignored regions.
 IGNORED_SHARE = 0.5
 # The split every scoring dataset YAML names: ultralytics' check needs ``val:``.
@@ -64,7 +65,11 @@ def strided(stride: int) -> Callable[[list[int]], list[int]]:
 SETS: dict[str, tuple[str, Callable[[list[int]], list[int]]]] = {
     "train-sample": ("train", evenly_spaced(SAMPLE_FRAMES)),  # image mode tunes here
     "val-stride20": ("val", strided(20)),  # the champion meets the image-mode finalists here
+    "val-full": ("val", strided(1)),  # sequence mode tunes here
+    "test-dev-full": ("test", strided(1)),  # the finalists are reported here once
 }
+# The full-rate sets: sequence mode tracks whole sequences.
+SEQUENCE_SETS = ("val-full", "test-dev-full")
 
 
 @dataclass(frozen=True)
@@ -77,7 +82,10 @@ class Image:
     height: int
     boxes: np.ndarray  # categories 1-10 only
     categories: np.ndarray  # raw category per box
+    track_ids: np.ndarray  # VID's target_id per box
     ignored: np.ndarray  # the frame's ignored regions
+    sequence: str
+    frame: int  # 1-based, as VID numbers it
 
 
 def read_sequence(
@@ -101,7 +109,10 @@ def read_sequence(
                 height=height,
                 boxes=frame[scored, BOX_COLS].astype(float),
                 categories=category[scored],
+                track_ids=frame[scored, TRACK_COL],
                 ignored=frame[category == IGNORED_CATEGORY, BOX_COLS],
+                sequence=seq_dir.name,
+                frame=f,
             )
         )
     return images
@@ -140,7 +151,12 @@ def outside_ignored(boxes: np.ndarray, ignored: np.ndarray, width: int, height: 
 def scored(image: Image) -> Image:
     """``image`` with the ground truth the ignored-region rule drops removed."""
     keep = outside_ignored(image.boxes, image.ignored, image.width, image.height)
-    return replace(image, boxes=image.boxes[keep], categories=image.categories[keep])
+    return replace(
+        image,
+        boxes=image.boxes[keep],
+        categories=image.categories[keep],
+        track_ids=image.track_ids[keep],
+    )
 
 
 def merged(categories: np.ndarray) -> np.ndarray:
@@ -172,7 +188,7 @@ COCO_CATEGORIES = [{"id": c + 1, "name": n} for c, n in YOLO_NAMES.items()]
 
 
 def coco_ground_truth(images: list[Image]) -> dict[str, Any]:
-    """Merged-class COCO ground truth, the raw category kept as an attribute."""
+    """Merged-class COCO ground truth with VID's ``track_id``, the raw category as an attribute."""
     annotations = [
         {
             "image_id": image_id,
@@ -180,10 +196,11 @@ def coco_ground_truth(images: list[Image]) -> dict[str, Any]:
             "bbox": box.tolist(),
             "area": float(box[2] * box[3]),
             "iscrowd": 0,
+            "track_id": int(t),
             "attributes": {"raw_category": RAW_NAMES[int(c)]},
         }
         for image_id, im in enumerate(images, start=1)
-        for box, c in zip(im.boxes, im.categories, strict=True)
+        for box, c, t in zip(im.boxes, im.categories, im.track_ids, strict=True)
     ]
     return coco_file(images, annotations, COCO_CATEGORIES)
 

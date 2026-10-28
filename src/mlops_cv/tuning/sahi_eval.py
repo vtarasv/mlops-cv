@@ -22,8 +22,8 @@ from typing import Any
 
 import numpy as np
 
+from mlops_cv.evaluation.score_detections import CONF, MAX_DET, readings
 from mlops_cv.startup import exits_on_startup_error
-from mlops_cv.tuning.zero_shot import CONF, MAX_DET, readings
 
 logger = logging.getLogger(__name__)
 

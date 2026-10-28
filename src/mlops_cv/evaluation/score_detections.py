@@ -17,6 +17,11 @@ if TYPE_CHECKING:
     from ultralytics.models.yolo.detect import DetectionValidator
     from ultralytics.utils.metrics import DetMetrics
 
+# val's own floor and box cap (``model.val`` defaults): detections scored here are predicted with
+# them. For a class-mapped model, the cap applies before the mapping drops classes, as in the model.
+CONF = 0.001
+MAX_DET = 300
+
 
 def _validator(data_yaml: Path, split: str, save_dir: Path) -> DetectionValidator:
     from ultralytics.data.utils import check_det_dataset
@@ -109,3 +114,32 @@ def score_with_ap_small(
     validator, labels = _validate(detections, data_yaml, split, frames)
     metrics = validator.metrics
     return metrics, ap_small_mod.ap_small(validator.jdict, labels, metrics.names)
+
+
+def readings(
+    detections: Mapping[str, np.ndarray],
+    data_yaml: Path,
+    split: str,
+    prefix: str,
+    frames: Collection[str] | None = None,
+) -> dict[str, float]:
+    """Merged detections scored on ``split`` (or its ``frames``) -> trial keys under ``prefix``."""
+    from mlops_cv.tracking.metric_keys import (
+        MAP_SMALL,
+        PRIMARY,
+        headline_metrics,
+        metric_key,
+        per_class_metrics,
+    )
+
+    metrics, ap_s = score_with_ap_small(detections, data_yaml, split, frames)
+    return (
+        headline_metrics(metrics.box, prefix=prefix)
+        | {metric_key(prefix, MAP_SMALL): ap_s}
+        | per_class_metrics(
+            metrics.maps,
+            metrics.ap_class_index,
+            metrics.names,
+            prefix=metric_key(prefix, PRIMARY),
+        )
+    )

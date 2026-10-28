@@ -9,13 +9,14 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Collection, Mapping
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
 from mlops_cv.data.convert_visdrone_vid import YOLO_NAMES
+from mlops_cv.evaluation.score_detections import CONF, MAX_DET, readings
 from mlops_cv.startup import exits_on_startup_error
 
 logger = logging.getLogger(__name__)
@@ -28,11 +29,6 @@ COCO_TO_MERGED: dict[str, str] = {
     "bicycle": "two-three-wheeler",
     "motorcycle": "two-three-wheeler",
 }
-
-# val's own floor and box cap (``model.val`` defaults). The cap applies before the mapping drops
-# COCO classes, as it would inside the model.
-CONF = 0.001
-MAX_DET = 300
 
 IMGSZ = (640, 1280)
 
@@ -63,36 +59,6 @@ def merge_classes(rows: np.ndarray, lut: np.ndarray) -> np.ndarray:
 def result_rows(result: Any) -> np.ndarray:
     """An ultralytics predict result -> ``(n, 6) x1 y1 x2 y2 conf cls`` in source pixels."""
     return result.boxes.data.cpu().numpy()
-
-
-def readings(
-    detections: Mapping[str, np.ndarray],
-    data_yaml: Path,
-    split: str,
-    prefix: str,
-    frames: Collection[str] | None = None,
-) -> dict[str, float]:
-    """Merged detections scored on ``split`` (or its ``frames``) -> trial keys under ``prefix``."""
-    from mlops_cv.evaluation.score_detections import score_with_ap_small
-    from mlops_cv.tracking.metric_keys import (
-        MAP_SMALL,
-        PRIMARY,
-        headline_metrics,
-        metric_key,
-        per_class_metrics,
-    )
-
-    metrics, ap_s = score_with_ap_small(detections, data_yaml, split, frames)
-    return (
-        headline_metrics(metrics.box, prefix=prefix)
-        | {metric_key(prefix, MAP_SMALL): ap_s}
-        | per_class_metrics(
-            metrics.maps,
-            metrics.ap_class_index,
-            metrics.names,
-            prefix=metric_key(prefix, PRIMARY),
-        )
-    )
 
 
 @exits_on_startup_error

@@ -112,8 +112,8 @@ def readings(
     frames: Collection[str] | None,
 ) -> dict[str, float]:
     """The validator's keys under ``prefix``, plus F1 at IoU 0.5 from its precision and recall."""
+    from mlops_cv.evaluation.score_detections import readings as validator_readings
     from mlops_cv.tracking.metric_keys import F1, metric_key
-    from mlops_cv.tuning.zero_shot import readings as validator_readings
 
     out = validator_readings(detections, data_yaml, visdrone_vid.SCORING_SPLIT, prefix, frames)
     p, r = out[metric_key(prefix, "precision")], out[metric_key(prefix, "recall")]

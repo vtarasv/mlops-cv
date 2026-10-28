@@ -1,9 +1,7 @@
-"""Raw VisDrone-DET: its annotations, the toolkit's ignored-region rule and the scoring dataset.
+"""Raw VisDrone-VID frames: their annotations, the toolkit's ignored-region rule and scoring sets.
 
-DET annotation row (0-based columns): ``left, top, width, height, score, category, truncation,
-occlusion``. Category 0 rows are ignored regions; category 11 (``others``) is never scored.
-
-The scoring dataset is ``<autolabel_dir>/det-<split>/``: ``images`` (a link to the raw images),
+A scoring set is a fixed choice of frames from one VID split. It is written to
+``<autolabel_dir>/<set>/``: ``images`` (one link per frame, named ``<sequence>_<frame>.jpg``),
 3-class YOLO ``labels``, ``data.yaml``, and COCO ``ground_truth.json`` + ``ignored.json`` for the
 annotation editor. Ground truth is dropped by the ignored-region rule before it is written.
 """
@@ -13,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -21,12 +20,12 @@ import numpy as np
 import yaml
 from PIL import Image as PILImage
 
-from mlops_cv.data.convert_visdrone_vid import CLASS_MERGE, YOLO_NAMES
+from mlops_cv.data.convert_visdrone_vid import CATEGORY_COL, CLASS_MERGE, FRAME_COL, YOLO_NAMES
+from mlops_cv.data.subset import frame_name, raw_split_dir
 from mlops_cv.startup import exits_on_startup_error
 
 logger = logging.getLogger(__name__)
 
-SPLITS = {"val": "VisDrone2019-DET-val", "test-dev": "VisDrone2019-DET-test-dev"}
 RAW_NAMES = {
     1: "pedestrian",
     2: "people",
@@ -40,51 +39,82 @@ RAW_NAMES = {
     10: "motor",
 }
 IGNORED_CATEGORY = 0
-CATEGORY_COL = 5
+BOX_COLS = slice(2, 6)  # left, top, width, height
 # The toolkit drops a box when at least this share of its w*h lies inside the ignored regions.
 IGNORED_SHARE = 0.5
 # The split every scoring dataset YAML names: ultralytics' check needs ``val:``.
 SCORING_SPLIT = "val"
+# Frames per sequence in the image-mode sample.
+SAMPLE_FRAMES = 10
+
+
+def evenly_spaced(n: int) -> Callable[[list[int]], list[int]]:
+    """``n`` frames spread evenly over a sequence, first and last included."""
+    return lambda frames: [
+        frames[i] for i in np.unique(np.linspace(0, len(frames) - 1, n).round().astype(int))
+    ]
+
+
+def strided(stride: int) -> Callable[[list[int]], list[int]]:
+    """Every ``stride``-th 1-based frame, as the repo's VID subset picks them."""
+    return lambda frames: [f for f in frames if (f - 1) % stride == 0]
+
+
+# Scoring set -> (YOLO split, frame picker per sequence).
+SETS: dict[str, tuple[str, Callable[[list[int]], list[int]]]] = {
+    "train-sample": ("train", evenly_spaced(SAMPLE_FRAMES)),  # image mode tunes here
+    "val-stride20": ("val", strided(20)),  # the champion meets the image-mode finalists here
+}
 
 
 @dataclass(frozen=True)
 class Image:
-    """One DET image's ground truth, boxes as ``(n, 4)`` xywh source pixels."""
+    """One frame's ground truth, boxes as ``(n, 4)`` xywh source pixels."""
 
-    name: str
+    name: str  # unique across sequences
+    path: Path
     width: int
     height: int
     boxes: np.ndarray  # categories 1-10 only
     categories: np.ndarray  # raw category per box
-    ignored: np.ndarray  # the ignored regions
+    ignored: np.ndarray  # the frame's ignored regions
 
 
-def read_image(image_path: Path, annotation_path: Path) -> Image:
-    rows = np.loadtxt(annotation_path, delimiter=",", usecols=range(8), ndmin=2, dtype=np.int64)
-    category = rows[:, CATEGORY_COL]
-    scored = np.isin(category, list(CLASS_MERGE))
-    with PILImage.open(image_path) as im:
+def read_sequence(
+    seq_dir: Path, annotation_path: Path, pick: Callable[[list[int]], list[int]]
+) -> list[Image]:
+    """The picked frames of one sequence, in frame order."""
+    paths = {int(p.stem): p for p in seq_dir.glob("*.jpg")}
+    rows = np.loadtxt(annotation_path, delimiter=",", usecols=range(10), ndmin=2, dtype=np.int64)
+    with PILImage.open(paths[min(paths)]) as im:  # one size per sequence, as the toolkit reads it
         width, height = im.size
-    return Image(
-        name=image_path.name,
-        width=width,
-        height=height,
-        boxes=rows[scored, :4].astype(float),
-        categories=category[scored],
-        ignored=rows[category == IGNORED_CATEGORY, :4],
-    )
+    images = []
+    for f in pick(sorted(paths)):
+        frame = rows[rows[:, FRAME_COL] == f]
+        category = frame[:, CATEGORY_COL]
+        scored = np.isin(category, list(CLASS_MERGE))
+        images.append(
+            Image(
+                name=f"{frame_name(seq_dir.name, f)}.jpg",
+                path=paths[f],
+                width=width,
+                height=height,
+                boxes=frame[scored, BOX_COLS].astype(float),
+                categories=category[scored],
+                ignored=frame[category == IGNORED_CATEGORY, BOX_COLS],
+            )
+        )
+    return images
 
 
-def split_dir(det_dir: Path, split: str) -> Path:
-    return det_dir / SPLITS[split]
-
-
-def read_split(det_dir: Path, split: str) -> list[Image]:
-    """Every image of a raw DET split, sorted by file name."""
-    root = split_dir(det_dir, split)
+def read_set(raw_dir: Path, scoring_set: str) -> list[Image]:
+    """Every frame of a scoring set, sorted by name."""
+    split, pick = SETS[scoring_set]
+    root = raw_dir / raw_split_dir(split)
     return [
-        read_image(p, root / "annotations" / p.with_suffix(".txt").name)
-        for p in sorted((root / "images").glob("*.jpg"))
+        im
+        for seq in sorted((root / "sequences").iterdir())
+        for im in read_sequence(seq, root / "annotations" / f"{seq.name}.txt", pick)
     ]
 
 
@@ -131,7 +161,7 @@ def yolo_lines(image: Image) -> list[str]:
 
 
 def coco_images(images: list[Image]) -> list[dict[str, Any]]:
-    """COCO ``images``: ids follow file-name order, so every file of a split shares them."""
+    """COCO ``images``: ids follow name order, so every file of a scoring set shares them."""
     return [
         {"id": i, "file_name": im.name, "width": im.width, "height": im.height}
         for i, im in enumerate(images, start=1)
@@ -181,23 +211,22 @@ def coco_file(
     return {"images": coco_images(images), "annotations": annotations, "categories": categories}
 
 
-def scoring_dir(autolabel_dir: Path, split: str) -> Path:
-    return autolabel_dir / f"det-{split}"
+def scoring_dir(autolabel_dir: Path, scoring_set: str) -> Path:
+    return autolabel_dir / scoring_set
 
 
-def prepare(det_dir: Path, autolabel_dir: Path, split: str) -> list[Image]:
-    """Write ``split``'s scoring dataset; returns its images with the ground truth as scored."""
-    raw = read_split(det_dir, split)
+def prepare(raw_dir: Path, autolabel_dir: Path, scoring_set: str) -> list[Image]:
+    """Write a scoring set's dataset; returns its frames with the ground truth as scored."""
+    raw = read_set(raw_dir, scoring_set)
     images = [scored(im) for im in raw]
-    out = scoring_dir(autolabel_dir, split)
+    out = scoring_dir(autolabel_dir, scoring_set)
     for sub in ("images", "labels"):
         (out / sub).mkdir(parents=True, exist_ok=True)
-    source = (split_dir(det_dir, split) / "images").resolve()
     for im in images:
         # One link per file: ultralytics resolves a linked directory and would label the raw one.
         link = out / "images" / im.name
         if not link.is_symlink():
-            link.symlink_to(source / im.name)
+            link.symlink_to(im.path.resolve())
         (out / "labels" / Path(im.name).with_suffix(".txt")).write_text("\n".join(yolo_lines(im)))
     (out / "labels.cache").unlink(missing_ok=True)
     splits = dict.fromkeys(("train", "val", "test"), "images")
@@ -207,7 +236,7 @@ def prepare(det_dir: Path, autolabel_dir: Path, split: str) -> list[Image]:
     (out / "ignored.json").write_text(json.dumps(coco_ignored(images)))
     dropped = sum(len(r.boxes) - len(s.boxes) for r, s in zip(raw, images, strict=True))
     logger.info(
-        f"{split}: {len(images)} images, {sum(len(im.boxes) for im in images)} scored boxes, "
+        f"{scoring_set}: {len(images)} frames, {sum(len(im.boxes) for im in images)} scored boxes, "
         f"{dropped} dropped by the ignored-region rule -> {out}"
     )
     return images
@@ -215,16 +244,16 @@ def prepare(det_dir: Path, autolabel_dir: Path, split: str) -> list[Image]:
 
 @exits_on_startup_error
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description="Write the VisDrone-DET scoring datasets.")
-    p.add_argument("--split", choices=SPLITS, action="append", help="default: every split")
+    p = argparse.ArgumentParser(description="Write the VisDrone-VID scoring sets.")
+    p.add_argument("--set", choices=SETS, action="append", dest="sets", help="default: every set")
     args = p.parse_args(argv)
 
     from mlops_cv.config import get_settings
 
     settings = get_settings()
     logging.basicConfig(level=settings.log_level.upper(), format="%(message)s")
-    for split in args.split or SPLITS:
-        prepare(settings.data.det_dir, settings.data.autolabel_dir, split)
+    for scoring_set in args.sets or SETS:
+        prepare(settings.data.raw_dir, settings.data.autolabel_dir, scoring_set)
     return 0
 
 

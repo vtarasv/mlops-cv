@@ -1,8 +1,8 @@
 """Run one labeling stage: ``configs/autolabel/<stage>.yaml`` -> one MLflow run per labeling trial.
 
-Each trial labels a whole DET split. The filtered detector boxes (``det``) and the mask-derived
-boxes (``seg``) are scored apart, through ultralytics' validator, after the ignored-region drop.
-The auto-labels are logged as one COCO RLE file per trial and split.
+Each trial labels a whole VID scoring set. The filtered detector boxes (``det``) and the
+mask-derived boxes (``seg``) are scored apart, through ultralytics' validator, after the
+ignored-region drop. The auto-labels are logged as one COCO RLE file per trial and set.
 """
 
 from __future__ import annotations
@@ -21,8 +21,8 @@ from typing import Any
 import numpy as np
 import yaml
 
-from mlops_cv.autolabel import visdrone_det
-from mlops_cv.autolabel.labeler import Labeler, LabelingConfig, Labels, read_rgb
+from mlops_cv.autolabel import visdrone_vid
+from mlops_cv.autolabel.labeler import CHAMPION, Labeler, LabelingConfig, Labels, read_rgb
 from mlops_cv.startup import exits_on_startup_error
 
 logger = logging.getLogger(__name__)
@@ -81,20 +81,20 @@ def mask_rows(labels: Labels) -> np.ndarray:
     return rows[keep]
 
 
-def outside_ignored(rows: np.ndarray, image: visdrone_det.Image) -> np.ndarray:
+def outside_ignored(rows: np.ndarray, image: visdrone_vid.Image) -> np.ndarray:
     """``rows`` (x1 y1 x2 y2 ...) without those the toolkit's ignored-region rule drops."""
     xywh = np.column_stack([rows[:, :2], rows[:, 2:4] - rows[:, :2]])
-    return rows[visdrone_det.outside_ignored(xywh, image.ignored, image.width, image.height)]
+    return rows[visdrone_vid.outside_ignored(xywh, image.ignored, image.width, image.height)]
 
 
-def uncapped(images: list[visdrone_det.Image], cap: int) -> list[str]:
+def uncapped(images: list[visdrone_vid.Image], cap: int) -> list[str]:
     """The images where no raw category has more than ``cap`` ground-truth boxes."""
     return [
         im.name for im in images if max(Counter(im.categories.tolist()).values(), default=0) <= cap
     ]
 
 
-def recall_ceiling(images: list[visdrone_det.Image], cap: int) -> float:
+def recall_ceiling(images: list[visdrone_vid.Image], cap: int) -> float:
     """The recall left when each raw category keeps at most ``cap`` boxes per image."""
     counts = [n for im in images for n in Counter(im.categories.tolist()).values()]
     total = sum(counts)
@@ -115,13 +115,13 @@ def readings(
     from mlops_cv.tracking.metric_keys import F1, metric_key
     from mlops_cv.tuning.zero_shot import readings as validator_readings
 
-    out = validator_readings(detections, data_yaml, visdrone_det.SCORING_SPLIT, prefix, frames)
+    out = validator_readings(detections, data_yaml, visdrone_vid.SCORING_SPLIT, prefix, frames)
     p, r = out[metric_key(prefix, "precision")], out[metric_key(prefix, "recall")]
     return out | {metric_key(prefix, F1): f1(p, r)}
 
 
 def scores(
-    images: list[visdrone_det.Image], labels: list[Labels], data_yaml: Path, *, full: bool
+    images: list[visdrone_vid.Image], labels: list[Labels], data_yaml: Path, *, full: bool
 ) -> dict[str, float]:
     """Each box kind scored on every image, then on the ``SUBSET_CAP`` subset."""
     from mlops_cv.tracking.metric_keys import metric_key
@@ -159,7 +159,7 @@ def latency(labels: list[Labels]) -> dict[str, float]:
     return out
 
 
-def coco_autolabels(images: list[visdrone_det.Image], labels: list[Labels]) -> dict[str, Any]:
+def coco_autolabels(images: list[visdrone_vid.Image], labels: list[Labels]) -> dict[str, Any]:
     """The trial's COCO file: ``bbox`` is the mask's box, the detector's goes in ``det_bbox``.
 
     An empty mask is no auto-label. Without a segmenter, ``bbox`` is the detector's box.
@@ -194,18 +194,18 @@ def coco_autolabels(images: list[visdrone_det.Image], labels: list[Labels]) -> d
                     "area": area,
                 }
             annotations.append(ann)
-    return visdrone_det.coco_file(images, annotations, visdrone_det.COCO_CATEGORIES)
+    return visdrone_vid.coco_file(images, annotations, visdrone_vid.COCO_CATEGORIES)
 
 
-def label_split(
-    config: LabelingConfig, images: list[visdrone_det.Image], images_dir: Path, device: str
+def label_frames(
+    config: LabelingConfig, images: list[visdrone_vid.Image], device: str
 ) -> list[Labels]:
     labeler = Labeler(config, device)
     out = []
     for i, im in enumerate(images, start=1):
-        out.append(labeler(read_rgb(images_dir / im.name)))
+        out.append(labeler(read_rgb(im.path)))
         if i % 50 == 0:
-            logger.info(f"  {i}/{len(images)} images")
+            logger.info(f"  {i}/{len(images)} frames")
     del labeler
     gc.collect()
     return out
@@ -216,35 +216,39 @@ def run_trial(
     stage: str,
     name: str,
     config: LabelingConfig,
-    images: list[visdrone_det.Image],
-    split: str,
+    images: list[visdrone_vid.Image],
+    scoring_set: str,
     full: bool,
 ) -> None:
     from mlops_cv.config import get_settings
 
     settings = get_settings()
-    images_dir = visdrone_det.split_dir(settings.data.det_dir, split) / "images"
-    data_yaml = visdrone_det.scoring_dir(settings.data.autolabel_dir, split) / "data.yaml"
-    labels = label_split(config, images, images_dir, settings.training.device)
+    data_yaml = visdrone_vid.scoring_dir(settings.data.autolabel_dir, scoring_set) / "data.yaml"
+    labels = label_frames(config, images, settings.training.device)
     metrics = scores(images, labels, data_yaml, full=full) | latency(labels)
     with tempfile.TemporaryDirectory() as tmp:
-        path = Path(tmp) / f"autolabels-{split}.json"
+        path = Path(tmp) / f"autolabels-{scoring_set}.json"
         path.write_text(json.dumps(coco_autolabels(images, labels)))
         metrics["autolabels_mb"] = path.stat().st_size / 2**20
-        with mlflow.start_run(run_name=name):
-            mlflow.set_tags({"autolabel.stage": stage, "autolabel.split": split})
-            mlflow.log_params(params(config) | {"images": len(images)})
+        with mlflow.start_run(run_name=f"{name}-{scoring_set}"):
+            mlflow.set_tags({"autolabel.stage": stage, "autolabel.set": scoring_set})
+            mlflow.log_params(params(config) | {"frames": len(images)})
             mlflow.log_metrics(metrics)
             mlflow.log_artifact(str(path))
     logger.info(f"{name}: {json.dumps(metrics, indent=1)}")
+
+
+def runnable(config: LabelingConfig, scoring_set: str) -> bool:
+    """The champion trained on VID train, so it never labels a train scoring set."""
+    return not (config.detector.model == CHAMPION and visdrone_vid.SETS[scoring_set][0] == "train")
 
 
 @exits_on_startup_error
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="Run one auto-labeling stage, one run per trial.")
     p.add_argument("stage", type=Path, help="configs/autolabel/<stage>.yaml")
-    p.add_argument("--split", choices=visdrone_det.SPLITS, default="val")
-    p.add_argument("--limit", type=int, help="label and score only the first N images")
+    p.add_argument("--set", choices=visdrone_vid.SETS, default="train-sample", dest="scoring_set")
+    p.add_argument("--limit", type=int, help="label and score only the first N frames")
     args = p.parse_args(argv)
 
     os.environ["MLFLOW__EXPERIMENT"] = AUTOLABEL_EXPERIMENT
@@ -253,7 +257,8 @@ def main(argv: list[str] | None = None) -> int:
     settings = get_settings()
     logging.basicConfig(level=settings.log_level.upper(), format="%(message)s")
     trials = load_stage(args.stage)
-    images = visdrone_det.prepare(settings.data.det_dir, settings.data.autolabel_dir, args.split)
+    scoring_set = args.scoring_set
+    images = visdrone_vid.prepare(settings.data.raw_dir, settings.data.autolabel_dir, scoring_set)
     full = args.limit is None
     images = images[: args.limit]
 
@@ -262,9 +267,12 @@ def main(argv: list[str] | None = None) -> int:
     mlflow = client.connect(settings)
     failed = []
     for name, config in trials.items():
-        logger.info(f"{name}: labeling {len(images)} {args.split} images")
+        if not runnable(config, scoring_set):
+            logger.info(f"{name}: skipped, the champion trained on {scoring_set}'s split")
+            continue
+        logger.info(f"{name}: labeling {len(images)} {scoring_set} frames")
         try:
-            run_trial(mlflow, args.stage.stem, name, config, images, args.split, full)
+            run_trial(mlflow, args.stage.stem, name, config, images, scoring_set, full)
         except Exception:
             logger.exception(f"{name} failed")
             failed.append(name)

@@ -1,4 +1,4 @@
-"""The auto-labeler's pure parts: DET reader, ignored-region rule, box filter, stage runner."""
+"""The auto-labeler's pure parts: VID reader, ignored-region rule, box filter, stage runner."""
 
 from __future__ import annotations
 
@@ -12,8 +12,8 @@ import yaml
 from PIL import Image
 from pydantic import ValidationError
 
-from mlops_cv.autolabel import labeler, run, visdrone_det
-from mlops_cv.autolabel.labeler import BoxFilter, Labels
+from mlops_cv.autolabel import labeler, run, visdrone_vid
+from mlops_cv.autolabel.labeler import BoxFilter, LabelingConfig, Labels
 from mlops_cv.data.convert_visdrone_vid import YOLO_NAMES
 
 
@@ -21,45 +21,64 @@ def test_ignored_rule_uses_the_union_of_regions() -> None:
     # Each region covers 4 of the box's 10 columns: kept against either alone, dropped by both.
     box = np.array([[20, 1, 10, 10]])
     a, b = [21, 1, 3, 20], [26, 1, 3, 20]
-    assert visdrone_det.outside_ignored(box, np.array([a]), 64, 32).all()
-    assert visdrone_det.outside_ignored(box, np.array([b]), 64, 32).all()
-    assert not visdrone_det.outside_ignored(box, np.array([a, b]), 64, 32).any()
+    assert visdrone_vid.outside_ignored(box, np.array([a]), 64, 32).all()
+    assert visdrone_vid.outside_ignored(box, np.array([b]), 64, 32).all()
+    assert not visdrone_vid.outside_ignored(box, np.array([a, b]), 64, 32).any()
 
 
 def test_ignored_rule_keeps_everything_without_regions() -> None:
-    assert visdrone_det.outside_ignored(np.array([[0, 0, 5, 5]]), np.zeros((0, 4)), 8, 8).all()
+    assert visdrone_vid.outside_ignored(np.array([[0, 0, 5, 5]]), np.zeros((0, 4)), 8, 8).all()
 
 
 @pytest.fixture
-def det_dir(tmp_path: Path) -> Path:
-    root = tmp_path / "raw" / visdrone_det.SPLITS["val"]
-    for sub in ("images", "annotations"):
-        (root / sub).mkdir(parents=True)
-    Image.new("RGB", (100, 50)).save(root / "images" / "a.jpg")
+def raw_dir(tmp_path: Path) -> Path:
+    root = tmp_path / "raw" / "VisDrone2019-VID-val"
+    seq = root / "sequences" / "uav1_v"
+    seq.mkdir(parents=True)
+    (root / "annotations").mkdir()
+    for frame in range(1, 23):
+        Image.new("RGB", (100, 50)).save(seq / f"{frame:07d}.jpg")
     rows = [
-        "0,0,40,50,0,0,0,0",  # ignored region
-        "60,10,20,10,1,4,0,0",  # car, kept
-        "5,5,10,10,1,1,0,0",  # pedestrian inside the ignored region: dropped
-        "70,30,10,10,0,11,0,0",  # others: never scored
+        "1,0,0,0,40,50,0,0,0,0",  # ignored region
+        "1,1,60,10,20,10,1,4,0,0",  # car, kept
+        "1,2,5,5,10,10,1,1,0,0",  # pedestrian inside the ignored region: dropped
+        "1,3,70,30,10,10,0,11,0,0",  # others: never scored
+        "2,1,61,10,20,10,1,4,0,0",  # frame 2 is not every-20th
+        "21,1,62,10,20,10,1,4,0,0",
     ]
-    (root / "annotations" / "a.txt").write_text("\n".join(rows) + "\n")
+    (root / "annotations" / "uav1_v.txt").write_text("\n".join(rows) + "\n")
     return tmp_path / "raw"
 
 
-def test_prepare_writes_the_scoring_dataset(det_dir: Path, tmp_path: Path) -> None:
-    (image,) = visdrone_det.prepare(det_dir, tmp_path / "out", "val")
-    out = visdrone_det.scoring_dir(tmp_path / "out", "val")
+def test_prepare_writes_the_scoring_set(raw_dir: Path, tmp_path: Path) -> None:
+    first, last = visdrone_vid.prepare(raw_dir, tmp_path / "out", "val-stride20")
+    out = visdrone_vid.scoring_dir(tmp_path / "out", "val-stride20")
 
-    assert image.categories.tolist() == [4]
-    assert (out / "labels" / "a.txt").read_text() == "1 0.700000 0.300000 0.200000 0.200000"
-    assert (out / "images" / "a.jpg").resolve() == (det_dir / "VisDrone2019-DET-val/images/a.jpg")
+    assert (first.name, last.name) == ("uav1_v_0000001.jpg", "uav1_v_0000021.jpg")
+    assert first.categories.tolist() == [4] and last.boxes.tolist() == [[62, 10, 20, 10]]
+    label = (out / "labels" / "uav1_v_0000001.txt").read_text()
+    assert label == "1 0.700000 0.300000 0.200000 0.200000"
+    link = out / "images" / "uav1_v_0000001.jpg"
+    assert link.resolve() == raw_dir / "VisDrone2019-VID-val/sequences/uav1_v/0000001.jpg"
     data = yaml.safe_load((out / "data.yaml").read_text())
     assert Path(data["path"]).is_absolute() and data["names"] == YOLO_NAMES
     gt = json.loads((out / "ground_truth.json").read_text())
-    assert [a["attributes"]["raw_category"] for a in gt["annotations"]] == ["car"]
+    assert [a["attributes"]["raw_category"] for a in gt["annotations"]] == ["car", "car"]
     assert gt["annotations"][0]["category_id"] == 2
     ignored = json.loads((out / "ignored.json").read_text())
     assert [a["bbox"] for a in ignored["annotations"]] == [[0, 0, 40, 50]]
+
+
+def test_frame_pickers() -> None:
+    assert visdrone_vid.evenly_spaced(3)(list(range(1, 11))) == [1, 5, 10]
+    assert visdrone_vid.evenly_spaced(10)([1, 2]) == [1, 2]
+    assert visdrone_vid.strided(20)(list(range(1, 45))) == [1, 21, 41]
+
+
+def test_the_champion_never_labels_train_frames() -> None:
+    champion = LabelingConfig(detector={"model": labeler.CHAMPION})  # type: ignore[arg-type]
+    assert not run.runnable(champion, "train-sample")
+    assert run.runnable(champion, "val-stride20")
 
 
 def test_merged_class_literal_matches_the_merge() -> None:
@@ -126,10 +145,10 @@ def test_stage_rejects_repeats_and_unknown_keys(tmp_path: Path) -> None:
         run.load_stage(_stage(tmp_path, {"trials": [{**trial, "box_filter": {"min_sid": 8}}]}))
 
 
-def _image(name: str, categories: list[int]) -> visdrone_det.Image:
+def _image(name: str, categories: list[int]) -> visdrone_vid.Image:
     n = len(categories)
-    return visdrone_det.Image(
-        name, 10, 10, np.zeros((n, 4)), np.array(categories, int), np.zeros((0, 4))
+    return visdrone_vid.Image(
+        name, Path(name), 10, 10, np.zeros((n, 4)), np.array(categories, int), np.zeros((0, 4))
     )
 
 

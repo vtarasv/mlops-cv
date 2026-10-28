@@ -1,0 +1,6 @@
+# FiftyOne App with pycocotools, which its COCO importer needs to decode RLE masks.
+FROM voxel51/fiftyone:1.22.1-python3.12
+
+RUN pip install --no-cache-dir pycocotools==2.0.11
+
+# Server command + env are supplied by docker-compose.fiftyone.yml.

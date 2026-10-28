@@ -6,6 +6,7 @@
 !docker-compose/.env.airflow
 !docker-compose/.env.streaming
 !docker-compose/.env.serving
+!docker-compose/.env.fiftyone
 *.tfstate
 *.tfstate.*
 *.tfvars

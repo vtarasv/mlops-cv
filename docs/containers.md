@@ -19,6 +19,7 @@ committed `uv.lock`:
 | `mlops-cv-monitor` | `Dockerfile.monitor` | `python:3.12-slim` | `monitoring` | the drift monitor (no torch, no CUDA, no ONNX) |
 | airflow image | `Dockerfile.airflow` | `apache/airflow:3.2.2-python3.12` | base deps + providers-docker + mlflow-skinny (pip) | scheduler / api-server / dag-processor / triggerer |
 | mlflow image | `Dockerfile.mlflow` | `ghcr.io/mlflow/mlflow:v3.14.0` | — (adds psycopg2 + boto3) | the tracking server |
+| `mlops-cv-fiftyone` | `Dockerfile.fiftyone` | `voxel51/fiftyone:1.22.1-python3.12` | — (adds pycocotools) | the annotation editor ([auto-labeling](autolabel.md#viewing-a-trial)) |
 
 The GPU images carry no CUDA base: CUDA, cuDNN and TensorRT come from the venv's wheels, and the
 ORT images register `nvidia/*/lib` with `ldconfig` so a torch-free process finds them. The
@@ -26,7 +27,7 @@ ORT images register `nvidia/*/lib` with `ldconfig` so a torch-free process finds
 (+4.5 GB on train and optimize even with the runtime base).
 
 Third-party services (Postgres, RustFS, Redpanda + Console, Prometheus, Grafana, the DCGM
-exporter) run their upstream images, tag-pinned in the compose files.
+exporter, FiftyOne's MongoDB) run their upstream images, tag-pinned in the compose files.
 
 `make train-image / beam-image / optimize-image / serve-image / stream-image /
 monitor-image` build the first-party images; the image tags are single-sourced in the
@@ -101,6 +102,7 @@ flowchart TB
 | Streaming (broker + topics) | `make streaming-up` … | MLflow |
 | Serving (service + consumers + drift monitor + observability) | `make serving-up` … | Streaming + serve/stream/monitor images |
 | Everything | `make stack-up` / `stack-down` | all of the above |
+| FiftyOne (annotation editor, own network, not in `stack-up`) | `make fiftyone-up` … | — |
 
 ## Cloud migration
 

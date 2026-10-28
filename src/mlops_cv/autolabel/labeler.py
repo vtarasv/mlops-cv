@@ -175,11 +175,11 @@ def champion(device: str) -> Detect:
     from ultralytics import YOLO
 
     from mlops_cv.config import get_settings
+    from mlops_cv.evaluation.score_detections import CONF, MAX_DET
     from mlops_cv.optimize.variants import SERVER
     from mlops_cv.tracking import champion as champion_mod
     from mlops_cv.tracking import client
     from mlops_cv.tracking.resolve import resolve_model, source_run_id
-    from mlops_cv.tuning.zero_shot import CONF, MAX_DET
 
     uri = client.champion_uri(get_settings(), SERVER)
     weights, _ = resolve_model(uri)

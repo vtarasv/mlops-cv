@@ -26,7 +26,7 @@ flowchart LR
 - **Labeling config.** A stage YAML in `configs/autolabel/` lists trials, each a detector (a
   transformers repo and its prompts, each mapped to a merged class), the box filter, and a
   segmenter (a transformers SAM 2 repo, or none). `defaults` sections are updated key by key.
-- **Box filter.** The course's stages in order, each optional: min side, max share of the frame,
+- **Box filter.** Its stages run in order, each optional: min side, max share of the frame,
   min score, class-agnostic NMS, the nested-box rule, top K. The nested-box rule keeps the
   *outer* box, so a box drawn around a group deletes the objects inside it.
 - **Scores.** Two box sets per trial, `det` (the filtered detector boxes) and `seg` (each mask's
@@ -65,6 +65,6 @@ F1 at IoU 0.5 in %.
 
 | Trial | Set | det F1 | seg F1 | Latency p50 (ms) |
 |---|---|---|---|---|
-| Smoke: GDINO-T → course filter → SAM 2.1 S | `train-sample` | pending | pending | pending |
-| Smoke: GDINO-T → course filter → SAM 2.1 S | `val-stride20` | pending | pending | pending |
+| Smoke: GDINO-T → box filter → SAM 2.1 S | `train-sample` | pending | pending | pending |
+| Smoke: GDINO-T → box filter → SAM 2.1 S | `val-stride20` | pending | pending | pending |
 | Champion YOLO26m@1280 (reference) | `val-stride20` | pending | — | pending |

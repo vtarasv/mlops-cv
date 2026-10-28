@@ -1,9 +1,8 @@
-# The smoke chain: Grounding DINO-T on the 10 raw names -> the course's box filter -> SAM 2.1 S,
-# untiled, plus the champion YOLO26 as the supervised reference row (boxes only, unfiltered; it
-# runs on val-stride20 only). The course kept the top 32 boxes; 300 (val's max_det) clears the
-# image-mode sample's densest frame (157).
+# The smoke chain: Grounding DINO-T on the 10 raw names -> the box filter -> SAM 2.1 S, untiled,
+# plus the champion YOLO26 as the supervised reference row (boxes only, unfiltered; it runs on
+# val-stride20 only). Top 300 (val's max_det) clears the image-mode sample's densest frame (157).
 trials:
-  - name: gdino-t-course-sam2.1-s
+  - name: gdino-t-sam2.1-s
     detector:
       model: IDEA-Research/grounding-dino-tiny
       prompts:

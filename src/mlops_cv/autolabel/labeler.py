@@ -38,7 +38,7 @@ class Detector(BaseModel):
 
 
 class BoxFilter(BaseModel):
-    """The course's filter stages, applied in this order; ``None`` turns a stage off."""
+    """The box filter's stages, applied in this order; ``None`` turns a stage off."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -80,7 +80,7 @@ def ios(box: np.ndarray, others: np.ndarray) -> np.ndarray:
 
 
 def drop_nested(boxes: np.ndarray, threshold: float) -> np.ndarray:
-    """The course's rule, largest box first: a box inside a kept larger one is dropped.
+    """The nested-box rule, largest box first: a box inside a kept larger one is dropped.
 
     It keeps the outer box, so a detector box drawn around a group loses the objects inside it.
     Returns the kept positions.

@@ -143,3 +143,21 @@ F1 at IoU 0.5 in %, under the [auto-labeling scoring convention](#scoring-conven
 - **Masks keep their boxes.** Mask-derived boxes score within 0.6 pt F1 of the detector's.
 - **Latency.** The detector is 239 ms and SAM 2.1 S 120 ms per frame (p50, RTX 5070 Laptop); the
   filter is under 1 ms. The auto-labels for 560 frames are 3.8 MB of COCO RLE.
+
+**Sequence-mode smoke** (`val-full`, one sequence: `uav0000305_00000_v`, 184 frames, 35
+ground-truth boxes per frame). The smoke chain on key frames; F1 and HOTA in %.
+
+| Trial | det F1 | seg F1 | HOTA | IDF1 | ID switches | Peak live tracks | ms per frame |
+|---|---|---|---|---|---|---|---|
+| EdgeTAM video, K = 10 | 22.5 | 19.8 | 35.1 | 38.5 | 52 | 24 | 200 |
+| BoT-SORT + SAM 2.1 S (control) | 25.4 | 22.5 | 41.5 | 50.0 | 18 | 40 | 392 |
+| ByteTrack + SAM 2.1 S (control) | 25.4 | 20.5 | 38.2 | 46.9 | 12 | 34 | 381 |
+
+- **Recall-bound, like image mode.** The smoke filter finds almost no persons or
+  two-three-wheelers here (mAP 0.0 for both), so their tracks score 0.
+- **Cost.** A VID val pass (2,846 frames) at these rates takes about 10 min for EdgeTAM and
+  19 min for both controls, which share one detection pass. EdgeTAM costs about 8 ms more per
+  live track, so more recall makes it slower.
+- **EdgeTAM switches ids more.** 52 against BoT-SORT's 18. The key-frame matching is not the
+  cause: greedy and one-to-one matching score the same (51 and 52 switches) at 14 kept boxes per
+  frame.

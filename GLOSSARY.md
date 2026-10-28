@@ -410,6 +410,11 @@ _Also_: video case
 A sequence-mode frame on which the open-vocabulary detector runs and objects not yet tracked
 start being tracked.
 
+**Track**:
+One object followed through a sequence under one id, from the key frame where it starts to the
+frame where it ends. Its auto-labels share that id.
+_Avoid_: tracklet, trajectory
+
 **Key-frame interval**:
 The N in "every N-th frame is a key frame". It has nothing to do with frame stride, which thins
 the subset.

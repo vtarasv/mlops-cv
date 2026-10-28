@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import numpy as np
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 from mlops_cv.data.convert_visdrone_vid import YOLO_NAMES
 
@@ -24,6 +24,8 @@ MERGED = {name: c for c, name in YOLO_NAMES.items()}
 CHAMPION = "champion"
 # Boxes per SAM 2 mask-decoder pass: bounds the full-resolution mask upsample's memory.
 SEGMENT_CHUNK = 32
+# ultralytics' box trackers, run with their default settings; any other tracker is a video model.
+BOX_TRACKERS = ("botsort", "bytetrack")
 
 Detect = Callable[[np.ndarray], tuple[np.ndarray, list[str]]]
 Segment = Callable[[np.ndarray, np.ndarray], list[dict[str, Any]]]
@@ -50,12 +52,33 @@ class BoxFilter(BaseModel):
     max_objects: int | None = None  # the highest-scoring K
 
 
+class Tracker(BaseModel):
+    """Sequence mode. The key-frame rules apply to the video trackers, not to ``BOX_TRACKERS``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    model: str  # one of ``BOX_TRACKERS``, or a transformers video repo (EdgeTAM, SAM 2.1)
+    key_interval: int = 10  # K: frame 0 and every K-th frame after it are key frames
+    new_iou: float = 0.3  # tau: a kept box below it against every live track is a new object
+    empty_frames: int = 25  # a track ends after this many consecutive empty-mask frames
+    unmatched_keys: int = 2  # ... or after this many consecutive key frames without a match
+    duplicate_iou: float = 0.8  # of two tracks whose masks overlap above it, the younger ends
+    max_objects: int | None = None  # live-track cap; new objects beyond it aren't added
+
+
 class LabelingConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     detector: Detector
     box_filter: BoxFilter = BoxFilter()
     segmenter: str | None = None  # a transformers SAM 2 repo id; ``None`` keeps boxes only
+    tracker: Tracker | None = None  # sequence mode; ``None`` labels each frame on its own
+
+    @model_validator(mode="after")
+    def _one_mask_source(self) -> LabelingConfig:
+        if self.tracker and self.tracker.model not in BOX_TRACKERS and self.segmenter:
+            raise ValueError(f"{self.tracker.model} makes its own masks: drop the segmenter")
+        return self
 
 
 @dataclass
@@ -67,6 +90,7 @@ class Labels:
     masks: list[dict[str, Any]] | None  # COCO compressed RLE per row
     ms: dict[str, float]  # wall-clock per stage
     detected: int  # detector boxes before the filter
+    track_ids: np.ndarray | None = None  # sequence mode: the track per row
 
 
 def ios(box: np.ndarray, others: np.ndarray) -> np.ndarray:
@@ -203,13 +227,21 @@ def champion(device: str) -> Detect:
     return detect
 
 
+def rle(masks: Any) -> list[dict[str, Any]]:
+    """``(n, H, W)`` bool torch masks -> COCO compressed RLE."""
+    import torch
+    from pycocotools import mask
+
+    mask_utils: Any = mask
+    hwn = masks.permute(1, 2, 0).to(torch.uint8).cpu().numpy()
+    return mask_utils.encode(np.asfortranarray(hwn))
+
+
 def sam2(repo: str, device: str) -> Segment:
     """SAM 2 image mode: one image embedding, then the mask decoder over the boxes in chunks."""
     import torch
-    from pycocotools import mask
     from transformers import Sam2Model, Sam2Processor
 
-    mask_utils: Any = mask
     processor: Any = Sam2Processor.from_pretrained(repo)
     model: Any = Sam2Model.from_pretrained(repo)
     model = model.to(device).eval()
@@ -230,9 +262,7 @@ def sam2(repo: str, device: str) -> Segment:
                     input_boxes=prompt["input_boxes"].to(device),
                     multimask_output=False,
                 )
-                masks = processor.post_process_masks(out.pred_masks, sizes)[0][:, 0]
-                hwn = masks.permute(1, 2, 0).to(torch.uint8).cpu().numpy()
-                rles += mask_utils.encode(np.asfortranarray(hwn))
+                rles += rle(processor.post_process_masks(out.pred_masks, sizes)[0][:, 0])
         return rles
 
     return segment
@@ -243,7 +273,7 @@ class Labeler:
 
     def __init__(self, config: LabelingConfig, device: str) -> None:
         self.config = config
-        device = _device(device)
+        self.device = device = _device(device)
         self._sync: Callable[[], None] = lambda: None
         if device.startswith("cuda"):
             import torch
@@ -256,7 +286,7 @@ class Labeler:
         )
         self.segment = sam2(config.segmenter, device) if config.segmenter else None
 
-    def _timed(self, fn: Callable[..., Any], *args: Any) -> tuple[Any, float]:
+    def timed(self, fn: Callable[..., Any], *args: Any) -> tuple[Any, float]:
         self._sync()
         start = time.perf_counter()
         out = fn(*args)
@@ -264,14 +294,14 @@ class Labeler:
         return out, (time.perf_counter() - start) * 1000
 
     def __call__(self, image: np.ndarray) -> Labels:
-        (rows, labels), det_ms = self._timed(self.detect, image)
+        (rows, labels), det_ms = self.timed(self.detect, image)
         h, w = image.shape[:2]
-        keep, filter_ms = self._timed(filter_boxes, rows, self.config.box_filter, w, h)
+        keep, filter_ms = self.timed(filter_boxes, rows, self.config.box_filter, w, h)
         detected, rows, labels = len(rows), rows[keep], [labels[i] for i in keep]
         ms = {"detector": det_ms, "filter": filter_ms}
         masks = None
         if self.segment:
-            masks, ms["segmenter"] = self._timed(self.segment, image, rows[:, :4])
+            masks, ms["segmenter"] = self.timed(self.segment, image, rows[:, :4])
         return Labels(rows, labels, masks, ms, detected)
 
 

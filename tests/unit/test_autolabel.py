@@ -1,4 +1,5 @@
-"""The auto-labeler's pure parts: VID reader, ignored-region rule, box filter, stage runner."""
+"""The auto-labeler's pure parts: VID reader, ignored-region rule, box filter, stage runner,
+key-frame tracking rules and the TrackEval glue."""
 
 from __future__ import annotations
 
@@ -12,8 +13,8 @@ import yaml
 from PIL import Image
 from pydantic import ValidationError
 
-from mlops_cv.autolabel import labeler, run, visdrone_vid
-from mlops_cv.autolabel.labeler import BoxFilter, LabelingConfig, Labels
+from mlops_cv.autolabel import labeler, run, sequence, track_scores, visdrone_vid
+from mlops_cv.autolabel.labeler import BoxFilter, LabelingConfig, Labels, Tracker
 from mlops_cv.data.convert_visdrone_vid import YOLO_NAMES
 
 
@@ -64,9 +65,19 @@ def test_prepare_writes_the_scoring_set(raw_dir: Path, tmp_path: Path) -> None:
     assert Path(data["path"]).is_absolute() and data["names"] == YOLO_NAMES
     gt = json.loads((out / "ground_truth.json").read_text())
     assert [a["attributes"]["raw_category"] for a in gt["annotations"]] == ["car", "car"]
+    assert [a["track_id"] for a in gt["annotations"]] == [1, 1]
     assert gt["annotations"][0]["category_id"] == 2
     ignored = json.loads((out / "ignored.json").read_text())
     assert [a["bbox"] for a in ignored["annotations"]] == [[0, 0, 40, 50]]
+
+
+def test_full_rate_set_reads_every_frame_with_track_ids(raw_dir: Path, tmp_path: Path) -> None:
+    images = visdrone_vid.prepare(raw_dir, tmp_path / "out", "val-full")
+
+    assert [im.frame for im in images] == list(range(1, 23))
+    assert {im.sequence for im in images} == {"uav1_v"}
+    first = images[0]  # the pedestrian inside the ignored region is dropped with its track id
+    assert first.track_ids.tolist() == [1] and first.categories.tolist() == [4]
 
 
 def test_frame_pickers() -> None:
@@ -75,10 +86,23 @@ def test_frame_pickers() -> None:
     assert visdrone_vid.strided(20)(list(range(1, 45))) == [1, 21, 41]
 
 
-def test_the_champion_never_labels_train_frames() -> None:
-    champion = LabelingConfig(detector={"model": labeler.CHAMPION})  # type: ignore[arg-type]
-    assert not run.runnable(champion, "train-sample")
-    assert run.runnable(champion, "val-stride20")
+def _config(**sections: object) -> LabelingConfig:
+    return LabelingConfig.model_validate({"detector": {"model": "m"}, **sections})
+
+
+def test_skip_reasons() -> None:
+    champion = _config(detector={"model": labeler.CHAMPION})
+    assert run.skip_reason(champion, "train-sample")
+    assert run.skip_reason(champion, "val-stride20") is None
+    tracked = _config(tracker={"model": "botsort"})
+    assert run.skip_reason(tracked, "val-stride20")
+    assert run.skip_reason(tracked, "val-full") is None
+
+
+def test_a_video_tracker_makes_its_own_masks() -> None:
+    with pytest.raises(ValidationError, match="own masks"):
+        _config(segmenter="s", tracker={"model": "edgetam"})
+    _config(segmenter="s", tracker={"model": "botsort"})
 
 
 def test_merged_class_literal_matches_the_merge() -> None:
@@ -145,10 +169,25 @@ def test_stage_rejects_repeats_and_unknown_keys(tmp_path: Path) -> None:
         run.load_stage(_stage(tmp_path, {"trials": [{**trial, "box_filter": {"min_sid": 8}}]}))
 
 
-def _image(name: str, categories: list[int]) -> visdrone_vid.Image:
+def _image(
+    name: str,
+    categories: list[int],
+    boxes: list | None = None,
+    track_ids: list[int] | None = None,
+    sequence: str = "s",
+) -> visdrone_vid.Image:
     n = len(categories)
     return visdrone_vid.Image(
-        name, Path(name), 10, 10, np.zeros((n, 4)), np.array(categories, int), np.zeros((0, 4))
+        name,
+        Path(name),
+        100,
+        100,
+        np.zeros((n, 4)) if boxes is None else np.array(boxes, float),
+        np.array(categories, int),
+        np.arange(n) if track_ids is None else np.array(track_ids),
+        np.zeros((0, 4)),
+        sequence,
+        1,
     )
 
 
@@ -197,3 +236,168 @@ def test_coco_autolabels_without_a_segmenter_keep_detector_boxes() -> None:
     rows = np.array([[1, 2, 5, 8, 0.5, 0]], np.float32)
     (ann,) = run.coco_autolabels([_image("a", [])], [_labels(1.0, None, rows)])["annotations"]
     assert ann["bbox"] == ann["det_bbox"] == [1, 2, 4, 6] and "segmentation" not in ann
+
+
+def test_coco_autolabels_carry_track_ids_and_skip_missing_detector_boxes() -> None:
+    pytest.importorskip("pycocotools")
+    rows = np.array([[1, 2, 5, 8, 0.5, 0], [np.nan, np.nan, np.nan, np.nan, 0.7, 1]], np.float32)
+    labels = Labels(rows, ["a", "b"], None, {}, 1, np.array([3, 4]))
+    first, second = run.coco_autolabels([_image("a", [])], [labels])["annotations"]
+    assert (first["track_id"], second["track_id"]) == (3, 4)
+    assert "det_bbox" in first and "det_bbox" not in second
+
+
+def test_amortised_latency_drops_whole_key_frame_cycles() -> None:
+    key = Labels(np.zeros((0, 6)), [], None, {"detector": 100.0, "tracker": 10.0}, 0)
+    tracked = Labels(np.zeros((0, 6)), [], None, {"tracker": 10.0}, 0)
+    labels = ([key] + [tracked] * 4) * 3  # K = 5; the first cycle is the warm-up
+    out = run.amortised_latency(labels, Tracker(model="m", key_interval=5))
+    assert out["latency/detector/amortised_ms"] == 20.0
+    assert out["latency/total/amortised_ms"] == 30.0
+
+
+def test_match_assigns_one_to_one_and_every_unmatched_box_is_new() -> None:
+    pytest.importorskip("lap")
+    iou = np.array([[0.9, 0.0], [0.6, 0.1], [0.0, 0.4], [0.1, 0.2]])
+    pairs, new = sequence.match(iou, 0.3)
+    assert pairs == {0: 0, 2: 1}
+    assert new.tolist() == [1, 3]  # box 1 lost track 0 to box 0, so it starts a track
+
+
+def test_match_maximises_the_total_iou_not_the_best_pair() -> None:
+    pytest.importorskip("lap")
+    pairs, _ = sequence.match(np.array([[0.9, 0.8], [0.85, 0.0]]), 0.3)
+    assert pairs == {0: 1, 1: 0}  # greedy would take 0.9 and leave box 1 without its track
+
+
+def test_match_without_tracks_makes_every_box_new() -> None:
+    pytest.importorskip("lap")
+    pairs, new = sequence.match(np.zeros((2, 0)), 0.3)
+    assert pairs == {} and new.tolist() == [0, 1]
+
+
+def test_the_younger_duplicate_ends() -> None:
+    iou = np.array([[1.0, 0.9, 0.0], [0.9, 1.0, 0.9], [0.0, 0.9, 1.0]])
+    assert sequence.younger_duplicates(iou, [4, 2, 7], 0.8) == {4, 7}
+
+
+def _rows(*scores: float) -> np.ndarray:
+    return np.array([[0, 0, 1, 1, s, 1] for s in scores], float).reshape(-1, 6)
+
+
+def test_key_frames_start_match_and_end_tracks() -> None:
+    tracks = sequence.Tracks(Tracker(model="m", unmatched_keys=2))
+    ended, boxes = tracks.key_frame([], _rows(0.9, 0.5), ["a", "b"], np.zeros((2, 0)), np.eye(0))
+    assert ended == set() and boxes == {1: 0, 2: 1}
+    assert tracks.live[2].label == "b" and tracks.live[2].cls == 1
+
+    # Track 1 matches a fresher box, track 2 misses its first key frame.
+    iou = np.array([[0.8, 0.0]])
+    ended, boxes = tracks.key_frame([1, 2], _rows(0.6), ["a"], iou, np.eye(2))
+    assert ended == set() and boxes == {1: 0} and tracks.live[1].score == 0.6
+    ended, _ = tracks.key_frame([1, 2], _rows(0.6), ["a"], iou, np.eye(2))
+    assert ended == {2} and list(tracks.live) == [1]
+
+
+def test_duplicates_end_before_matching_and_the_cap_keeps_the_best_new_boxes() -> None:
+    tracks = sequence.Tracks(Tracker(model="m", max_objects=3))
+    tracks.key_frame([], _rows(0.9, 0.8), ["a", "a"], np.zeros((2, 0)), np.eye(0))
+    mask_iou = np.array([[1.0, 0.95], [0.95, 1.0]])
+    box_iou = np.array([[0.1, 0.9], [0.0, 0.0], [0.0, 0.0]])  # box 0 fits track 2 only
+    ended, boxes = tracks.key_frame([1, 2], _rows(0.9, 0.7, 0.6), ["a"] * 3, box_iou, mask_iou)
+    assert ended == {2}
+    assert boxes == {3: 0, 4: 1}  # box 0 is new, as its only match ended; the cap drops box 2
+    assert tracks.live[1].missed == 1
+
+
+def test_empty_masks_end_a_track() -> None:
+    tracks = sequence.Tracks(Tracker(model="m", empty_frames=2))
+    tracks.key_frame([], _rows(0.9), ["a"], np.zeros((1, 0)), np.eye(0))
+    assert tracks.observe([1], [0]) == set()
+    assert tracks.observe([1], [5]) == set()  # a non-empty frame resets the count
+    assert tracks.observe([1], [0]) == set()
+    assert tracks.observe([1], [0]) == {1} and not tracks.live
+
+
+class _Session:
+    output_dict_per_obj: dict[int, typing.Any]
+
+    def __init__(self, ids: list[int]) -> None:
+        self._obj_id_to_idx = {o: i for i, o in enumerate(ids)}
+        self._obj_idx_to_id = dict(enumerate(ids))
+        self.obj_ids = list(ids)
+        self.obj_with_new_inputs: list[int] = []
+        self.processed_frames = {30: "frame"}
+        for store in sequence.PER_OBJECT:
+            setattr(self, store, {i: f"{store}-{o}" for i, o in enumerate(ids)})
+
+
+def test_set_objects_reindexes_the_session() -> None:
+    session = _Session([5, 6, 7])
+    state = sequence.objects(session)
+    sequence.set_objects(session, {o: s for o, s in state.items() if o != 6})
+    assert session.obj_ids == [5, 7] and session._obj_idx_to_id == {0: 5, 1: 7}
+    assert session.output_dict_per_obj == {
+        0: "output_dict_per_obj-5",
+        1: "output_dict_per_obj-7",
+    }
+    sequence.set_objects(session, {})
+    sequence.set_objects(session, state)
+    assert sequence.objects(session) == state
+
+
+def test_prune_keeps_seed_frames_and_the_last_window() -> None:
+    session = _Session([1])
+    frames = {t: {"high_res_masks": 1} for t in range(31)}
+    out = {"cond_frame_outputs": {0: {"high_res_masks": 1}}, "non_cond_frame_outputs": frames}
+    session.output_dict_per_obj = {0: out}
+    sequence.prune(session, 30)
+    assert sorted(out["non_cond_frame_outputs"]) == list(range(30 - sequence.KEEP_FRAMES, 31))
+    assert "high_res_masks" not in out["non_cond_frame_outputs"][30]
+    assert list(out["cond_frame_outputs"]) == [0] and session.processed_frames == {}
+
+
+def test_mot_files_split_by_class_and_number_frames_per_sequence() -> None:
+    images = [
+        _image("a1", [1, 4], [[0, 0, 10, 10], [50, 50, 10, 10]], [7, 8], "a"),
+        _image("b1", [4], [[5, 5, 10, 10]], [9], "b"),
+    ]
+    tracked = [np.array([[0, 0, 10, 10, 0.9, 1, 3]]), np.zeros((0, 7))]
+    lines, seq_info = track_scores.mot_files(images, tracked)
+    assert seq_info == {"a": 1, "b": 1}
+    assert lines[0, "gt", "a"] == ["1,7,0.0,0.0,10.0,10.0,1,1,1"]
+    assert lines[1, "gt", "b"] == ["1,9,5.0,5.0,10.0,10.0,1,1,1"]
+    assert lines[1, "trk", "a"] == ["1,3,0.0,0.0,10.0,10.0,0.9,-1,-1,-1"]
+
+
+def _tracks_from_gt(images: list[visdrone_vid.Image]) -> list[np.ndarray]:
+    return [
+        np.column_stack(
+            [
+                im.boxes[:, :2],
+                im.boxes[:, :2] + im.boxes[:, 2:],
+                np.ones(len(im.boxes)),
+                visdrone_vid.merged(im.categories),
+                im.track_ids,
+            ]
+        )
+        for im in images
+    ]
+
+
+def test_trackeval_scores_perfect_tracks_and_counts_id_switches() -> None:
+    pytest.importorskip("trackeval")
+    images = [
+        _image(f"a{f}", [1, 4], [[f, 0, 10, 10], [50, 50 + f, 10, 10]], [1, 2], "a")
+        for f in range(4)
+    ]
+    perfect = track_scores.readings(images, _tracks_from_gt(images))
+    assert perfect["track/HOTA"] == pytest.approx(1.0) and perfect["track/IDSW"] == 0
+    assert perfect["track/two-three-wheeler/HOTA"] == 0  # absent here, so det-averaging matters
+
+    switched = _tracks_from_gt(images)
+    for rows in switched[2:]:
+        rows[:, 6] += 10
+    out = track_scores.readings(images, switched)
+    assert out["track/IDSW"] == 2 and out["track/DetA"] == pytest.approx(1.0)
+    assert out["track/HOTA"] < 1

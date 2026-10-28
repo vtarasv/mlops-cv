@@ -2,7 +2,8 @@
 
 Each trial labels a whole VID scoring set. The filtered detector boxes (``det``) and the
 mask-derived boxes (``seg``) are scored apart, through ultralytics' validator, after the
-ignored-region drop. The auto-labels are logged as one COCO RLE file per trial and set.
+ignored-region drop; a sequence-mode trial also scores its tracks through TrackEval. The
+auto-labels are logged as one COCO RLE file per trial and set.
 """
 
 from __future__ import annotations
@@ -21,8 +22,16 @@ from typing import Any
 import numpy as np
 import yaml
 
-from mlops_cv.autolabel import visdrone_vid
-from mlops_cv.autolabel.labeler import CHAMPION, Labeler, LabelingConfig, Labels, read_rgb
+from mlops_cv.autolabel import sequence, track_scores, visdrone_vid
+from mlops_cv.autolabel.labeler import (
+    BOX_TRACKERS,
+    CHAMPION,
+    Labeler,
+    LabelingConfig,
+    Labels,
+    Tracker,
+    read_rgb,
+)
 from mlops_cv.startup import exits_on_startup_error
 
 logger = logging.getLogger(__name__)
@@ -87,6 +96,19 @@ def mask_rows(labels: Labels) -> np.ndarray:
     return rows[keep]
 
 
+def track_rows(labels: Labels) -> np.ndarray:
+    """``(n, 7)``: the auto-labels' boxes (mask boxes when masked), conf, class and track id."""
+    from pycocotools import mask
+
+    mask_utils: Any = mask
+
+    ids = np.asarray(labels.track_ids)
+    if labels.masks is None:
+        return np.column_stack([labels.rows, ids])
+    keep = mask_utils.area(labels.masks) > 0 if labels.masks else np.zeros(0, bool)
+    return np.column_stack([mask_rows(labels), ids[keep]])
+
+
 def outside_ignored(rows: np.ndarray, image: visdrone_vid.Image) -> np.ndarray:
     """``rows`` (x1 y1 x2 y2 ...) without those the toolkit's ignored-region rule drops."""
     xywh = np.column_stack([rows[:, :2], rows[:, 2:4] - rows[:, :2]])
@@ -127,26 +149,36 @@ def readings(
 
 
 def scores(
-    images: list[visdrone_vid.Image], labels: list[Labels], data_yaml: Path, *, full: bool
+    images: list[visdrone_vid.Image],
+    labels: list[Labels],
+    data_yaml: Path,
+    *,
+    full: bool,
+    keys: list[Labels | None] | None = None,
 ) -> dict[str, float]:
-    """Each box kind scored on every image, then on the ``SUBSET_CAP`` subset."""
+    """Each box kind scored on every image, then on the ``SUBSET_CAP`` subset.
+
+    ``keys`` (sequence mode) holds each frame's key-frame detections, ``None`` between key frames:
+    ``det`` then scores the key frames only, and ``seg`` every frame's auto-labels.
+    """
     from mlops_cv.tracking.metric_keys import metric_key
 
-    kinds = {DET: [lab.rows for lab in labels]}
+    keyed = [(im, k) for im, k in zip(images, keys or labels, strict=True) if k is not None]
+    kinds = {DET: ([im for im, _ in keyed], [k.rows for _, k in keyed])}
     if labels and labels[0].masks is not None:
-        kinds[SEG] = [mask_rows(lab) for lab in labels]
-    frames = None if full else {im.name for im in images}
-    subset = set(uncapped(images, SUBSET_CAP))
+        kinds[SEG] = (images, [mask_rows(lab) for lab in labels])
     out: dict[str, float] = {}
-    for kind, rows in kinds.items():
-        detections = {im.name: outside_ignored(r, im) for im, r in zip(images, rows, strict=True)}
+    for kind, (ims, rows) in kinds.items():
+        frames = None if full and len(ims) == len(images) else {im.name for im in ims}
+        detections = {im.name: outside_ignored(r, im) for im, r in zip(ims, rows, strict=True)}
+        subset = set(uncapped(ims, SUBSET_CAP))
         out |= readings(detections, data_yaml, kind, frames)
         out |= readings(detections, data_yaml, f"{kind}/uncapped{SUBSET_CAP}", subset)
         out[metric_key(kind, "boxes_per_image")] = float(np.mean([len(r) for r in rows]))
-    out[metric_key(DET, "detected_per_image")] = float(np.mean([lab.detected for lab in labels]))
+    out[metric_key(DET, "detected_per_image")] = float(np.mean([k.detected for _, k in keyed]))
     cap = f"gt/cap{SUBSET_CAP}"
     out[metric_key(cap, "recall_ceiling")] = recall_ceiling(images, SUBSET_CAP)
-    out[metric_key(cap, "uncapped_images")] = float(len(subset))
+    out[metric_key(cap, "uncapped_images")] = float(len(uncapped(images, SUBSET_CAP)))
     return out
 
 
@@ -165,10 +197,26 @@ def latency(labels: list[Labels]) -> dict[str, float]:
     return out
 
 
+def amortised_latency(labels: list[Labels], tracker: Tracker) -> dict[str, float]:
+    """Each stage's total wall-clock over the frames, divided by the frame count.
+
+    The warm-up drops whole key-frame cycles, so the key frames keep their share.
+    """
+    from mlops_cv.tracking.metric_keys import LATENCY_PREFIX, metric_key
+
+    interval = 1 if tracker.model in BOX_TRACKERS else tracker.key_interval
+    timed = labels[-(-WARMUP // interval) * interval :] or labels
+    stages = {s for lab in timed for s in lab.ms}
+    ms = {s: sum(lab.ms.get(s, 0.0) for lab in timed) / len(timed) for s in stages}
+    ms["total"] = sum(ms.values())
+    return {metric_key(metric_key(LATENCY_PREFIX, s), "amortised_ms"): v for s, v in ms.items()}
+
+
 def coco_autolabels(images: list[visdrone_vid.Image], labels: list[Labels]) -> dict[str, Any]:
     """The trial's COCO file: ``bbox`` is the mask's box, the detector's goes in ``det_bbox``.
 
-    An empty mask is no auto-label. Without a segmenter, ``bbox`` is the detector's box.
+    An empty mask is no auto-label. Without a segmenter, ``bbox`` is the detector's box. In
+    sequence mode each auto-label has a ``track_id``, and a tracked frame has no ``det_bbox``.
     """
     from pycocotools import mask
 
@@ -183,10 +231,13 @@ def coco_autolabels(images: list[visdrone_vid.Image], labels: list[Labels]) -> d
                 "image_id": image_id,
                 "category_id": int(cls) + 1,
                 "score": conf,
-                "det_bbox": det_bbox,
                 "iscrowd": 0,
                 "attributes": {"label": label},
             }
+            if np.isfinite(det_bbox).all():
+                ann["det_bbox"] = det_bbox
+            if lab.track_ids is not None:
+                ann["track_id"] = int(lab.track_ids[j])
             if lab.masks is None:
                 ann |= {"bbox": det_bbox, "area": det_bbox[2] * det_bbox[3]}
             else:
@@ -217,6 +268,28 @@ def label_frames(
     return out
 
 
+def label_sequences(
+    config: LabelingConfig,
+    images: list[visdrone_vid.Image],
+    device: str,
+    detections: dict[str, list[Labels]],
+) -> tuple[list[Labels], list[Labels | None], list[int]]:
+    """Per frame: the auto-labels, the key-frame detections and the live tracks.
+
+    Box trackers share one detection pass per detector, filter and segmenter, cached in
+    ``detections``.
+    """
+    assert config.tracker is not None
+    if config.tracker.model in BOX_TRACKERS:
+        key = config.model_copy(update={"tracker": None}).model_dump_json()
+        if key not in detections:
+            detections[key] = label_frames(config, images, device)
+        tracked = list(sequence.box_tracks(config.tracker.model, images, detections[key]))
+        return [lab for lab, _ in tracked], list(detections[key]), [n for _, n in tracked]
+    labels, keys, live = zip(*sequence.video_tracks(config, images, device), strict=True)
+    return list(labels), list(keys), list(live)
+
+
 def run_trial(
     mlflow: Any,
     stage: str,
@@ -225,13 +298,26 @@ def run_trial(
     images: list[visdrone_vid.Image],
     scoring_set: str,
     full: bool,
+    detections: dict[str, list[Labels]],
 ) -> None:
     from mlops_cv.config import get_settings
 
     settings = get_settings()
     data_yaml = visdrone_vid.scoring_dir(settings.data.autolabel_dir, scoring_set) / "data.yaml"
-    labels = label_frames(config, images, settings.training.device)
-    metrics = scores(images, labels, data_yaml, full=full) | latency(labels)
+    device = settings.training.device
+    if config.tracker is None:
+        labels = label_frames(config, images, device)
+        metrics = scores(images, labels, data_yaml, full=full) | latency(labels)
+    else:
+        labels, keys, live = label_sequences(config, images, device, detections)
+        pairs = zip(images, labels, strict=True)
+        tracked = [outside_ignored(track_rows(lab), im) for im, lab in pairs]
+        metrics = (
+            scores(images, labels, data_yaml, full=full, keys=keys)
+            | amortised_latency(labels, config.tracker)
+            | track_scores.readings(images, tracked)
+            | {"tracks/peak_live": float(max(live))}
+        )
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / autolabels_file(scoring_set)
         path.write_text(json.dumps(coco_autolabels(images, labels)))
@@ -244,9 +330,13 @@ def run_trial(
     logger.info(f"{name}: {json.dumps(metrics, indent=1)}")
 
 
-def runnable(config: LabelingConfig, scoring_set: str) -> bool:
-    """The champion trained on VID train, so it never labels a train scoring set."""
-    return not (config.detector.model == CHAMPION and visdrone_vid.SETS[scoring_set][0] == "train")
+def skip_reason(config: LabelingConfig, scoring_set: str) -> str | None:
+    """Why a trial can't run on a scoring set, or ``None``."""
+    if config.detector.model == CHAMPION and visdrone_vid.SETS[scoring_set][0] == "train":
+        return f"the champion trained on {scoring_set}'s split"
+    if config.tracker and scoring_set not in visdrone_vid.SEQUENCE_SETS:
+        return f"tracking needs whole sequences: {', '.join(visdrone_vid.SEQUENCE_SETS)}"
+    return None
 
 
 @exits_on_startup_error
@@ -255,6 +345,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("stage", type=Path, help="configs/autolabel/<stage>.yaml")
     p.add_argument("--set", choices=visdrone_vid.SETS, default="train-sample", dest="scoring_set")
     p.add_argument("--limit", type=int, help="label and score only the first N frames")
+    p.add_argument("--sequence", action="append", dest="sequences", help="only these sequences")
     args = p.parse_args(argv)
 
     os.environ["MLFLOW__EXPERIMENT"] = AUTOLABEL_EXPERIMENT
@@ -265,20 +356,23 @@ def main(argv: list[str] | None = None) -> int:
     trials = load_stage(args.stage)
     scoring_set = args.scoring_set
     images = visdrone_vid.prepare(settings.data.raw_dir, settings.data.autolabel_dir, scoring_set)
-    full = args.limit is None
+    if args.sequences:
+        images = [im for im in images if im.sequence in args.sequences]
+    full = args.limit is None and not args.sequences
     images = images[: args.limit]
 
     from mlops_cv.tracking import client
 
     mlflow = client.connect(settings)
     failed = []
+    detections: dict[str, list[Labels]] = {}
     for name, config in trials.items():
-        if not runnable(config, scoring_set):
-            logger.info(f"{name}: skipped, the champion trained on {scoring_set}'s split")
+        if reason := skip_reason(config, scoring_set):
+            logger.info(f"{name}: skipped, {reason}")
             continue
         logger.info(f"{name}: labeling {len(images)} {scoring_set} frames")
         try:
-            run_trial(mlflow, args.stage.stem, name, config, images, scoring_set, full)
+            run_trial(mlflow, args.stage.stem, name, config, images, scoring_set, full, detections)
         except Exception:
             logger.exception(f"{name} failed")
             failed.append(name)

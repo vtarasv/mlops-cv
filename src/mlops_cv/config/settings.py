@@ -19,6 +19,8 @@ class DataSettings(BaseModel):
     raw_dir: Path = Path("data/raw")
     subset_dir: Path = Path("data/visdrone-vid-small")
     dataset_yaml: Path = Path("configs/datasets/VisDrone-VID-merged.yaml")
+    det_dir: Path = Path("data/VisDrone-DET")  # raw VisDrone-DET: VisDrone2019-DET-<split>/
+    autolabel_dir: Path = Path("data/autolabel")  # the auto-labeler's scoring datasets
 
 
 class MlflowSettings(BaseModel):

@@ -92,6 +92,19 @@ tuning = [
     "sahi==0.12.8",
 ]
 
+autolabel = [
+    "transformers==5.8.0",  # 5.9.0-5.20.2 truncate Grounding DINO's text position embeddings
+    "timm==1.0.30",  # EdgeTAM's RepViT backbone loads through TimmWrapper
+    "accelerate==1.15.0",  # transformers' bitsandbytes loader requires it
+    "bitsandbytes==0.50.2",  # Qwen3-VL-4B in 8-bit; the first release with sm_120 cu130 wheels
+    "lap==0.5.13",  # ultralytics' BoT-SORT / ByteTrack pip-install it at runtime otherwise
+    "pycocotools==2.0.11",  # auto-labels as COCO compressed RLE
+    "torch==2.12.1",
+    "torchvision==0.27.1",  # the box filter's NMS
+    # YOLOE-26's text encoder; ultralytics pip-installs it unpinned at runtime otherwise
+    "clip @ git+https://github.com/ultralytics/CLIP.git@7ffa84b3bfa40c42ecc1c77147a855e69cb2dd40",
+]
+
 [tool.uv]
 default-groups = [
     "dev",
@@ -105,6 +118,7 @@ default-groups = [
     "edge",
     "link",
     "tuning",
+    "autolabel",
 ]
 
 required-environments = [

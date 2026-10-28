@@ -14,6 +14,8 @@ page here as it lands.
 - [Training](training.md) — YOLO26 transfer learning per deployment target, MLflow logging.
 - [Tuning](tuning.md) — YOLO26 on VisDrone-VID: each experiment's purpose, command and results,
   and the recipe they chose.
+- [Auto-labeling](autolabel.md) — zero-shot detector → box filter → SAM 2 labels for VisDrone,
+  scored against its ground truth: labeling trials, commands and results.
 - [Evaluation](evaluation.md) — metrics (P/R/mAP), promotion gate, demo videos, error analysis,
   latency stub.
 - [Orchestration](orchestration.md) — Airflow continuous-training DAG (LocalExecutor,

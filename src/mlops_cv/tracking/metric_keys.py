@@ -29,6 +29,9 @@ PRIMARY = "mAP50-95"
 # COCO small-object AP (boxes under 32² source pixels), from faster-coco-eval.
 MAP_SMALL = "mAP50-95_small"
 
+# F1 at IoU 0.5 from the validator's precision and recall: the auto-labeler's selection metric.
+F1 = "F1"
+
 # The prefix ultralytics' MLflow callback logs per-epoch val metrics under.
 TRAIN_PREFIX = "metrics"
 

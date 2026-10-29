@@ -425,7 +425,8 @@ _Avoid_: frame stride, detection stride
 The tuned settings of the auto-labeler for one raw dataset: prompts, thresholds, box filter and
 segmenter settings, and in sequence mode the key-frame interval and tracking settings. Its
 confidence floor is the winning labeling trial's max-F1 confidence; auto-labels below it are not
-kept.
+kept. In sequence mode the floor applies on key frames: a box below it starts no track and
+refreshes none.
 _Avoid_: per-dataset parameters
 
 **Labeling trial**:

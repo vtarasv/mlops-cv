@@ -3,6 +3,7 @@ name = "mlops-cv"
 version = "0.1.0"
 description = "MLOps level-2 pipeline for aerial object detection from video"
 readme = "README.md"
+license = "AGPL-3.0-only"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "numpy>=2.4.6",

@@ -179,8 +179,8 @@ _Avoid_: failure sample, hard example
 ### Tuning
 
 **Tuning grid**:
-The fixed, staged list of trials. Each stage varies one or two factors and carries its winner
-into the next.
+The fixed, staged list of trials, or of labeling trials. Each stage varies one or two factors
+and carries its winner into the next.
 _Avoid_: sweep, search space, hyperparameter search
 
 **Trial**:
@@ -205,7 +205,8 @@ _Avoid_: variance, seed noise
 
 **Win margin**:
 How far a trial must beat its stage's winner so far on val mAP50-95 to count as a win. It sits
-above the noise floor, which is measured on one val sample with the data order held fixed.
+above the noise floor, which is measured on one val sample with the data order held fixed. A
+labeling trial has no noise floor; its win margin is on F1.
 _Avoid_: threshold, tolerance
 
 **Confirmation stage**:
@@ -422,7 +423,9 @@ _Avoid_: frame stride, detection stride
 
 **Labeling config**:
 The tuned settings of the auto-labeler for one raw dataset: prompts, thresholds, box filter and
-segmenter settings, and in sequence mode the key-frame interval and tracking settings.
+segmenter settings, and in sequence mode the key-frame interval and tracking settings. Its
+confidence floor is the winning labeling trial's max-F1 confidence; auto-labels below it are not
+kept.
 _Avoid_: per-dataset parameters
 
 **Labeling trial**:

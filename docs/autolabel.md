@@ -30,12 +30,21 @@ flowchart LR
 - **Labeling config.** A stage YAML in `configs/autolabel/` lists trials, each a detector (a
   transformers repo and its prompts, each mapped to a merged class), the box filter, and a
   segmenter (a transformers SAM 2 repo, or none). `defaults` sections are updated key by key.
+  The detector keeps its top 300 boxes above 0.001, val's floor and cap, so the validator's
+  threshold sweep sees everything. `confidence_floor`, the winning trial's max-F1 confidence,
+  cuts the stored auto-labels; scoring reads every box.
 - **Box filter.** Its stages run in order, each optional: min side, max share of the frame,
-  min score, class-agnostic NMS, the nested-box rule, top K. The nested-box rule keeps the
-  *outer* box, so a box drawn around a group deletes the objects inside it.
+  min score, class-agnostic NMS, the nested-box rule, top K. Of two boxes nested at IoS ≥
+  `nested_ios`, the rule keeps the outer one (`nested_keep: outer`), so a box drawn around a
+  group deletes the objects inside it, or the inner one, deleting the group box.
+- **Stored detections.** A run over a whole scoring set stores the detector's boxes from before
+  the box filter in `<set>/detections/<hash of the detector settings>.npz`. A later trial with
+  the same detector reads them and reruns only the filter and segmenter, reporting the stored
+  detector latency. The key ignores the detector code: delete the file after changing it.
 - **Scores.** Two box sets per trial, `det` (the filtered detector boxes) and `seg` (each mask's
   tight box), both through `score_with_ap_small` at the 3 merged classes. **Selection is F1 at
-  IoU 0.5**, from the validator's P and R; mAP and per-class numbers are recorded only.
+  IoU 0.5**, from the validator's P and R at its max-F1 point, whose confidence is
+  `<kind>/conf_at_max_F1`; mAP and per-class numbers are recorded only.
 - **Ignored regions.** VisDrone's rule, not the repo's: see
   [Scoring convention](#scoring-convention-ignored-regions).
 - **Capped rows.** SAM 3 returns at most 200 boxes per prompt, so every row is also scored on the
@@ -49,6 +58,52 @@ flowchart LR
   `det_bbox` the detector's, and the prompt under `attributes.label`.
 - **Champion row.** The champion YOLO26 runs through the same scoring as a supervised reference
   (boxes only, unfiltered). It trained on VID train, so the runner skips it on `train-sample`.
+
+## Image-mode tuning grid
+
+A staged greedy grid on `train-sample`, one or two factors per stage, the winner carried forward.
+Before the segmenter stage, trials label boxes only and select on `det` F1. A challenger replaces
+the carried config only when it wins by ≥ 0.5 pt F1 (a labeling trial has no noise floor);
+latency is reported, never selects. Every stage keeps `min_side` 8 px and `max_area` 5% of the
+frame, which drop almost no VID ground truth.
+
+**Stage 1: box filter** (`configs/autolabel/box-filter.yaml`). Grounding DINO-T on the 10 raw
+names at the new detector floor, no filter score floor. NMS IoU {off, 0.5, 0.6, 0.7} × the
+nested-box rule {off, keep outer at IoS 0.8, keep inner at IoS 0.8}: 12 trials over one stored
+detector pass. The incumbent is the smoke filter, NMS 0.6 with keep-outer 0.8 (`nms0.6-outer`).
+
+```bash
+uv run python -m mlops_cv.autolabel configs/autolabel/box-filter.yaml --set train-sample
+```
+
+`det` F1 at IoU 0.5 in %, with the confidence at the validator's max-F1 point and the boxes the
+filter keeps per frame (the detector returns 300 on every frame; the ground truth holds 49).
+
+| NMS IoU | Nested-box rule | det F1 | P | R | mAP50 | Max-F1 conf | Kept per frame |
+|---|---|---|---|---|---|---|---|
+| off | off | 56.7 | 55.9 | 57.6 | 52.9 | 0.193 | 287 |
+| off | keep outer | 39.1 | 50.2 | 32.0 | 28.4 | 0.142 | 88 |
+| off | keep inner | 35.1 | 30.4 | 41.6 | 27.8 | 0.080 | 147 |
+| **0.5** | **off** | **58.0** | 57.9 | 58.0 | 52.8 | 0.184 | 205 |
+| 0.5 | keep outer | 45.2 | 56.6 | 37.6 | 32.9 | 0.165 | 93 |
+| 0.5 | keep inner | 47.3 | 53.0 | 42.7 | 38.7 | 0.158 | 142 |
+| 0.6 | off | 57.8 | 57.2 | 58.4 | 53.5 | 0.187 | 228 |
+| 0.6 | keep outer (incumbent) | 43.8 | 56.2 | 35.9 | 31.8 | 0.161 | 91 |
+| 0.6 | keep inner | 46.1 | 52.1 | 41.3 | 37.6 | 0.155 | 145 |
+| 0.7 | off | 57.4 | 56.8 | 58.1 | 53.5 | 0.190 | 247 |
+| 0.7 | keep outer | 42.0 | 54.2 | 34.3 | 30.5 | 0.155 | 89 |
+| 0.7 | keep inner | 45.6 | 51.8 | 40.7 | 37.4 | 0.153 | 146 |
+
+- **Winner: NMS 0.5, no nested-box rule**, 14.2 pt over the incumbent. The labeling config
+  carries `nms_iou: 0.5`, no `nested_ios`, and confidence floor 0.184. NMS 0.6 and 0.7 sit
+  within 0.6 pt of it.
+- **The floor was the bottleneck.** The smoke filter at the old floors (0.25, `min_score` 0.4)
+  scored 29.6; the same filter at 0.001 scores 43.8, and dropping the nested-box rule 58.0.
+- **The nested-box rule hurts in both directions.** It ignores scores, so without a score floor
+  a low-scoring group box deletes the objects inside it (keep outer), and a low-scoring
+  fragment deletes the object around it (keep inner).
+- **Cost.** One detector pass (232 ms per frame, p50), then each filter setting rescores the
+  stored boxes on CPU in about 3 min; the filter takes under 3 ms per frame.
 
 ## Sequence mode
 

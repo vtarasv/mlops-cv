@@ -5,6 +5,7 @@
 defaults:
   detector:
     model: IDEA-Research/grounding-dino-tiny
+    threshold: 0.25  # the smoke's floor; the harness default is now 0.001
     prompts:
       pedestrian: person
       people: person

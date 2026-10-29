@@ -109,9 +109,10 @@ def test_merged_class_literal_matches_the_merge() -> None:
     assert set(typing.get_args(labeler.MergedClass)) == set(YOLO_NAMES.values())
 
 
-def test_nested_rule_keeps_the_outer_box() -> None:
+def test_nested_rule_keeps_the_outer_or_the_inner_box() -> None:
     boxes = np.array([[0, 0, 100, 100], [10, 10, 20, 20], [200, 200, 210, 210]], float)
     assert sorted(labeler.drop_nested(boxes, 0.8).tolist()) == [0, 2]
+    assert sorted(labeler.drop_nested(boxes, 0.8, keep_outer=False).tolist()) == [1, 2]
 
 
 def test_filter_stages_and_top_k() -> None:
@@ -236,6 +237,27 @@ def test_coco_autolabels_without_a_segmenter_keep_detector_boxes() -> None:
     rows = np.array([[1, 2, 5, 8, 0.5, 0]], np.float32)
     (ann,) = run.coco_autolabels([_image("a", [])], [_labels(1.0, None, rows)])["annotations"]
     assert ann["bbox"] == ann["det_bbox"] == [1, 2, 4, 6] and "segmentation" not in ann
+
+
+def test_coco_autolabels_leave_out_scores_below_the_floor() -> None:
+    pytest.importorskip("pycocotools")
+    rows = np.array([[1, 2, 5, 8, 0.5, 0], [1, 2, 5, 8, 0.2, 0]], np.float32)
+    coco = run.coco_autolabels([_image("a", [])], [_labels(1.0, None, rows)], floor=0.3)
+    assert [a["score"] for a in coco["annotations"]] == [0.5]
+
+
+def test_stored_detections_round_trip_and_check_their_frames(tmp_path: Path) -> None:
+    images = [_image("a", []), _image("b", [])]
+    rows = np.array([[1, 2, 5, 8, 0.5, 0]], np.float32)
+    raw = [Labels(rows, ["car"], None, {"detector": 7.0}, 1), _labels(3.0)]
+    path = tmp_path / "d.npz"
+    run.save_detections(path, images, raw)
+
+    a, b = run.load_detections(path, images)
+    assert a.rows.tolist() == rows.tolist() and a.labels == ["car"] and a.ms == {"detector": 7.0}
+    assert (len(b.rows), b.detected, b.ms) == (0, 0, {"detector": 3.0})
+    with pytest.raises(ValueError, match="other frames"):
+        run.load_detections(path, images[:1])
 
 
 def test_coco_autolabels_carry_track_ids_and_skip_missing_detector_boxes() -> None:

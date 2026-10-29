@@ -16,6 +16,7 @@ import numpy as np
 from pydantic import BaseModel, ConfigDict, model_validator
 
 from mlops_cv.data.convert_visdrone_vid import YOLO_NAMES
+from mlops_cv.evaluation.score_detections import CONF, MAX_DET
 
 MergedClass = Literal["person", "vehicle", "two-three-wheeler"]
 MERGED = {name: c for c, name in YOLO_NAMES.items()}
@@ -36,7 +37,7 @@ class Detector(BaseModel):
 
     model: str  # a transformers repo id, or ``champion``
     prompts: dict[str, MergedClass] = {}  # prompt text -> the merged class its boxes get
-    threshold: float = 0.25  # the detector's own score floor
+    threshold: float = CONF  # the detector's own score floor; it keeps its top ``MAX_DET``
 
 
 class BoxFilter(BaseModel):
@@ -48,7 +49,8 @@ class BoxFilter(BaseModel):
     max_area: float | None = None  # share of the frame
     min_score: float | None = None
     nms_iou: float | None = None  # class-agnostic
-    nested_ios: float | None = None  # drop a box this share inside a larger kept box
+    nested_ios: float | None = None  # of two boxes this share nested, drop one
+    nested_keep: Literal["outer", "inner"] = "outer"  # ... the box the nested-box rule keeps
     max_objects: int | None = None  # the highest-scoring K
 
 
@@ -73,6 +75,8 @@ class LabelingConfig(BaseModel):
     box_filter: BoxFilter = BoxFilter()
     segmenter: str | None = None  # a transformers SAM 2 repo id; ``None`` keeps boxes only
     tracker: Tracker | None = None  # sequence mode; ``None`` labels each frame on its own
+    # The winning trial's max-F1 confidence: the stored auto-labels are cut there, scoring isn't.
+    confidence_floor: float | None = None
 
     @model_validator(mode="after")
     def _one_mask_source(self) -> LabelingConfig:
@@ -103,15 +107,15 @@ def ios(box: np.ndarray, others: np.ndarray) -> np.ndarray:
     return inter / (np.minimum(own, area) + 1e-9)
 
 
-def drop_nested(boxes: np.ndarray, threshold: float) -> np.ndarray:
-    """The nested-box rule, largest box first: a box inside a kept larger one is dropped.
+def drop_nested(boxes: np.ndarray, threshold: float, keep_outer: bool = True) -> np.ndarray:
+    """The nested-box rule: of two boxes nested at IoS >= ``threshold``, the outer or inner goes.
 
-    It keeps the outer box, so a detector box drawn around a group loses the objects inside it.
-    Returns the kept positions.
+    Keeping the outer box, a detector box drawn around a group loses the objects inside it;
+    keeping the inner, the group box goes. Returns the kept positions.
     """
     area = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
     keep: list[int] = []
-    for i in np.argsort(-area, kind="stable"):
+    for i in np.argsort(-area if keep_outer else area, kind="stable"):
         if not keep or ios(boxes[i], boxes[keep]).max() < threshold:
             keep.append(int(i))
     return np.array(keep, int)
@@ -137,7 +141,7 @@ def filter_boxes(rows: np.ndarray, f: BoxFilter, width: int, height: int) -> np.
         kept = nms(torch.from_numpy(rows[idx, :4]), torch.from_numpy(conf[idx]), f.nms_iou)
         idx = idx[kept.numpy()]
     if f.nested_ios is not None and len(idx):
-        idx = idx[drop_nested(rows[idx, :4], f.nested_ios)]
+        idx = idx[drop_nested(rows[idx, :4], f.nested_ios, f.nested_keep == "outer")]
         idx = idx[np.argsort(-conf[idx], kind="stable")]
     return idx[: f.max_objects]
 
@@ -184,7 +188,8 @@ def grounding_dino(cfg: Detector, device: str) -> Detect:
             raise ValueError(f"{len(spans)} token spans for {len(names)} prompts in {text!r}")
         probs = out.logits[0].sigmoid()
         conf, label = torch.stack([probs[:, s].max(-1).values for s in spans], 1).max(1)
-        keep = conf > cfg.threshold
+        top = conf.argsort(descending=True)[:MAX_DET]
+        keep = top[conf[top] > cfg.threshold]
         cx, cy, bw, bh = (out.pred_boxes[0][keep] * torch.tensor([w, h, w, h], device=device)).T
         boxes = torch.stack([cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2], 1)
         label_np = label[keep].cpu().numpy()
@@ -199,7 +204,6 @@ def champion(device: str) -> Detect:
     from ultralytics import YOLO
 
     from mlops_cv.config import get_settings
-    from mlops_cv.evaluation.score_detections import CONF, MAX_DET
     from mlops_cv.optimize.variants import SERVER
     from mlops_cv.tracking import champion as champion_mod
     from mlops_cv.tracking import client
@@ -271,7 +275,7 @@ def sam2(repo: str, device: str) -> Segment:
 class Labeler:
     """A labeling config's models, loaded once; called on one decoded RGB image."""
 
-    def __init__(self, config: LabelingConfig, device: str) -> None:
+    def __init__(self, config: LabelingConfig, device: str, detect: bool = True) -> None:
         self.config = config
         self.device = device = _device(device)
         self._sync: Callable[[], None] = lambda: None
@@ -279,11 +283,12 @@ class Labeler:
             import torch
 
             self._sync = torch.cuda.synchronize
-        self.detect = (
-            champion(device)
-            if config.detector.model == CHAMPION
-            else grounding_dino(config.detector, device)
-        )
+        if detect:
+            self.detect = (
+                champion(device)
+                if config.detector.model == CHAMPION
+                else grounding_dino(config.detector, device)
+            )
         self.segment = sam2(config.segmenter, device) if config.segmenter else None
 
     def timed(self, fn: Callable[..., Any], *args: Any) -> tuple[Any, float]:
@@ -293,16 +298,25 @@ class Labeler:
         self._sync()
         return out, (time.perf_counter() - start) * 1000
 
-    def __call__(self, image: np.ndarray) -> Labels:
-        (rows, labels), det_ms = self.timed(self.detect, image)
+    def detections(self, image: np.ndarray) -> Labels:
+        """The detector's boxes, before the box filter."""
+        (rows, labels), ms = self.timed(self.detect, image)
+        return Labels(rows, labels, None, {"detector": ms}, len(rows))
+
+    def finish(self, image: np.ndarray, detections: Labels) -> Labels:
+        """The box filter, then the segmenter, over one image's ``detections``."""
         h, w = image.shape[:2]
+        rows = detections.rows
         keep, filter_ms = self.timed(filter_boxes, rows, self.config.box_filter, w, h)
-        detected, rows, labels = len(rows), rows[keep], [labels[i] for i in keep]
-        ms = {"detector": det_ms, "filter": filter_ms}
+        rows, labels = rows[keep], [detections.labels[i] for i in keep]
+        ms = detections.ms | {"filter": filter_ms}
         masks = None
         if self.segment:
             masks, ms["segmenter"] = self.timed(self.segment, image, rows[:, :4])
-        return Labels(rows, labels, masks, ms, detected)
+        return Labels(rows, labels, masks, ms, detections.detected)
+
+    def __call__(self, image: np.ndarray) -> Labels:
+        return self.finish(image, self.detections(image))
 
 
 def read_rgb(path: Path) -> np.ndarray:

@@ -124,7 +124,10 @@ def readings(
     frames: Collection[str] | None = None,
 ) -> dict[str, float]:
     """Merged detections scored on ``split`` (or its ``frames``) -> trial keys under ``prefix``."""
+    from ultralytics.utils.metrics import smooth
+
     from mlops_cv.tracking.metric_keys import (
+        CONF_AT_MAX_F1,
         MAP_SMALL,
         PRIMARY,
         headline_metrics,
@@ -133,9 +136,12 @@ def readings(
     )
 
     metrics, ap_s = score_with_ap_small(detections, data_yaml, split, frames)
+    box = metrics.box
+    # ultralytics' own max-F1 index (``ap_per_class``), mapped onto its confidence axis.
+    conf = float(box.px[smooth(box.f1_curve.mean(0), 0.1).argmax()]) if len(box.f1_curve) else 0.0
     return (
-        headline_metrics(metrics.box, prefix=prefix)
-        | {metric_key(prefix, MAP_SMALL): ap_s}
+        headline_metrics(box, prefix=prefix)
+        | {metric_key(prefix, MAP_SMALL): ap_s, metric_key(prefix, CONF_AT_MAX_F1): conf}
         | per_class_metrics(
             metrics.maps,
             metrics.ap_class_index,

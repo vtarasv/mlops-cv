@@ -76,6 +76,35 @@ detector pass. The incumbent is the smoke filter, NMS 0.6 with keep-outer 0.8 (`
 uv run python -m mlops_cv.autolabel configs/autolabel/box-filter.yaml --set train-sample
 ```
 
+`det` F1 at IoU 0.5 in %, with the confidence at the validator's max-F1 point and the boxes the
+filter keeps per frame (the detector returns 300 on every frame; the ground truth holds 49).
+
+| NMS IoU | Nested-box rule | det F1 | P | R | mAP50 | Max-F1 conf | Kept per frame |
+|---|---|---|---|---|---|---|---|
+| off | off | 56.7 | 55.9 | 57.6 | 52.9 | 0.193 | 287 |
+| off | keep outer | 39.1 | 50.2 | 32.0 | 28.4 | 0.142 | 88 |
+| off | keep inner | 35.1 | 30.4 | 41.6 | 27.8 | 0.080 | 147 |
+| **0.5** | **off** | **58.0** | 57.9 | 58.0 | 52.8 | 0.184 | 205 |
+| 0.5 | keep outer | 45.2 | 56.6 | 37.6 | 32.9 | 0.165 | 93 |
+| 0.5 | keep inner | 47.3 | 53.0 | 42.7 | 38.7 | 0.158 | 142 |
+| 0.6 | off | 57.8 | 57.2 | 58.4 | 53.5 | 0.187 | 228 |
+| 0.6 | keep outer (incumbent) | 43.8 | 56.2 | 35.9 | 31.8 | 0.161 | 91 |
+| 0.6 | keep inner | 46.1 | 52.1 | 41.3 | 37.6 | 0.155 | 145 |
+| 0.7 | off | 57.4 | 56.8 | 58.1 | 53.5 | 0.190 | 247 |
+| 0.7 | keep outer | 42.0 | 54.2 | 34.3 | 30.5 | 0.155 | 89 |
+| 0.7 | keep inner | 45.6 | 51.8 | 40.7 | 37.4 | 0.153 | 146 |
+
+- **Winner: NMS 0.5, no nested-box rule**, 14.2 pt over the incumbent. The labeling config
+  carries `nms_iou: 0.5`, no `nested_ios`, and confidence floor 0.184. NMS 0.6 and 0.7 sit
+  within 0.6 pt of it.
+- **The floor was the bottleneck.** The smoke filter at the old floors (0.25, `min_score` 0.4)
+  scored 29.6; the same filter at 0.001 scores 43.8, and dropping the nested-box rule 58.0.
+- **The nested-box rule hurts in both directions.** It ignores scores, so without a score floor
+  a low-scoring group box deletes the objects inside it (keep outer), and a low-scoring
+  fragment deletes the object around it (keep inner).
+- **Cost.** One detector pass (232 ms per frame, p50), then each filter setting rescores the
+  stored boxes on CPU in about 3 min; the filter takes under 3 ms per frame.
+
 ## Sequence mode
 
 A trial with a `tracker` section labels whole sequences (`val-full`, `test-dev-full`), so

@@ -30,12 +30,21 @@ flowchart LR
 - **Labeling config.** A stage YAML in `configs/autolabel/` lists trials, each a detector (a
   transformers repo and its prompts, each mapped to a merged class), the box filter, and a
   segmenter (a transformers SAM 2 repo, or none). `defaults` sections are updated key by key.
+  The detector keeps its top 300 boxes above 0.001, val's floor and cap, so the validator's
+  threshold sweep sees everything. `confidence_floor`, the winning trial's max-F1 confidence,
+  cuts the stored auto-labels; scoring reads every box.
 - **Box filter.** Its stages run in order, each optional: min side, max share of the frame,
-  min score, class-agnostic NMS, the nested-box rule, top K. The nested-box rule keeps the
-  *outer* box, so a box drawn around a group deletes the objects inside it.
+  min score, class-agnostic NMS, the nested-box rule, top K. Of two boxes nested at IoS ≥
+  `nested_ios`, the rule keeps the outer one (`nested_keep: outer`), so a box drawn around a
+  group deletes the objects inside it, or the inner one, deleting the group box.
+- **Stored detections.** A run over a whole scoring set stores the detector's boxes from before
+  the box filter in `<set>/detections/<hash of the detector settings>.npz`. A later trial with
+  the same detector reads them and reruns only the filter and segmenter, reporting the stored
+  detector latency. The key ignores the detector code: delete the file after changing it.
 - **Scores.** Two box sets per trial, `det` (the filtered detector boxes) and `seg` (each mask's
   tight box), both through `score_with_ap_small` at the 3 merged classes. **Selection is F1 at
-  IoU 0.5**, from the validator's P and R; mAP and per-class numbers are recorded only.
+  IoU 0.5**, from the validator's P and R at its max-F1 point, whose confidence is
+  `<kind>/conf_at_max_F1`; mAP and per-class numbers are recorded only.
 - **Ignored regions.** VisDrone's rule, not the repo's: see
   [Scoring convention](#scoring-convention-ignored-regions).
 - **Capped rows.** SAM 3 returns at most 200 boxes per prompt, so every row is also scored on the
@@ -49,6 +58,23 @@ flowchart LR
   `det_bbox` the detector's, and the prompt under `attributes.label`.
 - **Champion row.** The champion YOLO26 runs through the same scoring as a supervised reference
   (boxes only, unfiltered). It trained on VID train, so the runner skips it on `train-sample`.
+
+## Image-mode tuning grid
+
+A staged greedy grid on `train-sample`, one or two factors per stage, the winner carried forward.
+Before the segmenter stage, trials label boxes only and select on `det` F1. A challenger replaces
+the carried config only when it wins by ≥ 0.5 pt F1 (a labeling trial has no noise floor);
+latency is reported, never selects. Every stage keeps `min_side` 8 px and `max_area` 5% of the
+frame, which drop almost no VID ground truth.
+
+**Stage 1: box filter** (`configs/autolabel/box-filter.yaml`). Grounding DINO-T on the 10 raw
+names at the new detector floor, no filter score floor. NMS IoU {off, 0.5, 0.6, 0.7} × the
+nested-box rule {off, keep outer at IoS 0.8, keep inner at IoS 0.8}: 12 trials over one stored
+detector pass. The incumbent is the smoke filter, NMS 0.6 with keep-outer 0.8 (`nms0.6-outer`).
+
+```bash
+uv run python -m mlops_cv.autolabel configs/autolabel/box-filter.yaml --set train-sample
+```
 
 ## Sequence mode
 

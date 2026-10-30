@@ -352,9 +352,16 @@ flowchart LR
   (`unmatched_keys`, the drift rule); of two tracks whose masks overlap at IoU > 0.8
   (`duplicate_iou`), the younger ends. A tracked frame carries the score of the last detection
   its track matched. `max_objects` caps live tracks; none by default.
-- **Box-tracker controls** (`botsort`, `bytetrack`: ultralytics' default settings). The
-  detector, box filter and segmenter run on every frame, once per stage: both controls reuse
-  that pass. A detection is an auto-label when the tracker gives it a track.
+- **Confidence floor on key frames.** With `confidence_floor`, only kept boxes at or above it
+  start or refresh a track; `det` still scores every kept box.
+- **Stored key-frame boxes.** A video trial reads its key frames' detector boxes from the set's
+  stored detections when they exist, so every trial over one detector shares one pass. Its
+  detector latency is then the stored ms per key frame, amortised over the frames.
+- **Box-tracker controls** (`botsort`, `bytetrack`: ultralytics' default settings, except
+  `track_high_thresh` and `new_track_thresh`, which take the confidence floor: their 0.25 is
+  YOLO's score scale). The detector, box filter and segmenter run on every frame, once per
+  stage: both controls reuse that pass. A detection is an auto-label when the tracker gives it a
+  track.
 - **Scores.** `det` scores the filtered detector boxes on key frames only, and `seg` every frame's
   auto-label boxes. Tracks go through TrackEval's MOTChallenge adapter
   (`trackeval==1.3.0`, a numpy-2 fork of upstream), once per merged class after the
@@ -366,6 +373,60 @@ flowchart LR
   tracker) total over the frames divided by the frame count, the first key-frame cycle left out
   as warm-up. `tracks/peak_live` is the most live tracks on any frame. The COCO file adds a
   `track_id` per auto-label; `det_bbox` appears only where a detection matched it.
+
+## Sequence-mode tuning grid
+
+A staged greedy grid on `val-full` (all 7 VID val sequences, 2,846 frames) over image mode's
+labeling config: SAM 3 fp16 on the 10 raw names, untiled, the box filter, confidence floor 0.597.
+The detector's pass is stored once and read by every trial. F1 stages select on `seg` max-F1
+(`det` sees key frames only), tracking-settings stages on `track/HOTA`; a challenger wins by
+≥ 0.5 pt, latency is reported only.
+
+**Stage 1: key-frame interval** (`configs/autolabel/key-interval.yaml`). EdgeTAM video at K
+{5, 10, 20}, incumbent 10, the floor on key frames. First, the image-mode reference row (the
+stored pass, the box filter and SAM 2.1 S on every frame, no tracking; reported only), which
+writes the stored pass.
+
+```bash
+uv run --env-file .env python -m mlops_cv.autolabel configs/autolabel/key-interval.yaml --set val-full
+```
+
+In %; `det` F1 is the key frames' (every frame for the reference row), latency amortised per
+frame (the reference row's is its mean), RTX 5070 Laptop.
+
+| Trial | seg F1 | P | R | mAP50-95 | det F1 | HOTA | IDF1 | MOTA | ID switches | Peak live | ms (detector + tracker) | MB |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Image mode, no tracking (reference) | 61.6 | 62.7 | 60.5 | 24.3 | 61.2 | — | — | — | — | — | 1,724 (479 + SAM 2.1 S 1,244) | 49.9 |
+| **K = 5** | **53.2** | 53.3 | 53.2 | 17.3 | 61.0 | 39.9 | 46.0 | 5.0 | 1,307 | 150 | 615 (96 + 519) | 52.3 |
+| K = 10 (incumbent) | 52.2 | 51.6 | 52.8 | 16.9 | 61.0 | 40.8 | 48.2 | 4.2 | 922 | 155 | 579 (49 + 530) | 51.7 |
+| K = 20 | 51.5 | 51.1 | 51.8 | 16.2 | 61.1 | 40.8 | 48.5 | 3.1 | 666 | 160 | 565 (25 + 540) | 50.6 |
+
+Per sequence, F1 in %: `det` is the stored pass and box filter on every frame (uncut), `seg` the
+stored auto-labels (cut at 0.597).
+
+| Sequence | Frames | GT per frame | det | Reference seg | K = 5 seg | K = 10 seg | K = 20 seg |
+|---|---|---|---|---|---|---|---|
+| uav0000086_00000_v | 464 | 49.6 | 76.3 | 75.0 | 63.5 | 57.7 | 57.3 |
+| uav0000117_02622_v | 349 | 46.8 | 65.3 | 65.8 | 56.8 | 54.8 | 54.4 |
+| uav0000137_00458_v | 233 | 103.1 | 68.0 | 67.5 | 57.1 | 56.2 | 55.0 |
+| uav0000182_00000_v | 363 | 48.5 | 50.4 | 51.9 | 44.7 | 43.9 | 43.5 |
+| **uav0000268_05773_v** (3840×2160) | 978 | 13.9 | 43.9 | 29.7 | 23.2 | 22.9 | 23.8 |
+| uav0000305_00000_v | 184 | 34.7 | 51.9 | 53.8 | 43.7 | 43.8 | 43.4 |
+| uav0000339_00001_v | 275 | 43.5 | 68.6 | 68.2 | 64.7 | 63.9 | 62.1 |
+
+- **Winner: K = 5**, 1.0 pt over the incumbent K = 10; K = 20 loses 0.7. Sequence mode carries
+  `key_interval: 5` to the tracker-model stage.
+- **Tracking costs 8–10 pt of `seg` F1 against labeling every frame**, on every sequence: P and R
+  both drop, and mAP50-95 falls 7 pt, so EdgeTAM's masks between key frames fit worse than SAM 2.1
+  S's on fresh boxes. More key frames recover only part of it; HOTA and IDF1 run the other way
+  (K = 5 switches ids twice as often as K = 20). MOTA ≈ 3–5%: false
+  positives nearly cancel the matches.
+- **The 4K sequence is floor-bound.** The detector reaches `det` F1 43.9 there, but cutting at
+  0.597 leaves 17.9% recall (P 87.4) even without tracking: SAM 3 scores distant small objects
+  lower than the floor measured on `train-sample`. Its peak is 12 live tracks.
+- **Cost.** The tracker dominates and barely moves with K; the dense `uav0000137_00458_v` peaks at
+  155 live tracks and 1.8 s per frame (3.9 GB GPU over its first 100 frames, SAM 3 loaded). Each
+  K row took 26 min, the reference row 84 min (it wrote the stored pass).
 
 ## Scoring convention: ignored regions
 
@@ -433,7 +494,11 @@ flowchart LR
   unlike the validator, so the numbers above come from `score_with_ap_small` alone.
 - **Masks.** Settings' *Label opacity* fades mask fills only; at 0 the boxes stay.
 - **Loading takes time.** The flags dominate: `train-sample` with one trial loads in 2.3 min,
-  the champion's 0.001-floor row on `val-stride20` in 4.6 min.
+  the champion's 0.001-floor row on `val-stride20` in 4.6 min, a sequence-mode trial on
+  `val-full` in 14 min (3.1 GB in the App container). `_det` holds only the key frames' matched detector boxes.
+- **Masks are copied out of the frame.** FiftyOne 1.22.1 crops each decoded mask as a view of
+  the whole frame, which held every 4K frame in memory (24 GB, killed); the loader copies the
+  crop.
 
 ## Results
 

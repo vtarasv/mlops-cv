@@ -40,12 +40,25 @@ def with_prompt(annotation: dict[str, Any]) -> dict[str, Any]:
 
 
 def detector_boxes(annotations: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """The trial's annotations with the detector's box as ``bbox`` and no mask."""
+    """The trial's annotations with the detector's box as ``bbox`` and no mask.
+
+    A sequence-mode auto-label on a tracked frame has no detector box, so it's left out.
+    """
     return [
         {k: v for k, v in a.items() if k not in ("segmentation", "det_bbox")}
         | {"bbox": a["det_bbox"]}
         for a in annotations
+        if "det_bbox" in a
     ]
+
+
+def copy_cropped_masks(fouc: Any) -> None:
+    """Copy each mask crop: FiftyOne 1.22.1 slices the decoded frame, keeping all of it alive.
+
+    ponytail: patches a private FiftyOne function; recheck on a FiftyOne bump.
+    """
+    crop = fouc._coco_segmentation_to_mask
+    fouc._coco_segmentation_to_mask = lambda *a: None if (m := crop(*a)) is None else m.copy()
 
 
 def create(fo: Any, name: str, set_dir: Path) -> Any:
@@ -72,6 +85,7 @@ def main(trial: Path) -> None:
     import fiftyone as fo
     import fiftyone.utils.coco as fouc
 
+    copy_cropped_masks(fouc)
     start = time.perf_counter()
     set_dir = trial.parent.parent
     scoring_set = set_dir.name

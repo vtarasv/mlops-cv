@@ -1,0 +1,30 @@
+# Sequence-mode stage 1 on val-full: the image-mode labeling config on key frames, tracked by
+# EdgeTAM at K in {5, 10, 20} (incumbent 10). The floor applies on key frames: a kept box below it
+# starts or refreshes no track. The image-mode reference row runs first: it stores the detector
+# pass (keyed by the detector settings) that every video trial reads.
+defaults:
+  detector:
+    model: facebook/sam3
+    prompts:
+      pedestrian: person
+      people: person
+      bicycle: two-three-wheeler
+      car: vehicle
+      van: vehicle
+      truck: vehicle
+      tricycle: two-three-wheeler
+      awning-tricycle: two-three-wheeler
+      bus: vehicle
+      motor: two-three-wheeler
+    dtype: float16
+  box_filter: {min_side: 8, max_area: 0.05, nms_iou: 0.5}
+  confidence_floor: 0.597
+trials:
+  - name: image-mode
+    segmenter: facebook/sam2.1-hiera-small
+  - name: edgetam-k10
+    tracker: {model: yonigozlan/EdgeTAM-hf, key_interval: 10}
+  - name: edgetam-k5
+    tracker: {model: yonigozlan/EdgeTAM-hf, key_interval: 5}
+  - name: edgetam-k20
+    tracker: {model: yonigozlan/EdgeTAM-hf, key_interval: 20}

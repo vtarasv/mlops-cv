@@ -3,6 +3,7 @@ key-frame tracking rules and the TrackEval glue."""
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import typing
 from pathlib import Path
@@ -383,9 +384,11 @@ def test_stored_detections_round_trip_and_check_their_frames(tmp_path: Path) -> 
     a, b = run.load_detections(path, images)
     assert a.rows.tolist() == rows.tolist() and a.labels == ["car"] and a.ms == {"detector": 7.0}
     assert (len(b.rows), b.detected, b.ms) == (0, 0, {"detector": 3.0})
-    with pytest.raises(ValueError, match="other frames"):
-        run.load_detections(path, images[:1])
     assert a.windows is None
+    (only_b,) = run.load_detections(path, images[1:])  # a subset reads by frame name
+    assert only_b.ms == {"detector": 3.0}
+    with pytest.raises(ValueError, match="lacks c"):
+        run.load_detections(path, [*images, _image("c", [])])
 
 
 def test_stored_tiled_detections_keep_their_windows(tmp_path: Path) -> None:
@@ -488,6 +491,32 @@ def test_empty_masks_end_a_track() -> None:
     assert tracks.observe([1], [5]) == set()  # a non-empty frame resets the count
     assert tracks.observe([1], [0]) == set()
     assert tracks.observe([1], [0]) == {1} and not tracks.live
+
+
+def test_the_floor_keeps_rows_at_or_above_it() -> None:
+    labels = Labels(_rows(0.9, 0.5, 0.6), ["a", "b", "c"], None, {"detector": 1.0}, 3)
+    kept = sequence.above(labels, 0.6)
+    assert kept.rows[:, 4].tolist() == [0.9, 0.6] and kept.labels == ["a", "c"]
+    assert (kept.ms, kept.detected) == ({"detector": 1.0}, 3)
+    assert sequence.above(labels, None) is labels
+
+
+def test_box_trackers_take_the_floor_as_their_track_thresholds(tmp_path: Path) -> None:
+    pytest.importorskip("lap")
+    images = []
+    for i in range(3):
+        path = tmp_path / f"{i}.jpg"
+        Image.new("RGB", (100, 100)).save(path)
+        images.append(dataclasses.replace(_image(path.name, []), path=path))
+    rows = np.array([[10, 10, 30, 30, 0.5, 1]], np.float32)
+    detections = [Labels(rows, ["car"], None, {"detector": 1.0}, 1)] * 3
+
+    def tracked(floor: float | None) -> int:
+        out = sequence.box_tracks("bytetrack", images, detections, floor)
+        return sum(len(lab.rows) for lab, _ in out)
+
+    assert tracked(None) > 0  # 0.5 clears ultralytics' 0.25 default
+    assert tracked(0.6) == 0
 
 
 class _Session:

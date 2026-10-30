@@ -290,18 +290,19 @@ def save_detections(path: Path, images: list[visdrone_vid.Image], raw: list[Labe
 
 
 def load_detections(path: Path, images: list[visdrone_vid.Image]) -> list[Labels]:
-    """The stored boxes, with the detector latency they were measured at."""
+    """``images``' stored boxes, with the detector latency they were measured at."""
     z = np.load(path)
-    if z["names"].tolist() != [im.name for im in images]:
-        raise ValueError(f"{path} holds other frames: delete it to re-detect")
     split = np.cumsum(z["counts"])[:-1]
     rows, labels = np.split(z["rows"], split), np.split(z["labels"], split)
     windows = np.split(z["windows"], split) if "windows" in z else [None] * len(rows)
-    parts = zip(rows, labels, z["detector_ms"], windows, strict=True)
-    return [
-        Labels(r, lb.tolist(), None, {"detector": float(ms)}, len(r), windows=win)
-        for r, lb, ms, win in parts
-    ]
+    parts = zip(z["names"].tolist(), rows, labels, z["detector_ms"], windows, strict=True)
+    stored = {
+        name: Labels(r, lb.tolist(), None, {"detector": float(ms)}, len(r), windows=win)
+        for name, r, lb, ms, win in parts
+    }
+    if missing := [im.name for im in images if im.name not in stored]:
+        raise ValueError(f"{path} lacks {missing[0]} and {len(missing) - 1} more: delete it")
+    return [stored[im.name] for im in images]
 
 
 def label_frames(
@@ -346,16 +347,18 @@ def label_sequences(
     """Per frame: the auto-labels, the key-frame detections and the live tracks.
 
     Box trackers share one detection pass per detector, filter and segmenter, cached in
-    ``detections``.
+    ``detections``. Video trackers read their key frames' boxes from ``store`` when it exists.
     """
     assert config.tracker is not None
     if config.tracker.model in BOX_TRACKERS:
         key = config.model_copy(update={"tracker": None}).model_dump_json()
         if key not in detections:
             detections[key] = label_frames(config, images, device, store)
-        tracked = list(sequence.box_tracks(config.tracker.model, images, detections[key]))
+        floor = config.confidence_floor
+        tracked = list(sequence.box_tracks(config.tracker.model, images, detections[key], floor))
         return [lab for lab, _ in tracked], list(detections[key]), [n for _, n in tracked]
-    labels, keys, live = zip(*sequence.video_tracks(config, images, device), strict=True)
+    raw = load_detections(store, images) if store and store.exists() else None
+    labels, keys, live = zip(*sequence.video_tracks(config, images, device, raw), strict=True)
     return list(labels), list(keys), list(live)
 
 
@@ -374,8 +377,9 @@ def run_trial(
     settings = get_settings()
     scoring_dir = visdrone_vid.scoring_dir(settings.data.autolabel_dir, scoring_set)
     data_yaml = scoring_dir / "data.yaml"
-    # the stored boxes carry no masks, so own masks rerun the detector
-    store = detections_store(scoring_dir, config) if full and config.segmenter != OWN else None
+    # the stored boxes carry no masks, so own masks rerun the detector; only a full set writes
+    store = detections_store(scoring_dir, config) if config.segmenter != OWN else None
+    store = store if store and (full or store.exists()) else None
     device = settings.training.device
     if config.tracker is None:
         labels = label_frames(config, images, device, store)
@@ -386,7 +390,7 @@ def run_trial(
         pairs = zip(images, labels, strict=True)
         tracked = [outside_ignored(track_rows(lab), im) for im, lab in pairs]
         metrics = (
-            scores(images, labels, data_yaml, full=full, keys=keys)
+            scores(images, labels, data_yaml, full=full, keys=keys, floor=config.confidence_floor)
             | amortised_latency(labels, config.tracker)
             | track_scores.readings(images, tracked)
             | {"tracks/peak_live": float(max(live))}

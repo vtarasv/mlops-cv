@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import importlib.util
+import types
 from pathlib import Path
+
+import numpy as np
 
 from mlops_cv.autolabel import run, view
 
@@ -38,7 +41,17 @@ def test_detector_boxes_drop_the_mask_and_keep_the_prompt() -> None:
         "attributes": {"label": "car"},
     }
 
-    (det,) = load_trial.detector_boxes([load_trial.with_prompt(ann)])
+    tracked = {"bbox": [1, 1, 2, 2], "track_id": 3}  # a tracked frame has no detector box
+    (det,) = load_trial.detector_boxes([load_trial.with_prompt(ann), tracked])
 
     assert det == {"bbox": [0, 0, 4, 4], "attributes": {"prompt": "car"}}
     assert ann["attributes"] == {"label": "car"}  # the input is left alone
+
+
+def test_mask_crops_are_copied_so_the_frame_is_freed() -> None:
+    frame = np.ones((8, 8), bool)
+    fouc = types.SimpleNamespace(_coco_segmentation_to_mask=lambda seg, *_: seg and frame[1:3])
+    load_trial.copy_cropped_masks(fouc)
+    crop = fouc._coco_segmentation_to_mask({"counts": "x"}, [0, 0, 1, 1], (8, 8))
+    assert crop.shape == (2, 8) and crop.base is None
+    assert fouc._coco_segmentation_to_mask(None) is None

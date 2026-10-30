@@ -1,8 +1,9 @@
 """Sequence mode: key-frame tracking with a video model, and ultralytics' box-tracker controls.
 
-A video trial runs the detector and box filter on key frames only. Kept boxes match the live
-tracks by box IoU against each track's mask box; the rest join the running tracker as new objects.
-The tracker is never reset, and its memory is pruned to the seed frames plus the last 16.
+A video trial runs the detector (or reads its stored boxes) and the box filter on key frames
+only. Kept boxes at or above the confidence floor match the live tracks by box IoU against each
+track's mask box; the rest join the running tracker as new objects. The tracker is never reset,
+and its memory is pruned to the seed frames plus the last 16.
 """
 
 from __future__ import annotations
@@ -169,6 +170,15 @@ def prune(session: Any, frame: int) -> None:
                 store[frame].pop("high_res_masks", None)
 
 
+def above(labels: Labels, floor: float | None) -> Labels:
+    """``labels`` without the rows scoring below ``floor``."""
+    if floor is None:
+        return labels
+    keep = np.flatnonzero(labels.rows[:, 4] >= floor)
+    rows, names = labels.rows[keep], [labels.labels[i] for i in keep]
+    return Labels(rows, names, None, labels.ms, labels.detected)
+
+
 def coco_iou(a: Any, b: Any) -> np.ndarray:
     """pycocotools' IoU between xywh boxes or RLEs, shaped ``(len(a), len(b))`` even when empty."""
     from pycocotools import mask
@@ -250,12 +260,18 @@ class VideoTracker:
         return masks, boxes
 
     def frames(
-        self, labeler: Labeler, images: list[visdrone_vid.Image]
+        self,
+        labeler: Labeler,
+        images: list[visdrone_vid.Image],
+        stored: dict[str, Labels] | None = None,
+        floor: float | None = None,
     ) -> Iterator[tuple[Labels, Labels | None, int]]:
         """One sequence -> per frame: its auto-labels, the key frame's detections, live tracks.
 
-        An empty mask is no auto-label. A row's box is its matching detection's on a key frame
-        and NaN elsewhere: the auto-label's box is its mask's.
+        ``stored`` detector boxes, by frame name, replace the detector. Only kept boxes at or
+        above ``floor`` start or refresh a track. An empty mask is no auto-label. A row's box is
+        its matching detection's on a key frame and NaN elsewhere: the auto-label's box is its
+        mask's.
         """
         import torch
         from pycocotools import mask
@@ -267,14 +283,17 @@ class VideoTracker:
         tracks = Tracks(self.cfg)
         for k, im in enumerate(images):
             rgb = read_rgb(im.path)
-            key = labeler(rgb) if k % self.cfg.key_interval == 0 else None
+            key = None
+            if k % self.cfg.key_interval == 0:
+                key = labeler.finish(rgb, stored[im.name]) if stored else labeler(rgb)
+            seeds = None if key is None else above(key, floor)
             with torch.inference_mode():
-                (masks, boxes), ms = labeler.timed(self._step, session, tracks, rgb, k, key)
+                (masks, boxes), ms = labeler.timed(self._step, session, tracks, rgb, k, seeds)
             ids = [i for i, m in masks.items() if mask_utils.area(m)]
             rows = np.full((len(ids), 6), np.nan, np.float32)
             for row, i in zip(rows, ids, strict=True):
-                if key is not None and i in boxes:
-                    row[:4] = key.rows[boxes[i], :4]
+                if seeds is not None and i in boxes:
+                    row[:4] = seeds.rows[boxes[i], :4]
                 row[4:] = tracks.live[i].score, tracks.live[i].cls
             labels = Labels(
                 rows,
@@ -288,16 +307,24 @@ class VideoTracker:
 
 
 def video_tracks(
-    config: LabelingConfig, images: list[visdrone_vid.Image], device: str
+    config: LabelingConfig,
+    images: list[visdrone_vid.Image],
+    device: str,
+    raw: list[Labels] | None = None,
 ) -> Iterator[tuple[Labels, Labels | None, int]]:
-    """A video-tracker trial over every sequence in ``images``, a new session per sequence."""
+    """A video-tracker trial over every sequence in ``images``, a new session per sequence.
+
+    ``raw``, the stored detector boxes per image, replaces the detector on key frames.
+    """
     assert config.tracker is not None
-    labeler = Labeler(config, device)
+    labeler = Labeler(config, device, detect=raw is None)
     tracker = VideoTracker(config.tracker, labeler.device)
+    stored = None if raw is None else {im.name: r for im, r in zip(images, raw, strict=True)}
+    floor = config.confidence_floor
     for sequence, frames in groupby(images, key=attrgetter("sequence")):
         frames = list(frames)
         peak = 0
-        for out in tracker.frames(labeler, frames):
+        for out in tracker.frames(labeler, frames, stored, floor):
             peak = max(peak, out[2])
             yield out
         logger.info(f"  {sequence}: {len(frames)} frames, peak {peak} live tracks")
@@ -306,11 +333,16 @@ def video_tracks(
 
 
 def box_tracks(
-    name: str, images: list[visdrone_vid.Image], detections: list[Labels]
+    name: str,
+    images: list[visdrone_vid.Image],
+    detections: list[Labels],
+    floor: float | None = None,
 ) -> Iterator[tuple[Labels, int]]:
     """ultralytics' ``name`` tracker at its defaults over a cached detection pass, per frame.
 
-    The tracker reports the detections it assigned a track to; their rows and masks are kept.
+    ``floor`` replaces its ``track_high_thresh`` and ``new_track_thresh``, which default to YOLO's
+    score scale. The tracker reports the detections it assigned a track to; their rows and masks
+    are kept.
     """
     from ultralytics.engine.results import Boxes
     from ultralytics.trackers.track import TRACKER_MAP
@@ -318,6 +350,8 @@ def box_tracks(
     from ultralytics.utils.checks import check_yaml
 
     args = IterableSimpleNamespace(**YAML.load(str(check_yaml(f"{name}.yaml"))))
+    if floor is not None:
+        args.track_high_thresh = args.new_track_thresh = floor
     tracker: Any = None
     sequence = None
     for im, det in zip(images, detections, strict=True):

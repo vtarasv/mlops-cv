@@ -262,7 +262,8 @@ def coco_autolabels(
 
 def detections_store(scoring_dir: Path, config: LabelingConfig) -> Path:
     """Where a whole scoring set's detector boxes, before the box filter, are stored."""
-    key = hashlib.sha256(config.detector.model_dump_json().encode()).hexdigest()[:16]
+    detector = config.detector.model_dump_json(exclude_none=True)  # a new field keeps old keys
+    key = hashlib.sha256(detector.encode()).hexdigest()[:16]
     return scoring_dir / "detections" / f"{key}.npz"
 
 

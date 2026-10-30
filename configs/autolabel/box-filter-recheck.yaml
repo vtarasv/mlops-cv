@@ -1,0 +1,44 @@
+# Image-mode stage 5: stage 1's 12 box-filter settings rescored on stage 4's winner, SAM 3 end to
+# end on the 10 raw names, untiled, fp16, from its stored boxes (CPU only). NMS IoU {off, 0.5,
+# 0.6, 0.7} x the nested-box rule {off, keep outer, keep inner at IoS 0.8}. The incumbent is the
+# carried filter: nms0.5-nested-off.
+defaults:
+  detector:
+    model: facebook/sam3
+    prompts:
+      pedestrian: person
+      people: person
+      bicycle: two-three-wheeler
+      car: vehicle
+      van: vehicle
+      truck: vehicle
+      tricycle: two-three-wheeler
+      awning-tricycle: two-three-wheeler
+      bus: vehicle
+      motor: two-three-wheeler
+    dtype: float16
+  box_filter: {min_side: 8, max_area: 0.05}
+trials:
+  - name: nms-off-nested-off
+  - name: nms-off-outer
+    box_filter: {nested_ios: 0.8}
+  - name: nms-off-inner
+    box_filter: {nested_ios: 0.8, nested_keep: inner}
+  - name: nms0.5-nested-off
+    box_filter: {nms_iou: 0.5}
+  - name: nms0.5-outer
+    box_filter: {nms_iou: 0.5, nested_ios: 0.8}
+  - name: nms0.5-inner
+    box_filter: {nms_iou: 0.5, nested_ios: 0.8, nested_keep: inner}
+  - name: nms0.6-nested-off
+    box_filter: {nms_iou: 0.6}
+  - name: nms0.6-outer
+    box_filter: {nms_iou: 0.6, nested_ios: 0.8}
+  - name: nms0.6-inner
+    box_filter: {nms_iou: 0.6, nested_ios: 0.8, nested_keep: inner}
+  - name: nms0.7-nested-off
+    box_filter: {nms_iou: 0.7}
+  - name: nms0.7-outer
+    box_filter: {nms_iou: 0.7, nested_ios: 0.8}
+  - name: nms0.7-inner
+    box_filter: {nms_iou: 0.7, nested_ios: 0.8, nested_keep: inner}

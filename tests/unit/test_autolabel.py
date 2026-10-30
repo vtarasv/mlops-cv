@@ -228,8 +228,9 @@ def test_an_unset_detector_field_keeps_the_stored_detections_key() -> None:
     assert run.detections_store(Path("s"), _config()) == Path(f"s/detections/{key}.npz")
     sized = _config(detector={"model": "m", "imgsz": 1280})
     assert run.detections_store(Path("s"), sized) != run.detections_store(Path("s"), _config())
-    bf16 = _config(detector={"model": "m", "dtype": "bfloat16"})
-    assert run.detections_store(Path("s"), bf16) != run.detections_store(Path("s"), _config())
+    halves = [_config(detector={"model": "m", "dtype": d}) for d in ("bfloat16", "float16")]
+    stores = {run.detections_store(Path("s"), c) for c in [_config(), *halves]}
+    assert len(stores) == 3
     edge, contained, other = (
         _config(detector={"model": "m", "tiling": {"side": side, "merge": merge}})
         for side, merge in [(806, "edge"), (806, "contained"), (504, "edge")]

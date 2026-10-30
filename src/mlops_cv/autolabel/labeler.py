@@ -56,7 +56,7 @@ class Detector(BaseModel):
     threshold: float = CONF  # the detector's own score floor; it keeps its top ``MAX_DET``
     imgsz: int | None = None  # YOLOE's input size; ``None`` is 640, its training size
     tiling: Tiling | None = None
-    dtype: Literal["bfloat16"] | None = None  # SAM 3's weights; ``None`` is fp32
+    dtype: Literal["bfloat16", "float16"] | None = None  # SAM 3's weights; ``None`` is fp32
 
 
 class BoxFilter(BaseModel):

@@ -184,22 +184,49 @@ uv run --env-file .env python -m mlops_cv.autolabel configs/autolabel/prompts.ya
 - **Fewer prompts are cheaper**: 3 decoder passes take SAM 3 to 995 ms per frame, from 1,600.
 
 **Stage 4: tiling** (`configs/autolabel/tiling.yaml`). SAM 3 on the 10 raw names under stage 1's
-filter, untiled (the incumbent, rescored from its stored boxes) against slices plus the full
-frame at zoom 1.25 (806 px slices) and 2 (504 px), merged by the edge rule, and at 1.25 with the
-contained merge (a CPU rescore of 1.25's stored passes). SAM 3 squashes every pass to a 1008
-square, so a full `train-sample` frame (1344 to 2720 px wide) runs at 0.37× to 0.75× horizontally.
-A frame takes 7.5 passes on average at 1.25 and 17.5 at 2. Each pass costs SAM 3 1.6 s (vision
-plus 10 decoder passes, fp32), and batching an image's slices gains nothing (1.57 s per pass at
-batch 4), so a tiled level labels `train-sample` in 1.9 h (1.25) or 4.4 h (2).
+filter, untiled (the incumbent, rescored from the fp16 parity check's stored boxes) against
+slices plus the full frame at zoom 1.25 (806 px slices) and 2 (504 px), merged by the edge rule,
+and at 1.25 with the contained merge (a CPU rescore of 1.25's stored passes). SAM 3 squashes
+every pass to a 1008 square, so a full `train-sample` frame (1344 to 2720 px wide) runs at 0.37×
+to 0.75× horizontally.
+A frame takes 7.5 passes on average at 1.25 and 17.5 at 2, and batching an image's slices gains
+nothing (SAM 3 is compute-bound).
 
-SAM 3 in bf16 (`detector.dtype: bfloat16`) is 3.3× faster (480 ms per frame untiled) but fails
-parity with fp32 on the untiled row: `det` F1 62.6 against 66.5, mAP50-95 small 7.4 against
-10.8. Its boxes move 1.4 px (median) to 4.7 px (p90) from fp32's, enough to cost small objects
-their IoU match. SAM 3 stays fp32, and the grid waits on a cheaper path.
+**SAM 3 runs in fp16 from this stage on** (`detector.dtype: float16`): 484 ms per pass against
+fp32's 1.6 s. Parity on the untiled row, against fp32's `det` F1 66.5:
+
+| Untiled SAM 3 | det F1 | mAP50-95 small | Box shift from fp32, median / p90 | Detector ms |
+|---|---|---|---|---|
+| fp32 | 66.5 | 10.8 | — | 1,600 |
+| **fp16** | **66.3** | 10.7 | 0.2 / 0.7 px | 484 |
+| bf16 | 62.6 | 7.4 | 1.4 / 4.7 px | 480 |
+
+bf16's 8-bit mantissa moves boxes enough to cost small objects their IoU match; fp16 stays
+within 0.5 pt.
 
 ```bash
 uv run --env-file .env python -m mlops_cv.autolabel configs/autolabel/tiling.yaml --set train-sample
 ```
+
+`det` F1 at IoU 0.5 in %, fp16, with mAP50-95 per merged class. Detector ms is the p50 per frame,
+all passes included.
+
+| Tiling | det F1 | P | R | mAP50 | mAP50-95 | small | Max-F1 conf | Kept per frame | Detector ms | person | vehicle | two-three-wheeler |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| **untiled (incumbent)** | **66.3** | 67.9 | 64.8 | 60.9 | 26.6 | 10.7 | 0.597 | 151 | 484 | 18.0 | 43.6 | 18.1 |
+| zoom 1.25, edge | 65.5 | 64.7 | 66.2 | 61.3 | 27.0 | 9.0 | 0.737 | 529 | 3,389 | 17.9 | 45.2 | 18.0 |
+| zoom 1.25, contained | 44.8 | 53.8 | 38.4 | 31.2 | 13.9 | 7.3 | 0.674 | 177 | 3,389 | 4.2 | 25.6 | 11.8 |
+| zoom 2, edge | 64.4 | 62.7 | 66.3 | 60.0 | 26.4 | 8.2 | 0.756 | 1,147 | 7,769 | 17.5 | 44.3 | 17.3 |
+
+- **Winner: untiled**, the incumbent; no tiled row comes within the 0.5 pt margin. The labeling
+  config keeps stage 3's detector, now in fp16, and confidence floor 0.597.
+- **Tiling trades precision for recall.** Slices add 1.4 to 1.5 pt of recall but cost 3 to 5 pt
+  of precision, and mAP50-95 small falls (10.7 to 9.0 and 8.2): the extra boxes add confident
+  false positives, which push the max-F1 confidence from 0.60 to 0.74–0.76.
+- **The contained merge collapses** because it runs on every box down to the 0.001 floor: 93% of
+  the confident boxes it absorbs go into a lower-scoring box, 86% into one over 5% of the frame
+  that the box filter then drops.
+- **Tiling costs 7× (1.25) to 16× (2)** SAM 3's untiled time; the merge adds ≤ 14 ms.
 
 ## Sequence mode
 

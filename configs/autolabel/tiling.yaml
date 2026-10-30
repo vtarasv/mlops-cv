@@ -16,6 +16,7 @@ defaults:
       awning-tricycle: two-three-wheeler
       bus: vehicle
       motor: two-three-wheeler
+    dtype: float16
   box_filter: {min_side: 8, max_area: 0.05, nms_iou: 0.5}
 trials:
   - name: untiled

@@ -519,6 +519,17 @@ def test_box_trackers_take_the_floor_as_their_track_thresholds(tmp_path: Path) -
     assert tracked(0.6) == 0
 
 
+def test_box_trackers_share_one_pass_across_floors(monkeypatch: pytest.MonkeyPatch) -> None:
+    passes = []
+    monkeypatch.setattr(run, "label_frames", lambda *a: passes.append(1) or [])
+    monkeypatch.setattr(sequence, "box_tracks", lambda *a: [])
+    detections: dict[str, list[Labels]] = {}
+    for floor in (0.5, 0.6):
+        config = _config(tracker={"model": "botsort"}, confidence_floor=floor)
+        run.label_sequences(config, [], "cpu", detections, None)
+    assert len(passes) == 1
+
+
 class _Session:
     output_dict_per_obj: dict[int, typing.Any]
 

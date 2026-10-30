@@ -472,6 +472,48 @@ latency amortised per frame. A control's peak live counts lost tracks too (kept 
   tracks, 6.4 GB allocated), EdgeTAM 0.6 s. Wall-clock: both controls 65 min, SAM 2.1 S video
   73 min.
 
+**Stage 3: confidence floor** (`configs/autolabel/confidence-floor.yaml`). BoT-SORT + SAM 2.1 S at
+floors {0.497, 0.597, 0.697}: image mode's floor (the incumbent, stage 2's run) ± 0.1. The floor
+sets `track_high_thresh` = `new_track_thresh` and cuts the stored auto-labels; every floor shares
+one pass of the stored detector boxes, the box filter and SAM 2.1 S. Selects on `seg` max-F1;
+HOTA, IDF1, MOTA and ID switches reported, and per sequence `seg` F1, since the 4K sequence is
+floor-bound.
+
+```bash
+uv run --env-file .env python -m mlops_cv.autolabel configs/autolabel/confidence-floor.yaml --set val-full
+```
+
+In %; `seg` F1 at the validator's max-F1 confidence (one threshold over the set), and at the floor
+itself (the stored auto-labels); latency amortised per frame.
+
+| Floor | seg F1 | P | R | Max-F1 conf | F1 at floor | mAP50-95 | HOTA | DetA | AssA | IDF1 | MOTA | ID switches | Peak live | ms | MB |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 0.497 | 61.7 | 62.9 | 60.6 | 0.604 | 60.9 | 23.7 | 47.5 | 38.4 | 61.3 | 59.2 | 20.2 | 527 | 228 | 1,791 | 60.0 |
+| **0.597 (incumbent)** | **61.3** | 61.9 | 60.8 | 0 (all kept) | 61.3 | 21.6 | 47.8 | 38.3 | 62.0 | 60.7 | 27.1 | 394 | 194 | 1,766 | 51.6 |
+| 0.697 | 58.3 | 65.9 | 52.2 | 0.646 | 58.3 | 17.5 | 45.1 | 34.6 | 60.9 | 57.6 | 27.7 | 405 | 158 | 1,787 | 42.9 |
+
+Per sequence, `seg` F1 of the stored auto-labels (each sequence at its own max-F1 confidence):
+
+| Sequence | det (uncut) | 0.497 | 0.597 | 0.697 |
+|---|---|---|---|---|
+| uav0000086_00000_v | 76.3 | 76.3 | 73.8 | 66.6 |
+| uav0000117_02622_v | 65.3 | 65.9 | 65.5 | 57.8 |
+| uav0000137_00458_v | 68.0 | 67.5 | 67.0 | 65.9 |
+| uav0000182_00000_v | 50.4 | 51.9 | 51.4 | 50.2 |
+| **uav0000268_05773_v** (3840×2160) | 43.9 | **42.6** (P 75.9 R 29.6) | 29.2 (P 93.5 R 17.3) | 17.5 (P 27.4 R 12.8) |
+| uav0000305_00000_v | 51.9 | 54.0 | 53.3 | 51.5 |
+| uav0000339_00001_v | 68.2 | 68.2 | 67.4 | 64.9 |
+
+- **Winner: the incumbent, 0.597.** 0.497 gains 0.4 pt, inside the margin, and only by the
+  validator cutting its auto-labels back at 0.604; at its own floor it scores 60.9. 0.697 loses
+  3.0 pt of recall-bound F1. Sequence mode's labeling config is
+  `configs/autolabel/sequence-mode.yaml`: image mode's detector, filter and SAM 2.1 S, BoT-SORT,
+  floor 0.597.
+- **The 4K sequence wants a lower floor.** 0.497 lifts it by 13.4 pt (recall 17.3 → 29.6) and is
+  level or better on every other sequence, but the set's single max-F1 threshold is set by the
+  dense sequences. A per-resolution floor is outside the grid.
+- **Cost.** Both new floors shared one pass: 67 min for the two rows.
+
 ## Scoring convention: ignored regions
 
 **These numbers are not comparable with [tuning](tuning.md) or [evaluation](evaluation.md).** The

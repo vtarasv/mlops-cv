@@ -351,7 +351,9 @@ def label_sequences(
     """
     assert config.tracker is not None
     if config.tracker.model in BOX_TRACKERS:
-        key = config.model_copy(update={"tracker": None}).model_dump_json()
+        # the floor only sets the track thresholds, so floors share the pass
+        shared = {"tracker": None, "confidence_floor": None}
+        key = config.model_copy(update=shared).model_dump_json()
         if key not in detections:
             detections[key] = label_frames(config, images, device, store)
         floor = config.confidence_floor

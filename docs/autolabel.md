@@ -28,7 +28,8 @@ flowchart LR
 ```
 
 - **Labeling config.** A stage YAML in `configs/autolabel/` lists trials, each a detector (a
-  transformers repo and its prompts, each mapped to a merged class), the box filter, and a
+  transformers repo or ultralytics YOLOE weights, and its prompts, each mapped to a merged
+  class), the box filter, and a
   segmenter (a transformers SAM 2 repo, or none). `defaults` sections are updated key by key.
   The detector keeps its top 300 boxes above 0.001, val's floor and cap, so the validator's
   threshold sweep sees everything. `confidence_floor`, the winning trial's max-F1 confidence,
@@ -104,6 +105,49 @@ filter keeps per frame (the detector returns 300 on every frame; the ground trut
   fragment deletes the object around it (keep inner).
 - **Cost.** One detector pass (232 ms per frame, p50), then each filter setting rescores the
   stored boxes on CPU in about 3 min; the filter takes under 3 ms per frame.
+
+**Stage 2: detector** (`configs/autolabel/detector.yaml`). Stage 1's filter (NMS 0.5) under
+Grounding DINO-T and -B, OWLv2-B/16 (ensemble), YOLOE-26-L-seg (ultralytics) and SAM 3 end to
+end, each with the 10 raw names and with plain nouns (person, car, van, truck, bus, bicycle,
+motorcycle, tricycle), the better kept. Every detector keeps its top 300 boxes above 0.001; SAM 3
+returns at most 200 per prompt. YOLOE runs at its native 640 and at 1280, since 640 halves a
+VisDrone frame. The incumbent is stage 1's winner (`gdino-t-raw`). A larger size (OWLv2-L/14,
+YOLOE-26-X) runs only if its smaller sibling wins.
+
+```bash
+uv run --env-file .env python -m mlops_cv.autolabel configs/autolabel/detector.yaml --set train-sample
+```
+
+`det` F1 at IoU 0.5 in %, with the boxes the filter keeps per frame and the detector's latency
+(p50, RTX 5070 Laptop). The better prompt set per detector is in bold.
+
+| Detector | Prompts | det F1 | P | R | mAP50 | Max-F1 conf | Kept per frame | Detector ms |
+|---|---|---|---|---|---|---|---|---|
+| GDINO-T (incumbent) | raw | 58.0 | 57.9 | 58.0 | 52.8 | 0.184 | 205 | 232 |
+| GDINO-T | **nouns** | 58.8 | 60.4 | 57.2 | 52.3 | 0.279 | 220 | 236 |
+| GDINO-B | **raw** | 60.7 | 64.0 | 57.6 | 54.6 | 0.203 | 203 | 329 |
+| GDINO-B | nouns | 58.0 | 60.1 | 56.0 | 50.7 | 0.254 | 219 | 327 |
+| OWLv2-B/16 | raw | 50.9 | 50.4 | 51.5 | 41.6 | 0.274 | 244 | 201 |
+| OWLv2-B/16 | **nouns** | 54.3 | 54.8 | 53.8 | 45.8 | 0.271 | 243 | 201 |
+| YOLOE-26-L @ 640 | raw | 45.4 | 63.8 | 35.2 | 39.8 | 0.053 | 160 | 19 |
+| YOLOE-26-L @ 640 | **nouns** | 52.1 | 60.7 | 45.6 | 42.6 | 0.124 | 175 | 19 |
+| YOLOE-26-L @ 1280 | raw | 54.5 | 60.8 | 49.4 | 48.7 | 0.054 | 174 | 56 |
+| YOLOE-26-L @ 1280 | **nouns** | 58.2 | 60.3 | 56.2 | 50.0 | 0.197 | 185 | 57 |
+| **SAM 3** | **raw** | **66.5** | 68.0 | 65.0 | 61.2 | 0.597 | 152 | 1,600 |
+| SAM 3 | nouns | 65.7 | 66.9 | 64.6 | 60.4 | 0.564 | 166 | 1,428 |
+
+- **Winner: SAM 3 end to end on the 10 raw names**, 8.5 pt over the incumbent and 5.8 over the
+  runner-up, GDINO-B. The labeling config carries `detector.model: facebook/sam3` and confidence
+  floor 0.597 (SAM 3's score is its query score times its presence score).
+- **SAM 3's cap doesn't bind on the ground truth.** No `train-sample` frame holds more than 200
+  boxes of one raw category (recall ceiling 1.0), so its uncapped-subset F1 is its full F1.
+- **It is 7× slower.** 1.6 s per frame: one 1008² vision pass (≈ 0.7 s) plus a decoder pass per
+  prompt (≈ 85 ms each), all in fp32. A SAM 3 trial labels `train-sample` in about 15 min, the
+  others in 3 or less.
+- **Plain nouns help the weaker detectors** (OWLv2 +3.4, YOLOE +3.7 to +6.7) and cost GDINO-B
+  and SAM 3 0.8 to 2.7 pt.
+- **YOLOE needs the resolution.** At 1280 it gains 6.1 pt over 640 and ties GDINO-T at a quarter
+  of its latency. No smaller sibling won, so OWLv2-L/14 and YOLOE-26-X didn't run.
 
 ## Sequence mode
 

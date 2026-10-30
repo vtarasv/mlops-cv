@@ -141,6 +141,42 @@ def test_prompt_spans_split_at_separators() -> None:
     assert labeler.prompt_spans([101, 5, 1012, 7, 8, 1012, 102], {101, 102, 1012}) == [[1], [3, 4]]
 
 
+def test_top_rows_keep_the_best_boxes_above_the_floor(monkeypatch: pytest.MonkeyPatch) -> None:
+    torch = pytest.importorskip("torch")
+    monkeypatch.setattr(labeler, "MAX_DET", 2)
+    cfg = labeler.Detector(model="m", prompts={"car": "vehicle", "person": "person"}, threshold=0.1)
+    boxes = torch.arange(4.0)[:, None] + torch.tensor([0.0, 0, 1, 1])
+    conf = torch.tensor([0.05, 0.9, 0.5, 0.7])
+    rows, labels = labeler.top_rows(boxes, conf, torch.tensor([0, 1, 0, 0]), cfg)
+    assert rows[:, 0].tolist() == [1, 3] and labels == ["person", "car"]
+    assert rows[:, 5].tolist() == [labeler.MERGED["person"], labeler.MERGED["vehicle"]]
+    empty, _ = labeler.top_rows(boxes, conf * 0, torch.tensor([0, 1, 0, 0]), cfg)
+    assert empty.shape == (0, 6)
+
+
+def test_detector_loader_is_picked_by_model_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in ("grounding_dino", "owlv2", "sam3", "yoloe"):
+        monkeypatch.setattr(labeler, name, lambda cfg, device, name=name: name)
+    pick = {
+        "IDEA-Research/grounding-dino-base": "grounding_dino",
+        "google/owlv2-base-patch16-ensemble": "owlv2",
+        "facebook/sam3": "sam3",
+        "yoloe-26l-seg.pt": "yoloe",
+    }
+    for model, loader in pick.items():
+        assert labeler.detector(labeler.Detector(model=model), "cpu") == loader
+
+
+def test_an_unset_detector_field_keeps_the_stored_detections_key() -> None:
+    import hashlib
+
+    before_imgsz = '{"model":"m","prompts":{},"threshold":0.001}'
+    key = hashlib.sha256(before_imgsz.encode()).hexdigest()[:16]
+    assert run.detections_store(Path("s"), _config()) == Path(f"s/detections/{key}.npz")
+    sized = _config(detector={"model": "m", "imgsz": 1280})
+    assert run.detections_store(Path("s"), sized) != run.detections_store(Path("s"), _config())
+
+
 def _stage(tmp_path: Path, stage: dict) -> Path:
     path = tmp_path / "s.yaml"
     path.write_text(yaml.safe_dump(stage))

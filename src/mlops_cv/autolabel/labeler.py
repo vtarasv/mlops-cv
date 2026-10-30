@@ -1,7 +1,7 @@
 """The labeling config and the auto-labeler it builds: one decoded image -> boxes and RLE masks.
 
-Every model loads through transformers, except the champion's YOLO26 (ultralytics). Each stage
-is timed on its own, the GPU synchronised at its edges.
+Every model loads through transformers, except YOLOE and the champion's YOLO26 (ultralytics).
+Each stage is timed on its own, the GPU synchronised at its edges.
 """
 
 from __future__ import annotations
@@ -35,9 +35,10 @@ Segment = Callable[[np.ndarray, np.ndarray], list[dict[str, Any]]]
 class Detector(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    model: str  # a transformers repo id, or ``champion``
+    model: str  # a transformers repo id, an ultralytics YOLOE weights file, or ``champion``
     prompts: dict[str, MergedClass] = {}  # prompt text -> the merged class its boxes get
     threshold: float = CONF  # the detector's own score floor; it keeps its top ``MAX_DET``
+    imgsz: int | None = None  # YOLOE's input size; ``None`` is 640, its training size
 
 
 class BoxFilter(BaseModel):
@@ -161,6 +162,17 @@ def _device(device: str) -> str:
     return f"cuda:{device}" if device.isdigit() else device
 
 
+def top_rows(boxes: Any, conf: Any, prompt: Any, cfg: Detector) -> tuple[np.ndarray, list[str]]:
+    """The top ``MAX_DET`` above the floor: xyxy pixel boxes, scores and prompt indices (torch)."""
+    names = list(cfg.prompts)
+    classes = np.array([MERGED[c] for c in cfg.prompts.values()])
+    top = conf.argsort(descending=True)[:MAX_DET]
+    keep = top[conf[top] > cfg.threshold]
+    label = prompt[keep].cpu().numpy()
+    rows = np.column_stack([boxes[keep].cpu().numpy(), conf[keep].cpu().numpy(), classes[label]])
+    return rows.astype(np.float32).reshape(-1, 6), [names[i] for i in label]
+
+
 def grounding_dino(cfg: Detector, device: str) -> Detect:
     """Grounding DINO: each box goes to the prompt whose tokens score it highest.
 
@@ -172,9 +184,7 @@ def grounding_dino(cfg: Detector, device: str) -> Detect:
 
     processor: Any = AutoProcessor.from_pretrained(cfg.model)
     model = AutoModelForZeroShotObjectDetection.from_pretrained(cfg.model).to(device).eval()
-    names = [p.strip().lower() for p in cfg.prompts]
-    text = ". ".join(names) + "."
-    classes = np.array([MERGED[c] for c in cfg.prompts.values()])
+    text = ". ".join(p.strip().lower() for p in cfg.prompts) + "."
     tok = processor.tokenizer
     separators = {tok.cls_token_id, tok.sep_token_id, tok.convert_tokens_to_ids(".")}
 
@@ -184,19 +194,97 @@ def grounding_dino(cfg: Detector, device: str) -> Detect:
         with torch.inference_mode():
             out = model(**inputs)
         spans = prompt_spans(inputs["input_ids"][0].tolist(), separators)
-        if len(spans) != len(names):
-            raise ValueError(f"{len(spans)} token spans for {len(names)} prompts in {text!r}")
+        if len(spans) != len(cfg.prompts):
+            raise ValueError(f"{len(spans)} token spans for {len(cfg.prompts)} prompts in {text!r}")
         probs = out.logits[0].sigmoid()
         conf, label = torch.stack([probs[:, s].max(-1).values for s in spans], 1).max(1)
-        top = conf.argsort(descending=True)[:MAX_DET]
-        keep = top[conf[top] > cfg.threshold]
-        cx, cy, bw, bh = (out.pred_boxes[0][keep] * torch.tensor([w, h, w, h], device=device)).T
+        cx, cy, bw, bh = (out.pred_boxes[0] * torch.tensor([w, h, w, h], device=device)).T
         boxes = torch.stack([cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2], 1)
-        label_np = label[keep].cpu().numpy()
-        rows = np.column_stack([boxes.cpu().numpy(), conf[keep].cpu().numpy(), classes[label_np]])
-        return rows.astype(np.float32), [names[i] for i in label_np]
+        return top_rows(boxes, conf, label, cfg)
 
     return detect
+
+
+def owlv2(cfg: Detector, device: str) -> Detect:
+    """OWLv2: one box per patch, labelled with its best-scoring prompt."""
+    import torch
+    from transformers import Owlv2ForObjectDetection, Owlv2Processor
+
+    processor: Any = Owlv2Processor.from_pretrained(cfg.model)
+    model: Any = Owlv2ForObjectDetection.from_pretrained(cfg.model)
+    model = model.to(device).eval()
+    text = [list(cfg.prompts)]
+
+    def detect(image: np.ndarray) -> tuple[np.ndarray, list[str]]:
+        side = max(image.shape[:2])  # boxes are relative to the image padded to a square
+        inputs = processor(images=image, text=text, return_tensors="pt").to(device)
+        with torch.inference_mode():
+            out = model(**inputs)
+        conf, label = out.logits[0].sigmoid().max(-1)
+        cx, cy, bw, bh = (out.pred_boxes[0] * side).T
+        boxes = torch.stack([cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2], 1)
+        return top_rows(boxes, conf, label, cfg)
+
+    return detect
+
+
+def sam3(cfg: Detector, device: str) -> Detect:
+    """SAM 3 end to end: one vision pass, then a decoder pass per prompt (200 boxes each)."""
+    import torch
+    from transformers import Sam3Model, Sam3Processor
+
+    processor: Any = Sam3Processor.from_pretrained(cfg.model)
+    model: Any = Sam3Model.from_pretrained(cfg.model)
+    model = model.to(device).eval()
+    texts = [processor(text=p, return_tensors="pt").to(device) for p in cfg.prompts]
+
+    def detect(image: np.ndarray) -> tuple[np.ndarray, list[str]]:
+        h, w = image.shape[:2]
+        inputs = processor(images=image, return_tensors="pt").to(device)
+        boxes, conf, label = [], [], []
+        with torch.inference_mode():
+            vision = model.get_vision_features(pixel_values=inputs["pixel_values"])
+            for i, text in enumerate(texts):
+                out = model(vision_embeds=vision, **text)
+                boxes.append(out.pred_boxes[0] * torch.tensor([w, h, w, h], device=device))
+                conf.append(out.pred_logits[0].sigmoid() * out.presence_logits[0].sigmoid())
+                label.append(torch.full_like(conf[-1], i, dtype=torch.long))
+        return top_rows(torch.cat(boxes), torch.cat(conf), torch.cat(label), cfg)
+
+    return detect
+
+
+def yoloe(cfg: Detector, device: str) -> Detect:
+    """YOLOE text-prompted, with val's floor, cap and one-to-many head, like the champion."""
+    from ultralytics import YOLOE
+
+    model = YOLOE(cfg.model)
+    model.set_classes(list(cfg.prompts))
+
+    def detect(image: np.ndarray) -> tuple[np.ndarray, list[str]]:
+        bgr = np.ascontiguousarray(image[..., ::-1])
+        result: Any = model.predict(
+            bgr,
+            imgsz=cfg.imgsz or 640,
+            device=device,
+            conf=cfg.threshold,
+            max_det=MAX_DET,
+            end2end=False,
+            verbose=False,
+        )[0]
+        data = result.boxes.data
+        return top_rows(data[:, :4], data[:, 4], data[:, 5].long(), cfg)
+
+    return detect
+
+
+def detector(cfg: Detector, device: str) -> Detect:
+    """The detector's loader, picked by its model name."""
+    if cfg.model == CHAMPION:
+        return champion(device)
+    loaders = {"yoloe": yoloe, "owlv2": owlv2, "sam3": sam3}
+    load = next((f for key, f in loaders.items() if key in cfg.model), grounding_dino)
+    return load(cfg, device)
 
 
 def champion(device: str) -> Detect:
@@ -284,11 +372,7 @@ class Labeler:
 
             self._sync = torch.cuda.synchronize
         if detect:
-            self.detect = (
-                champion(device)
-                if config.detector.model == CHAMPION
-                else grounding_dino(config.detector, device)
-            )
+            self.detect = detector(config.detector, device)
         self.segment = sam2(config.segmenter, device) if config.segmenter else None
 
     def timed(self, fn: Callable[..., Any], *args: Any) -> tuple[Any, float]:

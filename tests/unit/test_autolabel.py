@@ -105,6 +105,35 @@ def test_a_video_tracker_makes_its_own_masks() -> None:
     _config(segmenter="s", tracker={"model": "botsort"})
 
 
+def test_own_masks_need_an_untiled_sam3_detector() -> None:
+    with pytest.raises(ValidationError, match="untiled SAM 3"):
+        _config(segmenter=labeler.OWN)
+    with pytest.raises(ValidationError, match="untiled SAM 3"):
+        _config(detector={"model": "facebook/sam3", "tiling": {"side": 504}}, segmenter="own")
+    _config(detector={"model": "facebook/sam3"}, segmenter="own")
+
+
+def test_own_masks_follow_the_kept_rows_upsampled() -> None:
+    torch = pytest.importorskip("torch")
+    mask_utils = pytest.importorskip("pycocotools.mask")
+    config = _config(detector={"model": "facebook/sam3"}, segmenter="own")
+    full, empty, left = torch.full((2, 2), 0.9), torch.full((2, 2), 0.1), torch.tensor([0.9, 0.1])
+    probs = torch.stack([full, empty, left.expand(2, 2)])
+    rows = np.array([[0, 0, 2, 2, c, 0] for c in (0.5, 0.9, 0.7)], np.float32)
+    detections = Labels(rows, ["a", "b", "c"], None, {}, 3, own=probs)
+    out = labeler.Labeler(config, "cpu", detect=False).finish(np.zeros((4, 4, 3)), detections)
+    assert out.labels == ["b", "c", "a"]
+    assert out.masks is not None and mask_utils.area(out.masks).tolist() == [0, 8, 16]
+
+
+def test_mask_areas_count_past_255_masks() -> None:
+    mask_utils = pytest.importorskip("pycocotools.mask")
+    masks = np.zeros((2, 2, 300), np.uint8, order="F")
+    masks[:, :, -1] = 1
+    areas = labeler.mask_areas(mask_utils.encode(masks))
+    assert len(areas) == 300 and areas[-1] == 4 and not areas[:-1].any()
+
+
 def test_merged_class_literal_matches_the_merge() -> None:
     assert set(typing.get_args(labeler.MergedClass)) == set(YOLO_NAMES.values())
 

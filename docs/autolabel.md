@@ -30,7 +30,8 @@ flowchart LR
 - **Labeling config.** A stage YAML in `configs/autolabel/` lists trials, each a detector (a
   transformers repo or ultralytics YOLOE weights, and its prompts, each mapped to a merged
   class), the box filter, and a
-  segmenter (a transformers SAM 2 repo, or none). `defaults` sections are updated key by key.
+  segmenter (a transformers SAM 2 or SAM 3 repo prompted with the kept boxes, `own` for SAM 3's
+  own masks, or none). `defaults` sections are updated key by key.
   The detector keeps its top 300 boxes above 0.001, val's floor and cap, so the validator's
   threshold sweep sees everything. `confidence_floor`, the winning trial's max-F1 confidence,
   cuts the stored auto-labels; scoring reads every box.
@@ -263,6 +264,39 @@ on every frame).
 - **The nested-box rule costs SAM 3 less than Grounding DINO-T** (keep outer −0.5 pt at NMS 0.5,
   against −12.8); keep inner still loses 8 to 11 pt, two-three-wheeler mAP50-95 falling by half.
 - **Cost.** All 12 settings rescore on CPU in under 2 min; the filter takes under 3 ms per frame.
+
+**Stage 6: segmenter** (`configs/autolabel/segmenter.yaml`). Stage 5's winner (SAM 3, 10 raw
+names, untiled, fp16, NMS 0.5) with SAM 2.1 S (the incumbent, the smoke's) and L, SAM 3's tracker
+prompted with the kept boxes (`segmenter: facebook/sam3`, `Sam3TrackerModel`), and SAM 3's own
+masks for its kept boxes (`segmenter: own`: the detector's mask probabilities upsampled to the
+frame and cut at 0.5, as its processor does). Segmenters run in fp32. Own masks rerun the
+detector, since the stored boxes carry no masks; the others read the store. Selection is on `seg`
+F1; every trial's stored auto-labels are cut at the confidence floor 0.597.
+
+```bash
+uv run --env-file .env python -m mlops_cv.autolabel configs/autolabel/segmenter.yaml --set train-sample
+```
+
+`seg` F1 at IoU 0.5 in %, scored on each mask's tight box (`det` F1 is 66.3 in every row), with
+the segmenter's latency (p50 per frame, ≈ 151 kept boxes, RLE encoding included) and the stored
+auto-labels cut at 0.597.
+
+| Segmenter | seg F1 | P | R | mAP50 | mAP50-95 | small | Max-F1 conf | Segmenter ms | Total ms | Auto-labels MB |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **SAM 2.1 S (incumbent)** | **66.4** | 68.0 | 65.0 | 61.1 | 26.8 | 11.6 | 0.597 | 629 | 1,111 | 12.5 |
+| SAM 2.1 L | 66.2 | 67.8 | 64.8 | 60.8 | 26.6 | 11.2 | 0.597 | 841 | 1,323 | 12.4 |
+| SAM 3 tracker | 65.3 | 67.1 | 63.6 | 59.7 | 26.0 | 10.5 | 0.601 | 1,321 | 1,807 | 12.5 |
+| SAM 3 own masks | 64.4 | 65.7 | 63.2 | 57.9 | 25.3 | 10.2 | 0.594 | 285 | 766 | 12.6 |
+
+- **Winner: SAM 2.1 S, the incumbent.** No challenger beats it; SAM 2.1 L is 0.2 pt behind at
+  1.3× its time. The labeling config carries `segmenter: facebook/sam2.1-hiera-small` and
+  confidence floor 0.597 (the `seg` max-F1 confidence matches `det`'s).
+- **SAM 2.1's masks fit the boxes best.** Its mask boxes score 0.1 pt above the detector's own
+  boxes and lift mAP50-95 small from 10.7 to 11.6; SAM 3's tracker loses 1 pt, its own masks 1.9.
+- **SAM 3's own masks are coarse**: one 288² map per box for the whole frame, upsampled 5 to 9×,
+  which costs small objects their tight box.
+- **Cost.** Own masks cost only their upsample and RLE (285 ms); SAM 2.1 adds its encoder and
+  decoder, and the SAM 3 tracker reruns a 1008² vision pass in fp32. The stage ran in 37 min.
 
 ## Sequence mode
 

@@ -25,6 +25,7 @@ from mlops_cv.autolabel.labeler import (
     LabelingConfig,
     Labels,
     Tracker,
+    mask_areas,
     read_rgb,
     rle,
 )
@@ -223,7 +224,7 @@ class VideoTracker:
         mask_utils: Any = mask
         inputs = self.processor(images=rgb, device=self.device, return_tensors="pt")
         ids, rles = self._forward(session, inputs, k) if tracks.live else ([], [])
-        ended = tracks.observe(ids, mask_utils.area(rles) if rles else [])
+        ended = tracks.observe(ids, mask_areas(rles))
         masks = {i: m for i, m in zip(ids, rles, strict=True) if i not in ended}
         boxes: dict[int, int] = {}
         if key is not None:

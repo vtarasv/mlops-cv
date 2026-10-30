@@ -428,6 +428,50 @@ stored auto-labels (cut at 0.597).
   155 live tracks and 1.8 s per frame (3.9 GB GPU over its first 100 frames, SAM 3 loaded). Each
   K row took 26 min, the reference row 84 min (it wrote the stored pass).
 
+**Stage 2: tracker model** (`configs/autolabel/tracker-model.yaml`). At K = 5: EdgeTAM video (the
+incumbent, stage 1's K = 5 run, same config), SAM 2.1 S video (L lost image mode), and the
+BoT-SORT and ByteTrack controls as contenders, sharing one pass of the stored detector boxes, the
+box filter and SAM 2.1 S on every frame. Selects on `seg` max-F1; HOTA, IDF1, MOTA and ID switches
+reported. SAM 2.1 S video runs on the whole set only if a 100-frame probe on the densest sequence
+projects the stage inside its budget (3 h); otherwise the probe is its row.
+
+```bash
+# expandable segments: SAM 2.1 S video at 145 live tracks otherwise runs out of memory (fragmentation)
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True uv run --env-file .env \
+  python -m mlops_cv.autolabel configs/autolabel/tracker-model.yaml --set val-full
+```
+
+In %; `det` F1 is the key frames' for the video trackers and every frame's for the controls;
+latency amortised per frame. A control's peak live counts lost tracks too (kept 30 frames).
+
+| Trial | seg F1 | P | R | mAP50-95 | det F1 | HOTA | DetA | AssA | IDF1 | MOTA | ID switches | Peak live | ms (detector + segmenter + tracker) | MB |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| **BoT-SORT + SAM 2.1 S** | **61.3** | 61.9 | 60.8 | 21.6 | 61.2 | 47.8 | 38.3 | 62.0 | 60.7 | 27.1 | 394 | 194 | 1,766 (479 + 1,261 + 26) | 51.6 |
+| ByteTrack + SAM 2.1 S | 61.0 | 64.1 | 58.3 | 21.6 | 61.2 | 44.1 | 38.0 | 54.0 | 53.6 | 28.4 | 1,481 | 374 | 1,742 (479 + 1,261 + 2) | 48.1 |
+| SAM 2.1 S video | 56.4 | 55.9 | 56.9 | 20.7 | 61.0 | 44.8 | 36.4 | 58.2 | 52.3 | 14.0 | 521 | 145 | 1,609 (96 + 1,513) | 48.9 |
+| EdgeTAM video (incumbent) | 53.2 | 53.3 | 53.2 | 17.3 | 61.0 | 39.9 | 33.6 | 49.9 | 46.0 | 5.0 | 1,307 | 150 | 615 (96 + 519) | 52.3 |
+
+| Sequence | Reference seg | BoT-SORT | ByteTrack | SAM 2.1 S video | EdgeTAM |
+|---|---|---|---|---|---|
+| uav0000086_00000_v | 75.0 | 73.8 | 74.4 | 67.6 | 63.5 |
+| uav0000117_02622_v | 65.8 | 65.5 | 65.5 | 61.5 | 56.8 |
+| uav0000137_00458_v | 67.5 | 67.0 | 65.9 | 61.7 | 57.1 |
+| uav0000182_00000_v | 51.9 | 51.4 | 50.6 | 47.4 | 44.7 |
+| uav0000268_05773_v (3840×2160) | 29.7 | 29.2 | 29.3 | 24.2 | 23.2 |
+| uav0000305_00000_v | 53.8 | 53.3 | 50.8 | 47.3 | 43.7 |
+| uav0000339_00001_v | 68.2 | 67.4 | 67.4 | 64.9 | 64.7 |
+
+- **Winner: BoT-SORT + SAM 2.1 S**, 8.1 pt over EdgeTAM; ByteTrack is 0.3 pt behind (inside the
+  margin) but loses 3.7 pt HOTA and switches ids almost 4× as often. A control won, so the
+  tracking-settings stage only views; the confidence-floor stage moves BoT-SORT's track thresholds.
+- **The box trackers keep image mode's quality and add ids**: within 1.4 pt of the reference row on
+  every sequence. SAM 2.1 S video recovers 3.2 pt over EdgeTAM and halves its ID switches, but its
+  masks still drift between key frames.
+- **No latency win.** The controls run the detector and segmenter on every frame (1.77 s/frame,
+  as image mode); SAM 2.1 S video costs 1.6 s/frame (4.6 s on the dense sequence at 140 live
+  tracks, 6.4 GB allocated), EdgeTAM 0.6 s. Wall-clock: both controls 65 min, SAM 2.1 S video
+  73 min.
+
 ## Scoring convention: ignored regions
 
 **These numbers are not comparable with [tuning](tuning.md) or [evaluation](evaluation.md).** The

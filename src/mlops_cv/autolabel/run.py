@@ -137,14 +137,22 @@ def readings(
     data_yaml: Path,
     prefix: str,
     frames: Collection[str] | None,
+    floor: float | None = None,
 ) -> dict[str, float]:
-    """The validator's keys under ``prefix``, plus F1 at IoU 0.5 from its precision and recall."""
-    from mlops_cv.evaluation.score_detections import readings as validator_readings
-    from mlops_cv.tracking.metric_keys import F1, metric_key
+    """The validator's keys under ``prefix``, plus F1 at IoU 0.5 from its precision and recall.
 
-    out = validator_readings(detections, data_yaml, visdrone_vid.SCORING_SPLIT, prefix, frames)
-    p, r = out[metric_key(prefix, "precision")], out[metric_key(prefix, "recall")]
-    return out | {metric_key(prefix, F1): f1(p, r)}
+    With ``floor``, P, R and F1 at that confidence too, under ``<prefix>/at_floor``.
+    """
+    from mlops_cv.evaluation.score_detections import readings as validator_readings
+    from mlops_cv.tracking.metric_keys import AT_FLOOR, F1, metric_key
+
+    split = visdrone_vid.SCORING_SPLIT
+    out = validator_readings(detections, data_yaml, split, prefix, frames, floor)
+    points = [prefix] + ([metric_key(prefix, AT_FLOOR)] if floor is not None else [])
+    return out | {
+        metric_key(at, F1): f1(out[metric_key(at, "precision")], out[metric_key(at, "recall")])
+        for at in points
+    }
 
 
 def scores(
@@ -154,6 +162,7 @@ def scores(
     *,
     full: bool,
     keys: list[Labels | None] | None = None,
+    floor: float | None = None,
 ) -> dict[str, float]:
     """Each box kind scored on every image, then on the ``SUBSET_CAP`` subset.
 
@@ -171,8 +180,8 @@ def scores(
         frames = None if full and len(ims) == len(images) else {im.name for im in ims}
         detections = {im.name: outside_ignored(r, im) for im, r in zip(ims, rows, strict=True)}
         subset = set(uncapped(ims, SUBSET_CAP))
-        out |= readings(detections, data_yaml, kind, frames)
-        out |= readings(detections, data_yaml, f"{kind}/uncapped{SUBSET_CAP}", subset)
+        out |= readings(detections, data_yaml, kind, frames, floor)
+        out |= readings(detections, data_yaml, f"{kind}/uncapped{SUBSET_CAP}", subset, floor)
         out[metric_key(kind, "boxes_per_image")] = float(np.mean([len(r) for r in rows]))
     out[metric_key(DET, "detected_per_image")] = float(np.mean([k.detected for _, k in keyed]))
     cap = f"gt/cap{SUBSET_CAP}"
@@ -370,7 +379,8 @@ def run_trial(
     device = settings.training.device
     if config.tracker is None:
         labels = label_frames(config, images, device, store)
-        metrics = scores(images, labels, data_yaml, full=full) | latency(labels)
+        floor = config.confidence_floor
+        metrics = scores(images, labels, data_yaml, full=full, floor=floor) | latency(labels)
     else:
         labels, keys, live = label_sequences(config, images, device, detections, store)
         pairs = zip(images, labels, strict=True)

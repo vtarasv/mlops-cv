@@ -82,6 +82,16 @@ def test_readings_carry_the_max_f1_confidence(data_yaml: Path) -> None:
     assert 0.3 < readings(dets, data_yaml, "test", "x")["x/conf_at_max_F1"] < 0.6
 
 
+def test_readings_at_a_floor_read_the_curves_at_that_confidence(data_yaml: Path) -> None:
+    """Every hit scores 0.6: a floor below it keeps them all, a floor above it none."""
+    from mlops_cv.evaluation.score_detections import readings
+
+    dets = {k: v * [1, 1, 1, 1, 0.6, 1] for k, v in ground_truth().items()}
+    assert readings(dets, data_yaml, "test", "x", floor=0.55)["x/at_floor/recall"] == 1.0
+    assert readings(dets, data_yaml, "test", "x", floor=0.65)["x/at_floor/recall"] == 0.0
+    assert "x/at_floor/recall" not in readings(dets, data_yaml, "test", "x")
+
+
 def test_empty_predictions_score_zero(data_yaml: Path) -> None:
     empty = {name: np.zeros((0, 6), np.float32) for name in FRAMES}
     assert score(empty, data_yaml, "test").box.map == 0.0

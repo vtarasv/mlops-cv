@@ -1,0 +1,23 @@
+# Sequence mode's labeling config, the tuning grid's winner so far: image mode's detector, box
+# filter and SAM 2.1 S on every frame, tracked by BoT-SORT. The confidence floor (0.597, held in
+# the floor stage) sets track_high_thresh = new_track_thresh and cuts the stored auto-labels.
+trials:
+  - name: botsort-sam2.1-s
+    detector:
+      model: facebook/sam3
+      prompts:
+        pedestrian: person
+        people: person
+        bicycle: two-three-wheeler
+        car: vehicle
+        van: vehicle
+        truck: vehicle
+        tricycle: two-three-wheeler
+        awning-tricycle: two-three-wheeler
+        bus: vehicle
+        motor: two-three-wheeler
+      dtype: float16
+    box_filter: {min_side: 8, max_area: 0.05, nms_iou: 0.5}
+    segmenter: facebook/sam2.1-hiera-small
+    tracker: {model: botsort}
+    confidence_floor: 0.597

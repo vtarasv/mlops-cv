@@ -228,6 +228,42 @@ all passes included.
   that the box filter then drops.
 - **Tiling costs 7× (1.25) to 16× (2)** SAM 3's untiled time; the merge adds ≤ 14 ms.
 
+**Stage 5: box filter recheck** (`configs/autolabel/box-filter-recheck.yaml`). Stage 1's 12
+settings, NMS IoU {off, 0.5, 0.6, 0.7} × the nested-box rule {off, keep outer at IoS 0.8, keep
+inner at IoS 0.8}, on stage 4's winner (SAM 3, 10 raw names, untiled, fp16), each a CPU rescore of
+its stored boxes. The incumbent is the carried filter, NMS 0.5 with no nested-box rule
+(`nms0.5-nested-off`). The winner's max-F1 confidence is the labeling config's confidence floor
+for the segmenter stage and sequence mode.
+
+```bash
+uv run python -m mlops_cv.autolabel configs/autolabel/box-filter-recheck.yaml --set train-sample
+```
+
+`det` F1 at IoU 0.5 in %, with mAP50-95 per merged class (the detector keeps its top 300 boxes
+on every frame).
+
+| NMS IoU | Nested-box rule | det F1 | P | R | mAP50 | Max-F1 conf | Kept per frame | person | vehicle | two-three-wheeler |
+|---|---|---|---|---|---|---|---|---|---|---|
+| off | off | 65.1 | 66.1 | 64.1 | 62.0 | 0.626 | 274 | 18.2 | 43.9 | 19.2 |
+| off | keep outer | 55.8 | 60.8 | 51.6 | 52.5 | 0.409 | 120 | 13.6 | 41.1 | 14.5 |
+| off | keep inner | 49.0 | 60.2 | 41.4 | 42.6 | 0.517 | 138 | 12.7 | 36.8 | 6.4 |
+| **0.5** | **off (incumbent)** | **66.3** | 67.9 | 64.8 | 60.9 | **0.597** | 151 | 18.0 | 43.6 | 18.1 |
+| 0.5 | keep outer | 65.8 | 68.4 | 63.4 | 59.0 | 0.585 | 119 | 16.5 | 43.5 | 17.9 |
+| 0.5 | keep inner | 57.8 | 64.6 | 52.3 | 48.8 | 0.585 | 130 | 15.5 | 40.1 | 8.9 |
+| 0.6 | off | 66.5 | 67.8 | 65.3 | 61.6 | 0.597 | 167 | 18.2 | 43.7 | 18.6 |
+| 0.6 | keep outer | 65.6 | 68.4 | 63.0 | 59.0 | 0.580 | 121 | 16.3 | 43.5 | 18.0 |
+| 0.6 | keep inner | 56.9 | 64.4 | 50.9 | 47.9 | 0.582 | 135 | 15.1 | 39.8 | 8.5 |
+| 0.7 | off | 66.7 | 67.7 | 65.6 | 62.2 | 0.598 | 184 | 18.3 | 43.8 | 19.0 |
+| 0.7 | keep outer | 64.9 | 68.2 | 61.9 | 58.3 | 0.571 | 121 | 15.8 | 43.5 | 17.9 |
+| 0.7 | keep inner | 55.9 | 64.2 | 49.5 | 46.9 | 0.579 | 137 | 14.7 | 39.8 | 7.9 |
+
+- **Winner: the incumbent, NMS 0.5 with no nested-box rule.** NMS 0.7 and 0.6 gain 0.3 and
+  0.2 pt, inside the margin. The labeling config keeps stage 4's detector and filter, and its
+  **confidence floor is 0.597**, rechecked here, for the segmenter stage and sequence mode.
+- **The nested-box rule costs SAM 3 less than Grounding DINO-T** (keep outer −0.5 pt at NMS 0.5,
+  against −12.8); keep inner still loses 8 to 11 pt, two-three-wheeler mAP50-95 falling by half.
+- **Cost.** All 12 settings rescore on CPU in under 2 min; the filter takes under 3 ms per frame.
+
 ## Sequence mode
 
 A trial with a `tracker` section labels whole sequences (`val-full`, `test-dev-full`), so

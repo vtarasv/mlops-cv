@@ -330,6 +330,24 @@ AeroVIS masks. The AeroVIS row is its own masks' tight boxes against the same VI
 - **SAM 2.1 S and L agree with AeroVIS equally** (83.4 vs 83.7). SAM 3's 89.2 caps what review
   changed: part of its 10.8 pt gap is pipeline, since AeroVIS also clips its masks to the box.
 
+**Reference row: Qwen3-VL-4B** (`configs/autolabel/qwen3-vl.yaml`; reported only, never
+selects). `Qwen/Qwen3-VL-4B-Instruct` in 8-bit (bitsandbytes), asked once per frame for the 10
+raw names in the Qwen3-VL report's detection template, at native resolution, greedy, up to 12,288
+new tokens. Its `bbox_2d` JSON boxes (0–1000 grid) are scaled to the frame; labels outside the 10
+names are dropped. A VLM has no scores, so every box gets conf 1.0: the validator's max-F1 point
+is its only operating point, and there is no confidence floor. The box filter still applies; its
+NMS 0.5 then breaks ties by the model's output order. Boxes only, scored on `det`.
+
+```bash
+uv run --env-file .env python -m mlops_cv.autolabel configs/autolabel/qwen3-vl.yaml --set train-sample
+```
+
+**Not run: it never stops answering.** On 4 spread `train-sample` frames the model writes until
+the token cap on every one, greedy (4B, 8-bit and nf4) repeating its last boxes after 10–41
+unique ones (10 on a 151-box frame). 8-bit decodes at 15.7 tokens/s (nf4 53, 2B bf16 65), so a
+pass at the 12,288-token cap would take ≈ 120 h. Which variant runs, with what loop guard, is
+open.
+
 ## Sequence mode
 
 A trial with a `tracker` section labels whole sequences (`val-full`, `test-dev-full`), so

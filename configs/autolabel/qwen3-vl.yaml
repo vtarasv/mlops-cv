@@ -1,0 +1,20 @@
+# Image mode's reference row (reported only, never selects): Qwen3-VL-4B-Instruct in 8-bit on the
+# 10 raw names, boxes only, through the box filter. It has no scores: every box gets conf 1.0, so
+# there is no confidence floor.
+trials:
+  - name: qwen3-vl-4b-int8-raw
+    detector:
+      model: Qwen/Qwen3-VL-4B-Instruct
+      prompts:
+        pedestrian: person
+        people: person
+        bicycle: two-three-wheeler
+        car: vehicle
+        van: vehicle
+        truck: vehicle
+        tricycle: two-three-wheeler
+        awning-tricycle: two-three-wheeler
+        bus: vehicle
+        motor: two-three-wheeler
+      dtype: int8
+    box_filter: {min_side: 8, max_area: 0.05, nms_iou: 0.5}

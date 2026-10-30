@@ -23,8 +23,10 @@ MERGED = {name: c for c, name in YOLO_NAMES.items()}
 
 # The champion's YOLO26, resolved from the registry: the supervised reference row.
 CHAMPION = "champion"
-# Boxes per SAM 2 mask-decoder pass: bounds the full-resolution mask upsample's memory.
+# Boxes per mask-decoder pass or mask upsample: bounds the full-resolution masks' memory.
 SEGMENT_CHUNK = 32
+# The segmenter value that keeps the detector's own masks (SAM 3 end to end).
+OWN = "own"
 # ultralytics' box trackers, run with their default settings; any other tracker is a video model.
 BOX_TRACKERS = ("botsort", "bytetrack")
 # Tiling's fixed settings: SAHI's slice overlap, the cut band at an interior slice edge (px), and
@@ -33,7 +35,8 @@ OVERLAP, EDGE_MARGIN, TILE_NMS_IOU = 0.2, 2, 0.5
 # The comparator merge: a same-class box this share inside a larger one is a cut-off piece of it.
 CONTAINED_IOS = 0.85
 
-Detect = Callable[[np.ndarray], tuple[np.ndarray, list[str]]]
+# rows, labels and, keeping SAM 3's own masks, their low-res mask probabilities
+Detect = Callable[[np.ndarray], tuple[Any, ...]]
 Segment = Callable[[np.ndarray, np.ndarray], list[dict[str, Any]]]
 
 
@@ -92,7 +95,9 @@ class LabelingConfig(BaseModel):
 
     detector: Detector
     box_filter: BoxFilter = BoxFilter()
-    segmenter: str | None = None  # a transformers SAM 2 repo id; ``None`` keeps boxes only
+    # a transformers SAM 2 or SAM 3 repo id, prompted with the kept boxes; ``OWN`` keeps the
+    # detector's own masks; ``None`` keeps boxes only
+    segmenter: str | None = None
     tracker: Tracker | None = None  # sequence mode; ``None`` labels each frame on its own
     # The winning trial's max-F1 confidence: the stored auto-labels are cut there, scoring isn't.
     confidence_floor: float | None = None
@@ -101,6 +106,8 @@ class LabelingConfig(BaseModel):
     def _one_mask_source(self) -> LabelingConfig:
         if self.tracker and self.tracker.model not in BOX_TRACKERS and self.segmenter:
             raise ValueError(f"{self.tracker.model} makes its own masks: drop the segmenter")
+        if self.segmenter == OWN and ("sam3" not in self.detector.model or self.detector.tiling):
+            raise ValueError(f"segmenter {OWN!r} needs an untiled SAM 3 detector")
         return self
 
 
@@ -115,6 +122,7 @@ class Labels:
     detected: int  # detector boxes before the filter
     track_ids: np.ndarray | None = None  # sequence mode: the track per row
     windows: np.ndarray | None = None  # tiled, before the merge: each row's pass, xyxy px
+    own: Any = None  # before the box filter: SAM 3's low-res mask probabilities per row (torch)
 
 
 def ios(box: np.ndarray, others: np.ndarray) -> np.ndarray:
@@ -269,12 +277,17 @@ def _device(device: str) -> str:
     return f"cuda:{device}" if device.isdigit() else device
 
 
+def top(conf: Any, cfg: Detector) -> Any:
+    """The positions of the top ``MAX_DET`` scores above the floor (torch)."""
+    best = conf.argsort(descending=True)[:MAX_DET]
+    return best[conf[best] > cfg.threshold]
+
+
 def top_rows(boxes: Any, conf: Any, prompt: Any, cfg: Detector) -> tuple[np.ndarray, list[str]]:
     """The top ``MAX_DET`` above the floor: xyxy pixel boxes, scores and prompt indices (torch)."""
     names = list(cfg.prompts)
     classes = np.array([MERGED[c] for c in cfg.prompts.values()])
-    top = conf.argsort(descending=True)[:MAX_DET]
-    keep = top[conf[top] > cfg.threshold]
+    keep = top(conf, cfg)
     label = prompt[keep].cpu().numpy()
     rows = np.column_stack([boxes[keep].cpu().numpy(), conf[keep].cpu().numpy(), classes[label]])
     return rows.astype(np.float32).reshape(-1, 6), [names[i] for i in label]
@@ -335,7 +348,7 @@ def owlv2(cfg: Detector, device: str) -> Detect:
     return detect
 
 
-def sam3(cfg: Detector, device: str) -> Detect:
+def sam3(cfg: Detector, device: str, masks: bool = False) -> Detect:
     """SAM 3 end to end: one vision pass, then a decoder pass per prompt (200 boxes each)."""
     import torch
     from transformers import Sam3Model, Sam3Processor
@@ -346,10 +359,10 @@ def sam3(cfg: Detector, device: str) -> Detect:
     model = model.to(device).eval()
     texts = [processor(text=p, return_tensors="pt").to(device) for p in cfg.prompts]
 
-    def detect(image: np.ndarray) -> tuple[np.ndarray, list[str]]:
+    def detect(image: np.ndarray) -> tuple[Any, ...]:
         h, w = image.shape[:2]
         inputs = processor(images=image, return_tensors="pt").to(device)
-        boxes, conf, label = [], [], []
+        boxes, conf, label, probs = [], [], [], []
         with torch.inference_mode():
             vision = model.get_vision_features(pixel_values=inputs["pixel_values"].to(dtype))
             for i, text in enumerate(texts):
@@ -357,7 +370,11 @@ def sam3(cfg: Detector, device: str) -> Detect:
                 boxes.append(out.pred_boxes[0].float() * torch.tensor([w, h, w, h], device=device))
                 conf.append(out.pred_logits[0].sigmoid() * out.presence_logits[0].sigmoid())
                 label.append(torch.full_like(conf[-1], i, dtype=torch.long))
-        return top_rows(torch.cat(boxes), torch.cat(conf).float(), torch.cat(label), cfg)
+                if masks:
+                    probs.append(out.pred_masks[0].sigmoid())
+        scores = torch.cat(conf).float()
+        rows = top_rows(torch.cat(boxes), scores, torch.cat(label), cfg)
+        return (*rows, torch.cat(probs)[top(scores, cfg)]) if masks else rows
 
     return detect
 
@@ -437,13 +454,35 @@ def rle(masks: Any) -> list[dict[str, Any]]:
     return mask_utils.encode(np.asfortranarray(hwn))
 
 
-def sam2(repo: str, device: str) -> Segment:
-    """SAM 2 image mode: one image embedding, then the mask decoder over the boxes in chunks."""
-    import torch
-    from transformers import Sam2Model, Sam2Processor
+def mask_areas(rles: Sequence[dict[str, Any]]) -> np.ndarray:
+    """Pixels per RLE, one at a time: pycocotools' batched ``area`` overflows past 255 masks."""
+    from pycocotools import mask
 
-    processor: Any = Sam2Processor.from_pretrained(repo)
-    model: Any = Sam2Model.from_pretrained(repo)
+    mask_utils: Any = mask
+    return np.array([mask_utils.area(r) for r in rles], float)
+
+
+def own_masks(probs: Any, keep: np.ndarray, height: int, width: int) -> list[dict[str, Any]]:
+    """The kept rows' SAM 3 masks, upsampled to the frame and cut at 0.5 as its processor does."""
+    import torch
+    from torch.nn.functional import interpolate
+
+    kept = probs[torch.as_tensor(keep, device=probs.device, dtype=torch.long)]
+    rles: list[dict[str, Any]] = []
+    for start in range(0, len(kept), SEGMENT_CHUNK):
+        chunk = kept[None, start : start + SEGMENT_CHUNK].float()
+        rles += rle(interpolate(chunk, size=(height, width), mode="bilinear")[0] > 0.5)
+    return rles
+
+
+def box_prompted(repo: str, device: str) -> Segment:
+    """SAM 2 or SAM 3's tracker: one image embedding, then the mask decoder over boxes in chunks."""
+    import torch
+    from transformers import Sam2Model, Sam2Processor, Sam3TrackerModel, Sam3TrackerProcessor
+
+    sam3_repo = "sam3" in repo
+    processor: Any = (Sam3TrackerProcessor if sam3_repo else Sam2Processor).from_pretrained(repo)
+    model: Any = (Sam3TrackerModel if sam3_repo else Sam2Model).from_pretrained(repo)
     model = model.to(device).eval()
 
     def segment(image: np.ndarray, boxes: np.ndarray) -> list[dict[str, Any]]:
@@ -479,9 +518,11 @@ class Labeler:
             import torch
 
             self._sync = torch.cuda.synchronize
+        own, cfg = config.segmenter == OWN, config.detector
         if detect:
-            self.detect = detector(config.detector, device)
-        self.segment = sam2(config.segmenter, device) if config.segmenter else None
+            self.detect = sam3(cfg, device, masks=True) if own else detector(cfg, device)
+        segmenter = None if own else config.segmenter
+        self.segment = box_prompted(segmenter, device) if segmenter else None
 
     def timed(self, fn: Callable[..., Any], *args: Any) -> tuple[Any, float]:
         self._sync()
@@ -494,8 +535,9 @@ class Labeler:
         """The detector's boxes, before the box filter; tiled, every pass's before the merge."""
         tiling = self.config.detector.tiling
         if tiling is None:
-            (rows, labels), ms = self.timed(self.detect, image)
-            return Labels(rows, labels, None, {"detector": ms}, len(rows))
+            (rows, labels, *own), ms = self.timed(self.detect, image)
+            own = own[0] if own else None
+            return Labels(rows, labels, None, {"detector": ms}, len(rows), own=own)
         (rows, labels, windows), ms = self.timed(tiled, self.detect, image, tiling.side)
         return Labels(rows, labels, None, {"detector": ms}, len(rows), windows=windows)
 
@@ -512,7 +554,9 @@ class Labeler:
         keep, ms["filter"] = self.timed(filter_boxes, rows, self.config.box_filter, w, h)
         rows, labels = rows[keep], [labels[i] for i in keep]
         masks = None
-        if self.segment:
+        if detections.own is not None:
+            masks, ms["segmenter"] = self.timed(own_masks, detections.own, keep, h, w)
+        elif self.segment:
             masks, ms["segmenter"] = self.timed(self.segment, image, rows[:, :4])
         return Labels(rows, labels, masks, ms, detections.detected)
 

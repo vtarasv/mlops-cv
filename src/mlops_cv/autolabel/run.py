@@ -27,10 +27,12 @@ from mlops_cv.autolabel import sequence, track_scores, visdrone_vid
 from mlops_cv.autolabel.labeler import (
     BOX_TRACKERS,
     CHAMPION,
+    OWN,
     Labeler,
     LabelingConfig,
     Labels,
     Tracker,
+    mask_areas,
     read_rgb,
 )
 from mlops_cv.startup import exits_on_startup_error
@@ -92,21 +94,17 @@ def mask_rows(labels: Labels) -> np.ndarray:
     if not labels.masks:
         return np.zeros((0, 6), np.float32)
     xywh = mask_utils.toBbox(labels.masks)
-    keep = mask_utils.area(labels.masks) > 0
+    keep = mask_areas(labels.masks) > 0
     rows = np.column_stack([xywh[:, :2], xywh[:, :2] + xywh[:, 2:], labels.rows[:, 4:6]])
     return rows[keep]
 
 
 def track_rows(labels: Labels) -> np.ndarray:
     """``(n, 7)``: the auto-labels' boxes (mask boxes when masked), conf, class and track id."""
-    from pycocotools import mask
-
-    mask_utils: Any = mask
-
     ids = np.asarray(labels.track_ids)
     if labels.masks is None:
         return np.column_stack([labels.rows, ids])
-    keep = mask_utils.area(labels.masks) > 0 if labels.masks else np.zeros(0, bool)
+    keep = mask_areas(labels.masks) > 0
     return np.column_stack([mask_rows(labels), ids[keep]])
 
 
@@ -317,7 +315,8 @@ def label_frames(
     for i, im in enumerate(images, start=1):
         rgb = read_rgb(im.path)
         det = raw[i - 1] if raw else labeler.detections(rgb)
-        detected.append(det)
+        if store and raw is None:
+            detected.append(det)
         out.append(labeler.finish(rgb, det))
         if i % 50 == 0:
             logger.info(f"  {i}/{len(images)} frames")
@@ -366,7 +365,8 @@ def run_trial(
     settings = get_settings()
     scoring_dir = visdrone_vid.scoring_dir(settings.data.autolabel_dir, scoring_set)
     data_yaml = scoring_dir / "data.yaml"
-    store = detections_store(scoring_dir, config) if full else None
+    # the stored boxes carry no masks, so own masks rerun the detector
+    store = detections_store(scoring_dir, config) if full and config.segmenter != OWN else None
     device = settings.training.device
     if config.tracker is None:
         labels = label_frames(config, images, device, store)

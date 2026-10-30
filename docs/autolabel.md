@@ -149,6 +149,32 @@ uv run --env-file .env python -m mlops_cv.autolabel configs/autolabel/detector.y
 - **YOLOE needs the resolution.** At 1280 it gains 6.1 pt over 640 and ties GDINO-T at a quarter
   of its latency. No smaller sibling won, so OWLv2-L/14 and YOLOE-26-X didn't run.
 
+**Stage 3: prompts** (`configs/autolabel/prompts.yaml`). SAM 3 under stage 1's filter, with the
+10 raw names (the incumbent, `sam3-raw`, rescored from its stored boxes) against the 3
+merged-class names (`person`, `vehicle`, `two-three-wheeler`), each its own prompt. With 3
+prompts SAM 3 returns at most 600 boxes before the top 300, and its 200-per-prompt cap now
+covers a whole merged class.
+
+```bash
+uv run --env-file .env python -m mlops_cv.autolabel configs/autolabel/prompts.yaml --set train-sample
+```
+
+`det` F1 at IoU 0.5 in %, with mAP50-95 per merged class.
+
+| Prompts | det F1 | P | R | mAP50 | Max-F1 conf | Kept per frame | Detector ms | person | vehicle | two-three-wheeler |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **10 raw names (incumbent)** | **66.5** | 68.0 | 65.0 | 61.2 | 0.597 | 152 | 1,600 | 18.1 | 43.6 | 18.2 |
+| 3 merged names | 45.4 | 45.0 | 45.9 | 43.8 | 0.589 | 217 | 995 | 17.9 | 41.7 | 0.0 |
+
+- **Winner: the 10 raw names**, 21.1 pt over the merged names. The labeling config keeps
+  stage 2's detector and confidence floor 0.597.
+- **SAM 3 doesn't know `two-three-wheeler`.** It finds at most 4 boxes per frame above the
+  max-F1 confidence, so the class scores 0; `person` and `vehicle` lose under 2 pt mAP50-95.
+- **The cap still doesn't bind.** No frame holds more than 121 GT boxes of one merged class.
+  `person` and `vehicle` fill all 200 queries above the 0.001 floor, but at most 86 per frame
+  clear the max-F1 confidence.
+- **Fewer prompts are cheaper**: 3 decoder passes take SAM 3 to 995 ms per frame, from 1,600.
+
 ## Sequence mode
 
 A trial with a `tracker` section labels whole sequences (`val-full`, `test-dev-full`), so

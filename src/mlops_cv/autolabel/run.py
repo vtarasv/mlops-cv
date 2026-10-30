@@ -261,22 +261,25 @@ def coco_autolabels(
 
 
 def detections_store(scoring_dir: Path, config: LabelingConfig) -> Path:
-    """Where a whole scoring set's detector boxes, before the box filter, are stored."""
-    detector = config.detector.model_dump_json(exclude_none=True)  # a new field keeps old keys
+    """Where a whole scoring set's detector boxes, before the merge and box filter, are stored."""
+    # A new field keeps old keys; the merge runs on stored tiled passes, so it isn't keyed.
+    detector = config.detector.model_dump_json(exclude_none=True, exclude={"tiling": {"merge"}})
     key = hashlib.sha256(detector.encode()).hexdigest()[:16]
     return scoring_dir / "detections" / f"{key}.npz"
 
 
 def save_detections(path: Path, images: list[visdrone_vid.Image], raw: list[Labels]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(
-        path,
-        names=[im.name for im in images],
-        counts=[len(r.rows) for r in raw],
-        rows=np.concatenate([r.rows for r in raw]).reshape(-1, 6),
-        labels=np.array([label for r in raw for label in r.labels], str),
-        detector_ms=[r.ms["detector"] for r in raw],
-    )
+    arrays: dict[str, Any] = {
+        "names": [im.name for im in images],
+        "counts": [len(r.rows) for r in raw],
+        "rows": np.concatenate([r.rows for r in raw]).reshape(-1, 6),
+        "labels": np.array([label for r in raw for label in r.labels], str),
+        "detector_ms": [r.ms["detector"] for r in raw],
+    }
+    if windows := [r.windows for r in raw if r.windows is not None]:
+        arrays["windows"] = np.concatenate(windows)
+    np.savez_compressed(path, **arrays)
 
 
 def load_detections(path: Path, images: list[visdrone_vid.Image]) -> list[Labels]:
@@ -286,8 +289,12 @@ def load_detections(path: Path, images: list[visdrone_vid.Image]) -> list[Labels
         raise ValueError(f"{path} holds other frames: delete it to re-detect")
     split = np.cumsum(z["counts"])[:-1]
     rows, labels = np.split(z["rows"], split), np.split(z["labels"], split)
-    parts = zip(rows, labels, z["detector_ms"], strict=True)
-    return [Labels(r, lb.tolist(), None, {"detector": float(ms)}, len(r)) for r, lb, ms in parts]
+    windows = np.split(z["windows"], split) if "windows" in z else [None] * len(rows)
+    parts = zip(rows, labels, z["detector_ms"], windows, strict=True)
+    return [
+        Labels(r, lb.tolist(), None, {"detector": float(ms)}, len(r), windows=win)
+        for r, lb, ms, win in parts
+    ]
 
 
 def label_frames(

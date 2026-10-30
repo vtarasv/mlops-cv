@@ -38,10 +38,18 @@ flowchart LR
   min score, class-agnostic NMS, the nested-box rule, top K. Of two boxes nested at IoS ≥
   `nested_ios`, the rule keeps the outer one (`nested_keep: outer`), so a box drawn around a
   group deletes the objects inside it, or the inner one, deleting the group box.
+- **Tiling.** Optional, on the detector (`tiling.side`): SAHI's slice grid at overlap 0.2 plus
+  the full frame, each pass through the detector on its own. Zoom is the detector's input side
+  over the slice side. Before the box filter the passes merge: boxes within 2 px of an interior
+  slice edge are dropped (cut objects lie whole in a neighbouring slice or the full frame), then
+  class-aware NMS at IoU 0.5. `merge: contained` swaps the edge rule for a larger-box-wins merge:
+  after the NMS, a box ≥ 85% inside a larger one of its class joins it, which takes the pair's
+  top score.
 - **Stored detections.** A run over a whole scoring set stores the detector's boxes from before
-  the box filter in `<set>/detections/<hash of the detector settings>.npz`. A later trial with
-  the same detector reads them and reruns only the filter and segmenter, reporting the stored
-  detector latency. The key ignores the detector code: delete the file after changing it.
+  the merge and box filter in `<set>/detections/<hash of the detector settings>.npz`. A later
+  trial with the same detector (the merge isn't part of the key) reads them and reruns only the
+  merge, filter and segmenter, reporting the stored detector latency. The key ignores the
+  detector code: delete the file after changing it.
 - **Scores.** Two box sets per trial, `det` (the filtered detector boxes) and `seg` (each mask's
   tight box), both through `score_with_ap_small` at the 3 merged classes. **Selection is F1 at
   IoU 0.5**, from the validator's P and R at its max-F1 point, whose confidence is
@@ -174,6 +182,51 @@ uv run --env-file .env python -m mlops_cv.autolabel configs/autolabel/prompts.ya
   `person` and `vehicle` fill all 200 queries above the 0.001 floor, but at most 86 per frame
   clear the max-F1 confidence.
 - **Fewer prompts are cheaper**: 3 decoder passes take SAM 3 to 995 ms per frame, from 1,600.
+
+**Stage 4: tiling** (`configs/autolabel/tiling.yaml`). SAM 3 on the 10 raw names under stage 1's
+filter, untiled (the incumbent, rescored from the fp16 parity check's stored boxes) against
+slices plus the full frame at zoom 1.25 (806 px slices) and 2 (504 px), merged by the edge rule,
+and at 1.25 with the contained merge (a CPU rescore of 1.25's stored passes). SAM 3 squashes
+every pass to a 1008 square, so a full `train-sample` frame (1344 to 2720 px wide) runs at 0.37×
+to 0.75× horizontally.
+A frame takes 7.5 passes on average at 1.25 and 17.5 at 2, and batching an image's slices gains
+nothing (SAM 3 is compute-bound).
+
+**SAM 3 runs in fp16 from this stage on** (`detector.dtype: float16`): 484 ms per pass against
+fp32's 1.6 s. Parity on the untiled row, against fp32's `det` F1 66.5:
+
+| Untiled SAM 3 | det F1 | mAP50-95 small | Box shift from fp32, median / p90 | Detector ms |
+|---|---|---|---|---|
+| fp32 | 66.5 | 10.8 | — | 1,600 |
+| **fp16** | **66.3** | 10.7 | 0.2 / 0.7 px | 484 |
+| bf16 | 62.6 | 7.4 | 1.4 / 4.7 px | 480 |
+
+bf16's 8-bit mantissa moves boxes enough to cost small objects their IoU match; fp16 stays
+within 0.5 pt.
+
+```bash
+uv run --env-file .env python -m mlops_cv.autolabel configs/autolabel/tiling.yaml --set train-sample
+```
+
+`det` F1 at IoU 0.5 in %, fp16, with mAP50-95 per merged class. Detector ms is the p50 per frame,
+all passes included.
+
+| Tiling | det F1 | P | R | mAP50 | mAP50-95 | small | Max-F1 conf | Kept per frame | Detector ms | person | vehicle | two-three-wheeler |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| **untiled (incumbent)** | **66.3** | 67.9 | 64.8 | 60.9 | 26.6 | 10.7 | 0.597 | 151 | 484 | 18.0 | 43.6 | 18.1 |
+| zoom 1.25, edge | 65.5 | 64.7 | 66.2 | 61.3 | 27.0 | 9.0 | 0.737 | 529 | 3,389 | 17.9 | 45.2 | 18.0 |
+| zoom 1.25, contained | 44.8 | 53.8 | 38.4 | 31.2 | 13.9 | 7.3 | 0.674 | 177 | 3,389 | 4.2 | 25.6 | 11.8 |
+| zoom 2, edge | 64.4 | 62.7 | 66.3 | 60.0 | 26.4 | 8.2 | 0.756 | 1,147 | 7,769 | 17.5 | 44.3 | 17.3 |
+
+- **Winner: untiled**, the incumbent; no tiled row comes within the 0.5 pt margin. The labeling
+  config keeps stage 3's detector, now in fp16, and confidence floor 0.597.
+- **Tiling trades precision for recall.** Slices add 1.4 to 1.5 pt of recall but cost 3 to 5 pt
+  of precision, and mAP50-95 small falls (10.7 to 9.0 and 8.2): the extra boxes add confident
+  false positives, which push the max-F1 confidence from 0.60 to 0.74–0.76.
+- **The contained merge collapses** because it runs on every box down to the 0.001 floor: 93% of
+  the confident boxes it absorbs go into a lower-scoring box, 86% into one over 5% of the frame
+  that the box filter then drops.
+- **Tiling costs 7× (1.25) to 16× (2)** SAM 3's untiled time; the merge adds ≤ 14 ms.
 
 ## Sequence mode
 

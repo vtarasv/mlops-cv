@@ -38,10 +38,18 @@ flowchart LR
   min score, class-agnostic NMS, the nested-box rule, top K. Of two boxes nested at IoS ≥
   `nested_ios`, the rule keeps the outer one (`nested_keep: outer`), so a box drawn around a
   group deletes the objects inside it, or the inner one, deleting the group box.
+- **Tiling.** Optional, on the detector (`tiling.side`): SAHI's slice grid at overlap 0.2 plus
+  the full frame, each pass through the detector on its own. Zoom is the detector's input side
+  over the slice side. Before the box filter the passes merge: boxes within 2 px of an interior
+  slice edge are dropped (cut objects lie whole in a neighbouring slice or the full frame), then
+  class-aware NMS at IoU 0.5. `merge: contained` swaps the edge rule for a larger-box-wins merge:
+  after the NMS, a box ≥ 85% inside a larger one of its class joins it, which takes the pair's
+  top score.
 - **Stored detections.** A run over a whole scoring set stores the detector's boxes from before
-  the box filter in `<set>/detections/<hash of the detector settings>.npz`. A later trial with
-  the same detector reads them and reruns only the filter and segmenter, reporting the stored
-  detector latency. The key ignores the detector code: delete the file after changing it.
+  the merge and box filter in `<set>/detections/<hash of the detector settings>.npz`. A later
+  trial with the same detector (the merge isn't part of the key) reads them and reruns only the
+  merge, filter and segmenter, reporting the stored detector latency. The key ignores the
+  detector code: delete the file after changing it.
 - **Scores.** Two box sets per trial, `det` (the filtered detector boxes) and `seg` (each mask's
   tight box), both through `score_with_ap_small` at the 3 merged classes. **Selection is F1 at
   IoU 0.5**, from the validator's P and R at its max-F1 point, whose confidence is
@@ -174,6 +182,19 @@ uv run --env-file .env python -m mlops_cv.autolabel configs/autolabel/prompts.ya
   `person` and `vehicle` fill all 200 queries above the 0.001 floor, but at most 86 per frame
   clear the max-F1 confidence.
 - **Fewer prompts are cheaper**: 3 decoder passes take SAM 3 to 995 ms per frame, from 1,600.
+
+**Stage 4: tiling** (`configs/autolabel/tiling.yaml`). SAM 3 on the 10 raw names under stage 1's
+filter, untiled (the incumbent, rescored from its stored boxes) against slices plus the full
+frame at zoom 1.25 (806 px slices) and 2 (504 px), merged by the edge rule, and at 1.25 with the
+contained merge (a CPU rescore of 1.25's stored passes). SAM 3 squashes every pass to a 1008
+square, so a full `train-sample` frame (1344 to 2720 px wide) runs at 0.37× to 0.75× horizontally.
+A frame takes 7.5 passes on average at 1.25 and 17.5 at 2. Each pass costs SAM 3 1.6 s (vision
+plus 10 decoder passes, fp32), and batching an image's slices gains nothing (1.57 s per pass at
+batch 4), so a tiled level labels `train-sample` in 1.9 h (1.25) or 4.4 h (2).
+
+```bash
+uv run --env-file .env python -m mlops_cv.autolabel configs/autolabel/tiling.yaml --set train-sample
+```
 
 ## Sequence mode
 

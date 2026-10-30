@@ -137,6 +137,59 @@ def test_filter_nms_is_class_agnostic() -> None:
     assert labeler.filter_boxes(rows, BoxFilter(nms_iou=0.6), 100, 100).tolist() == [0]
 
 
+def test_slice_grid_matches_sahi() -> None:
+    grid = labeler.slice_grid(1360, 765, 640)
+    assert sorted({x for x, *_ in grid}) == [0, 512, 720] and sorted({y for _, y, *_ in grid}) == [
+        0,
+        125,
+    ]
+    assert all(x1 - x0 == 640 and y1 - y0 == 640 for x0, y0, x1, y1 in grid)
+    assert labeler.slice_grid(500, 300, 640) == [(0, 0, 500, 300)]
+
+
+def test_tiled_shifts_each_pass_and_adds_the_full_frame() -> None:
+    def detect(image: np.ndarray) -> tuple[np.ndarray, list[str]]:
+        return np.array([[1, 2, 3, 4, 0.5, 1]], np.float32), ["car"]
+
+    image = np.zeros((10, 16, 3), np.uint8)
+    rows, labels, windows = labeler.tiled(detect, image, 10)
+    assert windows.tolist() == [[0, 0, 10, 10], [6, 0, 16, 10], [0, 0, 16, 10]]
+    assert rows[:, :2].tolist() == [[1, 2], [7, 2], [1, 2]] and labels == ["car"] * 3
+    assert labeler.tiled(detect, image, 20)[2].tolist() == [[0, 0, 16, 10]]
+
+
+def test_edge_rule_drops_boxes_cut_by_interior_slice_edges_only() -> None:
+    boxes = np.array([[50, 10, 59, 20], [0, 0, 20, 20], [50, 10, 59, 20]], np.float32)
+    windows = np.array([[0, 0, 60, 60], [0, 0, 60, 60], [0, 0, 100, 100]], np.float32)
+    assert labeler.cut_by_slice_edge(boxes, windows, 100, 100).tolist() == [True, False, False]
+
+
+def test_merge_passes_with_the_edge_rule_then_class_aware_nms() -> None:
+    pytest.importorskip("torchvision")
+    rows = np.array(
+        [
+            [40, 10, 59, 20, 0.9, 1],  # cut by the slice's right edge
+            [40, 10, 70, 20, 0.6, 1],  # the whole object, from the full frame
+            [40, 10, 70, 21, 0.5, 1],  # its duplicate
+            [40, 10, 70, 20, 0.4, 0],  # another class
+        ],
+        np.float32,
+    )
+    windows = np.array([[0, 0, 60, 60]] + [[0, 0, 100, 100]] * 3, np.float32)
+    keep, conf = labeler.merge_passes(rows, windows, "edge", 100, 100)
+    assert keep.tolist() == [1, 3] and conf.tolist() == pytest.approx([0.6, 0.4])
+
+
+def test_contained_merge_keeps_the_larger_box_with_the_pair_top_score() -> None:
+    pytest.importorskip("torchvision")
+    rows = np.array(
+        [[40, 10, 52, 20, 0.9, 1], [40, 10, 70, 20, 0.6, 1], [40, 10, 52, 20, 0.8, 0]], np.float32
+    )
+    windows = np.array([[0, 0, 60, 60]] * 3, np.float32)
+    keep, conf = labeler.merge_passes(rows, windows, "contained", 100, 100)
+    assert keep.tolist() == [1, 2] and conf.tolist() == pytest.approx([0.9, 0.8])
+
+
 def test_prompt_spans_split_at_separators() -> None:
     assert labeler.prompt_spans([101, 5, 1012, 7, 8, 1012, 102], {101, 102, 1012}) == [[1], [3, 4]]
 
@@ -175,6 +228,12 @@ def test_an_unset_detector_field_keeps_the_stored_detections_key() -> None:
     assert run.detections_store(Path("s"), _config()) == Path(f"s/detections/{key}.npz")
     sized = _config(detector={"model": "m", "imgsz": 1280})
     assert run.detections_store(Path("s"), sized) != run.detections_store(Path("s"), _config())
+    edge, contained, other = (
+        _config(detector={"model": "m", "tiling": {"side": side, "merge": merge}})
+        for side, merge in [(806, "edge"), (806, "contained"), (504, "edge")]
+    )
+    assert run.detections_store(Path("s"), edge) == run.detections_store(Path("s"), contained)
+    assert run.detections_store(Path("s"), edge) != run.detections_store(Path("s"), other)
 
 
 def _stage(tmp_path: Path, stage: dict) -> Path:
@@ -294,6 +353,28 @@ def test_stored_detections_round_trip_and_check_their_frames(tmp_path: Path) -> 
     assert (len(b.rows), b.detected, b.ms) == (0, 0, {"detector": 3.0})
     with pytest.raises(ValueError, match="other frames"):
         run.load_detections(path, images[:1])
+    assert a.windows is None
+
+
+def test_stored_tiled_detections_keep_their_windows(tmp_path: Path) -> None:
+    rows = np.array([[1, 2, 5, 8, 0.5, 0]], np.float32)
+    windows = np.array([[0, 0, 10, 10]], np.float32)
+    raw = [Labels(rows, ["car"], None, {"detector": 7.0}, 1, windows=windows)]
+    raw.append(
+        Labels(
+            np.zeros((0, 6), np.float32),
+            [],
+            None,
+            {"detector": 1.0},
+            0,
+            windows=np.zeros((0, 4), np.float32),
+        )
+    )
+    path = tmp_path / "d.npz"
+    run.save_detections(path, [_image("a", []), _image("b", [])], raw)
+    a, b = run.load_detections(path, [_image("a", []), _image("b", [])])
+    assert a.windows is not None and a.windows.tolist() == windows.tolist()
+    assert b.windows is not None and b.windows.shape == (0, 4)
 
 
 def test_coco_autolabels_carry_track_ids_and_skip_missing_detector_boxes() -> None:

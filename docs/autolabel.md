@@ -192,6 +192,11 @@ A frame takes 7.5 passes on average at 1.25 and 17.5 at 2. Each pass costs SAM 3
 plus 10 decoder passes, fp32), and batching an image's slices gains nothing (1.57 s per pass at
 batch 4), so a tiled level labels `train-sample` in 1.9 h (1.25) or 4.4 h (2).
 
+SAM 3 in bf16 (`detector.dtype: bfloat16`) is 3.3× faster (480 ms per frame untiled) but fails
+parity with fp32 on the untiled row: `det` F1 62.6 against 66.5, mAP50-95 small 7.4 against
+10.8. Its boxes move 1.4 px (median) to 4.7 px (p90) from fp32's, enough to cost small objects
+their IoU match. SAM 3 stays fp32, and the grid waits on a cheaper path.
+
 ```bash
 uv run --env-file .env python -m mlops_cv.autolabel configs/autolabel/tiling.yaml --set train-sample
 ```

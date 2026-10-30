@@ -56,6 +56,7 @@ class Detector(BaseModel):
     threshold: float = CONF  # the detector's own score floor; it keeps its top ``MAX_DET``
     imgsz: int | None = None  # YOLOE's input size; ``None`` is 640, its training size
     tiling: Tiling | None = None
+    dtype: Literal["bfloat16"] | None = None  # SAM 3's weights; ``None`` is fp32
 
 
 class BoxFilter(BaseModel):
@@ -339,8 +340,9 @@ def sam3(cfg: Detector, device: str) -> Detect:
     import torch
     from transformers import Sam3Model, Sam3Processor
 
+    dtype = getattr(torch, cfg.dtype or "float32")
     processor: Any = Sam3Processor.from_pretrained(cfg.model)
-    model: Any = Sam3Model.from_pretrained(cfg.model)
+    model: Any = Sam3Model.from_pretrained(cfg.model, dtype=dtype)
     model = model.to(device).eval()
     texts = [processor(text=p, return_tensors="pt").to(device) for p in cfg.prompts]
 
@@ -349,13 +351,13 @@ def sam3(cfg: Detector, device: str) -> Detect:
         inputs = processor(images=image, return_tensors="pt").to(device)
         boxes, conf, label = [], [], []
         with torch.inference_mode():
-            vision = model.get_vision_features(pixel_values=inputs["pixel_values"])
+            vision = model.get_vision_features(pixel_values=inputs["pixel_values"].to(dtype))
             for i, text in enumerate(texts):
                 out = model(vision_embeds=vision, **text)
-                boxes.append(out.pred_boxes[0] * torch.tensor([w, h, w, h], device=device))
+                boxes.append(out.pred_boxes[0].float() * torch.tensor([w, h, w, h], device=device))
                 conf.append(out.pred_logits[0].sigmoid() * out.presence_logits[0].sigmoid())
                 label.append(torch.full_like(conf[-1], i, dtype=torch.long))
-        return top_rows(torch.cat(boxes), torch.cat(conf), torch.cat(label), cfg)
+        return top_rows(torch.cat(boxes), torch.cat(conf).float(), torch.cat(label), cfg)
 
     return detect
 

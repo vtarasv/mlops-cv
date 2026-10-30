@@ -273,7 +273,7 @@ def prompt_spans(input_ids: Sequence[int], separators: set[int]) -> list[list[in
     return [s for s in spans if s]
 
 
-def _device(device: str) -> str:
+def torch_device(device: str) -> str:
     return f"cuda:{device}" if device.isdigit() else device
 
 
@@ -512,7 +512,7 @@ class Labeler:
 
     def __init__(self, config: LabelingConfig, device: str, detect: bool = True) -> None:
         self.config = config
-        self.device = device = _device(device)
+        self.device = device = torch_device(device)
         self._sync: Callable[[], None] = lambda: None
         if device.startswith("cuda"):
             import torch

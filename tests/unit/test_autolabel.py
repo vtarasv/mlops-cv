@@ -572,3 +572,46 @@ def test_trackeval_scores_perfect_tracks_and_counts_id_switches() -> None:
     out = track_scores.readings(images, switched)
     assert out["track/IDSW"] == 2 and out["track/DetA"] == pytest.approx(1.0)
     assert out["track/HOTA"] < 1
+
+
+def test_gt_box_fit_counts_an_empty_mask_as_a_miss_and_no_prediction() -> None:
+    from mlops_cv.autolabel import gt_box_check
+
+    out = gt_box_check.fit_readings(np.array([0.9, 0.6, 0.0]), np.array([False, False, True]))
+    assert out["fit/box_iou_mean"] == pytest.approx(0.5)
+    assert out["fit/F1_iou50"] == pytest.approx(2 * 2 / (2 + 3))
+    assert out["fit/F1_iou75"] == pytest.approx(2 * 1 / (2 + 3))
+    assert out["fit/empty_masks"] == 1.0
+
+
+def test_pair_iou_takes_each_pair_not_the_matrix() -> None:
+    pytest.importorskip("pycocotools")
+    from mlops_cv.autolabel import gt_box_check
+
+    a = np.array([[0, 0, 2, 2], [0, 0, 2, 2]], float)
+    b = np.array([[0, 0, 2, 2], [1, 0, 2, 2]], float)
+    assert gt_box_check.pair_iou(a, b) == pytest.approx([1.0, 1 / 3])
+    assert len(gt_box_check.pair_iou([], [])) == 0
+
+
+def test_aerovis_masks_map_byte_identical_frames_by_track_id(tmp_path: Path) -> None:
+    from dataclasses import replace
+
+    from mlops_cv.autolabel import gt_box_check
+
+    (tmp_path / "vid").mkdir()
+    (tmp_path / "sequences" / "vd_001").mkdir(parents=True)
+    for name, colour in (("vid/a.jpg", 1), ("vid/b.jpg", 2), ("sequences/vd_001/1.jpg", 9)):
+        Image.new("RGB", (8, 8), (colour,) * 3).save(tmp_path / name)
+    (tmp_path / "sequences/vd_001/2.jpg").write_bytes((tmp_path / "vid/b.jpg").read_bytes())
+    images = [replace(_image(n, [4]), path=tmp_path / "vid" / n) for n in ("a.jpg", "b.jpg")]
+    rle = {"size": [8, 8], "counts": "x"}
+    anns = [
+        {"video_id": 1, "track_id": 7, "segmentations": [rle, rle]},
+        {"video_id": 1, "track_id": 8, "segmentations": [rle, None]},
+        {"video_id": 1, "track_id": 9, "segmentations": [rle, rle], "iscrowd": 1},
+    ]
+    files = ["vd_001/1.jpg", "vd_001/2.jpg"]
+    data = {"videos": [{"id": 1, "file_names": files}], "annotations": anns}
+    (tmp_path / "aero_vis.json").write_text(json.dumps(data))
+    assert gt_box_check.aerovis_masks(tmp_path, images) == {"b.jpg": {7: rle}}

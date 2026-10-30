@@ -298,6 +298,38 @@ auto-labels cut at 0.597.
 - **Cost.** Own masks cost only their upsample and RLE (285 ms); SAM 2.1 adds its encoder and
   decoder, and the SAM 3 tracker reruns a 1008² vision pass in fp32. The stage ran in 37 min.
 
+**GT-box check** (reported only, never selects). Each box-prompted segmenter (SAM 2.1 S, SAM 2.1 L,
+SAM 3's tracker) prompted with the ground-truth boxes of `train-sample` (after the ignored-region
+rule), which takes the detector out of its masks. Box fit: each mask's tight box against the GT
+box that prompted it, as the mean box IoU and F1 at IoU 0.5 and 0.75 (an empty mask is a miss).
+Mask IoU: against [AeroVIS](https://arxiv.org/abs/2607.08075)'s hand-reviewed masks, on the 460
+`train-sample` frames it holds byte for byte (46 of VID train's 56 sequences, VID's own boxes and
+track ids, matched by track id). AeroVIS's masks were made by SAM 3 from these boxes, so the
+SAM 3 row is circular. SAM 3's own masks have no box prompt, so they can't take part. AeroVIS's
+annotations are non-commercial: keep them local, never in the repo.
+
+```bash
+uv run --env-file .env python -m mlops_cv.autolabel.gt_box_check --set train-sample \
+  --aerovis <local AeroVIS folder>
+```
+
+In %, over `train-sample`'s 27,339 scored GT boxes; the mask IoU over the 23,415 of them that
+AeroVIS masks. The AeroVIS row is its own masks' tight boxes against the same VID boxes, on its
+460 frames: the fit a hand-reviewed mask reaches.
+
+| Segmenter (GT boxes in) | Mean box IoU | F1 @ IoU 0.5 | F1 @ IoU 0.75 | Mask IoU vs AeroVIS |
+|---|---|---|---|---|
+| SAM 2.1 S | 76.4 | 97.7 | 60.2 | 83.4 |
+| SAM 2.1 L | 75.6 | 97.0 | 56.9 | 83.7 |
+| SAM 3 tracker | 75.5 | 97.1 | 56.2 | 89.2 (circular) |
+| AeroVIS masks (reference) | 82.4 | 98.4 | 76.9 | — |
+
+- **Given the right box, every segmenter keeps it at IoU 0.5** (97–98%, ≤ 2 empty masks), so
+  the `seg` scores above are bound by the detector, not the masks. At IoU 0.75 SAM 2.1 S fits
+  best, as its `seg` row did, but all three trail the reviewed masks by 17–21 pt.
+- **SAM 2.1 S and L agree with AeroVIS equally** (83.4 vs 83.7). SAM 3's 89.2 caps what review
+  changed: part of its 10.8 pt gap is pipeline, since AeroVIS also clips its masks to the box.
+
 ## Sequence mode
 
 A trial with a `tracker` section labels whole sequences (`val-full`, `test-dev-full`), so
@@ -405,21 +437,40 @@ flowchart LR
 
 ## Results
 
-F1 at IoU 0.5 in %, under the [auto-labeling scoring convention](#scoring-convention-ignored-regions).
+**Image-mode finalists** (`configs/autolabel/finalists.yaml`) on `val-stride20` (146 frames, never
+tuned on): the smoke chain (GDINO-T at its 0.25 floor → the smoke box filter → SAM 2.1 S) and the
+grid's winner, the image-mode labeling config (`configs/autolabel/image-mode.yaml`), beside the
+champion YOLO26m@1280 (boxes only, unfiltered). The winner also reads P, R and F1 at its
+confidence floor, off the validator's curves (`<kind>/at_floor/*`).
 
-| Trial | Set | det F1 | seg F1 | Latency p50 (ms) |
-|---|---|---|---|---|
-| Smoke: GDINO-T → box filter → SAM 2.1 S | `train-sample` | 29.6 | 29.0 | 368 |
-| Smoke: GDINO-T → box filter → SAM 2.1 S | `val-stride20` | 28.8 | 28.5 | 374 |
-| Champion YOLO26m@1280 (reference) | `val-stride20` | 69.6 | — | 27 |
+```bash
+uv run --env-file .env python -m mlops_cv.autolabel configs/autolabel/finalists.yaml --set val-stride20
+```
 
-- **The smoke chain is recall-bound.** Precision is 80–84% and recall 17–18%. Grounding DINO-T
-  returns 38 boxes per `train-sample` frame above its 0.25 floor, the box filter keeps 13
-  (min side 8 px, ≤ 5% of the frame, score ≥ 0.4, NMS 0.6, nested-box IoS 0.8, top 300), and the
-  ground truth holds 49. F1's own threshold sweep can't recover boxes the floors removed.
-- **Masks keep their boxes.** Mask-derived boxes score within 0.6 pt F1 of the detector's.
-- **Latency.** The detector is 239 ms and SAM 2.1 S 120 ms per frame (p50, RTX 5070 Laptop); the
-  filter is under 1 ms. The auto-labels for 560 frames are 3.8 MB of COCO RLE.
+In %, under the [auto-labeling scoring convention](#scoring-convention-ignored-regions); latency
+p50 per frame (RTX 5070 Laptop).
+
+| Trial | Box | F1 | P | R | mAP50 | mAP50-95 | small | person | vehicle | two-three-wheeler | Max-F1 conf | F1 at 0.597 | ms |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Smoke: GDINO-T → SAM 2.1 S | det | 28.8 | 84.2 | 17.4 | 16.5 | 10.2 | 1.0 | 0.8 | 24.3 | 5.4 | ≤ 0.40 | — | 341 |
+| | seg | 28.5 | 82.3 | 17.2 | 16.4 | 9.2 | 1.2 | 0.7 | 22.6 | 4.3 | | | |
+| **Image mode: SAM 3 → SAM 2.1 S** | det | 61.1 | 61.7 | 60.6 | 55.2 | 23.9 | 9.1 | 21.6 | 38.4 | 11.8 | 0.600 | 61.1 | 1,665 |
+| | seg | **61.8** | 62.6 | 61.0 | 55.8 | 24.2 | 9.5 | 21.6 | 39.4 | 11.6 | 0.604 | 61.7 | |
+| Champion YOLO26m@1280 (reference) | det | 69.6 | 77.1 | 63.4 | 67.6 | 34.4 | 16.2 | 31.3 | 45.1 | 26.8 | 0.256 | — | 27 |
+
+- **The image-mode labeling config** (`configs/autolabel/image-mode.yaml`): SAM 3 end to end on
+  the 10 raw VisDrone names, untiled, fp16 → box filter (min side 8 px, ≤ 5% of the frame,
+  NMS 0.5) → SAM 2.1 S, auto-labels cut at confidence 0.597. It scores `seg` F1 66.4 on
+  `train-sample` and 61.8 here, 33 pt over the smoke chain and 7.8 pt under the champion, which
+  trained on VID's labels.
+- **The confidence floor transfers.** The max-F1 confidence here is 0.600 (`det`) and 0.604
+  (`seg`), against 0.597 on `train-sample`; cutting at 0.597 costs 0.1 pt.
+- **The gap to the champion is precision and small objects.** Recall is within 2.4 pt; precision
+  is 14.5 pt lower, mAP50-95 small 9.5 against 16.2, and two-three-wheelers score under half the
+  champion's mAP50-95. The masks add 0.7 pt over the detector's own boxes.
+- **Cost.** 1.7 s per frame: SAM 3 0.48 s, SAM 2.1 S 1.2 s over ≈ 158 kept boxes (more and
+  larger frames than `train-sample`'s 0.63 s: one sequence is 3840×2160). The smoke chain's
+  floors make it recall-bound (17%), and its F1 curve is flat below its 0.4 score filter.
 
 **Sequence-mode smoke** (`val-full`, one sequence: `uav0000305_00000_v`, 184 frames, 35
 ground-truth boxes per frame). The smoke chain on key frames; F1 and HOTA in %.

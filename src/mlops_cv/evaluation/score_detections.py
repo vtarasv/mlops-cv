@@ -122,11 +122,16 @@ def readings(
     split: str,
     prefix: str,
     frames: Collection[str] | None = None,
+    floor: float | None = None,
 ) -> dict[str, float]:
-    """Merged detections scored on ``split`` (or its ``frames``) -> trial keys under ``prefix``."""
+    """Merged detections scored on ``split`` (or its ``frames``) -> trial keys under ``prefix``.
+
+    With ``floor``, also P and R read off the validator's curves at that confidence.
+    """
     from ultralytics.utils.metrics import smooth
 
     from mlops_cv.tracking.metric_keys import (
+        AT_FLOOR,
         CONF_AT_MAX_F1,
         MAP_SMALL,
         PRIMARY,
@@ -139,6 +144,14 @@ def readings(
     box = metrics.box
     # ultralytics' own max-F1 index (``ap_per_class``), mapped onto its confidence axis.
     conf = float(box.px[smooth(box.f1_curve.mean(0), 0.1).argmax()]) if len(box.f1_curve) else 0.0
+    at_floor: dict[str, float] = {}
+    if floor is not None and len(box.p_curve):
+        i = np.abs(box.px - floor).argmin()
+        at = metric_key(prefix, AT_FLOOR)
+        at_floor = {
+            metric_key(at, "precision"): float(box.p_curve[:, i].mean()),
+            metric_key(at, "recall"): float(box.r_curve[:, i].mean()),
+        }
     return (
         headline_metrics(box, prefix=prefix)
         | {metric_key(prefix, MAP_SMALL): ap_s, metric_key(prefix, CONF_AT_MAX_F1): conf}
@@ -148,4 +161,5 @@ def readings(
             metrics.names,
             prefix=metric_key(prefix, PRIMARY),
         )
+        | at_floor
     )

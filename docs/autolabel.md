@@ -338,15 +338,32 @@ names are dropped. A VLM has no scores, so every box gets conf 1.0: the validato
 is its only operating point, and there is no confidence floor. The box filter still applies; its
 NMS 0.5 then breaks ties by the model's output order. Boxes only, scored on `det`.
 
+Greedy, the 4B never ends its answer: after 10–41 unique boxes it repeats its last one or two up
+to the token cap (≈ 13 min a frame at 8-bit's 15.7 tokens/s, ≈ 120 h for `train-sample`). A loop
+guard stops generation at the first entry (label and box) it already wrote. It runs on 2 frames
+per sequence (`--every 5`: each sequence's 1st and 6th, 112 frames), with SAM 3 fp16 and
+GDINO-T rescored from their stored boxes on the same frames, all under NMS 0.5.
+
 ```bash
-uv run --env-file .env python -m mlops_cv.autolabel configs/autolabel/qwen3-vl.yaml --set train-sample
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True uv run --env-file .env \
+  python -m mlops_cv.autolabel configs/autolabel/qwen3-vl.yaml --set train-sample --every 5
 ```
 
-**Not run: it never stops answering.** On 4 spread `train-sample` frames the model writes until
-the token cap on every one, greedy (4B, 8-bit and nf4) repeating its last boxes after 10–41
-unique ones (10 on a 151-box frame). 8-bit decodes at 15.7 tokens/s (nf4 53, 2B bf16 65), so a
-pass at the 12,288-token cap would take ≈ 120 h. Which variant runs, with what loop guard, is
-open.
+`det` at IoU 0.5 in %, on the 112 frames (GT 49.6 boxes a frame). P/R/F1 per merged class are
+read at each row's max-F1 point; boxes a frame are the scored boxes at or above its confidence.
+Detector time is the mean per frame (RTX 5070 Laptop).
+
+| Detector | det F1 | P | R | mAP50 | person F1 (P/R) | vehicle F1 (P/R) | two-three-wheeler F1 (P/R) | Boxes per frame | Detector s |
+|---|---|---|---|---|---|---|---|---|---|
+| SAM 3 fp16 | 67.0 | 68.5 | 65.4 | 62.2 | 62.6 (67.1/58.6) | 80.7 (80.4/81.1) | 57.4 (58.1/56.7) | 47.4 | 0.49 |
+| GDINO-T | 57.9 | 58.4 | 57.4 | 53.0 | 48.5 (66.2/38.3) | 73.6 (67.2/81.5) | 46.6 (41.9/52.6) | 49.6 | 0.24 |
+| Qwen3-VL-4B 8-bit | 20.3 | 23.9 | 17.6 | 8.8 | 29.9 (27.0/33.5) | 16.6 (28.3/11.7) | 10.5 (16.5/7.7) | 35.0 | 158 (p50 53) |
+
+- **Qwen3-VL-4B is 47 pt behind SAM 3** and 320× slower. Under a quarter of its boxes match a
+  GT box at IoU 0.5; it over-labels people (21.1 a frame against 17.0) and finds 1 vehicle in 9.
+- **The loop guard stopped 91 of 112 answers**; 10 ended on their own and 11 ran to the
+  12,288-token cap, looping without an exact repeat (≈ 13 min each, half the run). It needs
+  `expandable_segments`: a 2688 px frame at the cap peaks at 7.4 GB. The run took 4 h 50 min.
 
 ## Sequence mode
 

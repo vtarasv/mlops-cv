@@ -7,6 +7,7 @@ Each stage is timed on its own, the GPU synchronised at its edges.
 from __future__ import annotations
 
 import json
+import logging
 import re
 import time
 from collections.abc import Callable, Sequence
@@ -19,6 +20,8 @@ from pydantic import BaseModel, ConfigDict, model_validator
 
 from mlops_cv.data.convert_visdrone_vid import YOLO_NAMES
 from mlops_cv.evaluation.score_detections import CONF, MAX_DET
+
+logger = logging.getLogger(__name__)
 
 MergedClass = Literal["person", "vehicle", "two-three-wheeler"]
 MERGED = {name: c for c, name in YOLO_NAMES.items()}
@@ -408,24 +411,47 @@ def yoloe(cfg: Detector, device: str) -> Detect:
     return detect
 
 
-def vlm_rows(text: str, cfg: Detector, width: int, height: int) -> tuple[np.ndarray, list[str]]:
-    """A Qwen3-VL answer's boxes, 0-1000 -> px, conf 1.0; unknown labels and broken entries go.
+def vlm_entries(text: str) -> list[tuple[str, tuple[float, ...]]]:
+    """A Qwen3-VL answer's ``(label, bbox_2d)`` entries; each ``{...}`` parses alone.
 
-    Each ``{...}`` entry parses alone, so an answer cut at the token budget keeps its whole ones.
+    So an answer cut at the token budget keeps its whole entries.
     """
-    rows, labels = [], []
+    entries = []
     for entry in re.findall(r"\{[^{}]*\}", text):
         try:
             item = json.loads(entry)
-            box = [float(v) for v in item["bbox_2d"]]
-            label = str(item["label"])
+            entries.append((str(item["label"]), tuple(float(v) for v in item["bbox_2d"])))
         except (ValueError, KeyError, TypeError):
             continue
+    return entries
+
+
+def vlm_rows(text: str, cfg: Detector, width: int, height: int) -> tuple[np.ndarray, list[str]]:
+    """A Qwen3-VL answer's boxes, 0-1000 -> px, conf 1.0; unknown labels and broken entries go."""
+    rows, labels = [], []
+    for label, box in vlm_entries(text):
         if label in cfg.prompts and len(box) == 4:
             x1, y1, x2, y2 = np.array(box) / 1000 * [width, height, width, height]
             rows.append([x1, y1, x2, y2, 1.0, MERGED[cfg.prompts[label]]])
             labels.append(label)
     return np.array(rows, np.float32).reshape(-1, 6)[:MAX_DET], labels[:MAX_DET]
+
+
+class RepeatedBox:
+    """A transformers stopping criterion: stop at the first entry (label and box) seen before.
+
+    Greedy Qwen3-VL-4B repeats its last box or two up to the token cap instead of ending.
+    Batch 1; ``decode`` turns token ids into text, ``start`` is the prompt's length.
+    """
+
+    def __init__(self, decode: Callable[[Any], str], start: int) -> None:
+        self.decode, self.start, self.hit = decode, start, False
+
+    def __call__(self, input_ids: Any, scores: Any, **kwargs: Any) -> bool:
+        if "}" in self.decode(input_ids[0, -1:]):
+            entries = vlm_entries(self.decode(input_ids[0, self.start :]))
+            self.hit = len(set(entries)) < len(entries)
+        return self.hit
 
 
 def qwen3_vl(cfg: Detector, device: str) -> Detect:
@@ -452,9 +478,16 @@ def qwen3_vl(cfg: Detector, device: str) -> Detect:
     def detect(image: np.ndarray) -> tuple[np.ndarray, list[str]]:
         h, w = image.shape[:2]
         inputs = processor(text=[prompt], images=[image], return_tensors="pt").to(device)
+        start = inputs["input_ids"].shape[1]
+        guard = RepeatedBox(processor.decode, start)
         with torch.inference_mode():
-            out = model.generate(**inputs, max_new_tokens=VLM_MAX_TOKENS, do_sample=False)
-        answer = processor.decode(out[0, inputs["input_ids"].shape[1] :], skip_special_tokens=True)
+            out = model.generate(
+                **inputs, max_new_tokens=VLM_MAX_TOKENS, do_sample=False, stopping_criteria=[guard]
+            )
+        new = out.shape[1] - start
+        end = "loop guard" if guard.hit else "token cap" if new >= VLM_MAX_TOKENS else "eos"
+        logger.info(f"  qwen3-vl: {new} new tokens, stopped by {end}")
+        answer = processor.decode(out[0, start:], skip_special_tokens=True)
         return vlm_rows(answer, cfg, w, h)
 
     return detect

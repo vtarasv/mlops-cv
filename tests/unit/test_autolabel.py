@@ -269,6 +269,16 @@ def test_vlm_rows_scale_boxes_and_keep_whole_entries_of_a_cut_answer() -> None:
     assert labeler.vlm_rows("no boxes", cfg, 1, 1)[0].shape == (0, 6)
 
 
+def test_repeated_box_guard_stops_at_the_first_repeated_entry() -> None:
+    car = '{"bbox_2d": [1, 2, 3, 4], "label": "car"}'
+    van = '{"bbox_2d": [1, 2, 3, 4], "label": "van"}'
+    tokens = ["<prompt>", "[", car, ",", van, ",", car]
+    guard = labeler.RepeatedBox("".join, start=1)
+    ids = np.array([tokens], dtype=object)
+    stops = [guard(ids[:, :n], None) for n in range(2, len(tokens) + 1)]
+    assert stops == [False] * 5 + [True]
+
+
 def test_an_unset_detector_field_keeps_the_stored_detections_key() -> None:
     import hashlib
 
@@ -337,6 +347,11 @@ def _image(
         sequence,
         1,
     )
+
+
+def test_every_nth_frame_restarts_at_each_sequence() -> None:
+    images = [_image(f"{q}{i}", [], sequence=q) for q, n in (("a", 10), ("b", 3)) for i in range(n)]
+    assert [im.name for im in run.every_nth(images, 5)] == ["a0", "a5", "b0"]
 
 
 def test_cap_subset_and_recall_ceiling() -> None:

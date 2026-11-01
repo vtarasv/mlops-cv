@@ -16,8 +16,8 @@ tuned on it would learn the wrong labeling protocol.
 
   | Set | Frames | Use |
   |---|---|---|
-  | `train-sample` | 560: 10 evenly spaced from each of VID train's 56 videos | image-mode stages (nothing is trained, so train is free to tune on) |
-  | `val-stride20` | 146: every 20th VID val frame, the repo subset's val | image-mode finalists beside the champion |
+  | `train-sample` | 560: 10 evenly spaced from each of VID train's 56 videos | image-mode stages (nothing is trained) |
+  | `val-stride20` | 146: every 20th VID val frame, the repo subset's val | image-mode finalists |
   | `val-full` | 2,846: every frame of VID val's 7 videos | sequence-mode stages |
   | `test-dev-full` | 6,635: every frame of VID test-dev's 17 videos | the finalists, read once at the end |
 
@@ -65,11 +65,9 @@ evaluator is the same, but the boxes fed to it differ:
 | Ground truth inside ignored regions | kept | dropped when ≥ half its area is inside |
 | Predictions inside ignored regions | kept, so a hit is a false positive | dropped by the same rule |
 
-Ignored regions are crowds and distant traffic the annotators left unlabeled. The champion learned
-not to fire there; a zero-shot detector never did. The repo's convention would charge it false
-positives for real objects, so the auto-labeler follows VisDrone's own toolkit and drops both
-sides. The champion is rescored under the same rule: it lifts its `val-stride20` F1 from 67.6 to
-69.6.
+Ignored regions are crowds and distant traffic the annotators left unlabeled. A zero-shot
+detector fires there, and the repo's convention would charge it false positives for real objects,
+so the auto-labeler follows VisDrone's own toolkit and drops both sides.
 
 ## How to run
 
@@ -310,10 +308,9 @@ uv run --env-file .env python -m mlops_cv.autolabel.gt_box_check --set train-sam
 ## 8. Finalists on `val-stride20`
 
 **What:** the winning image-mode config (`configs/autolabel/image-mode.yaml`) and the smoke chain
-on 146 frames never tuned on, beside the champion YOLO26m@1280 (boxes only).
+on 146 frames never tuned on.
 
-**Why:** to check that `train-sample`'s picks and floor hold on other videos, and how far
-zero-shot labels sit from a model trained on VID's labels.
+**Why:** to check that `train-sample`'s picks and floor hold on other videos.
 
 ```bash
 uv run --env-file .env python -m mlops_cv.autolabel configs/autolabel/finalists.yaml --set val-stride20
@@ -323,13 +320,10 @@ uv run --env-file .env python -m mlops_cv.autolabel configs/autolabel/finalists.
 |---|---|---|---|---|---|---|---|---|---|
 | Smoke chain | seg | 28.5 | 82.3 | 17.2 | 1.2 | 4.3 | ≤ 0.40 | — | 341 |
 | **Image mode** | seg | **61.8** | 62.6 | 61.0 | 9.5 | 11.6 | 0.604 | 61.7 | 1,665 |
-| Champion YOLO26m@1280 | det | 69.6 | 77.1 | 63.4 | 16.2 | 26.8 | 0.256 | — | 27 |
 
 **Result:**
-- **Image mode beats the smoke chain by 33 pt** and sits 7.8 pt under the champion.
+- **Image mode beats the smoke chain by 33 pt.**
 - **The floor transfers:** the max-F1 confidence here is 0.604, and cutting at 0.597 costs 0.1 pt.
-- **The gap to the champion is precision and small objects.** Recall is within 2.4 pt, but
-  precision is 14.5 pt lower and two-three-wheelers score under half the champion's AP.
 
 ## 9. Reference row: Qwen3-VL-4B
 
@@ -488,7 +482,7 @@ make autolabel-view RUN=<MLflow run id> # a run in aerial-auto-label
 
 - **Image-mode config:** SAM 3 fp16 on the 10 raw VisDrone names, untiled → box filter (min side
   8 px, ≤ 5% of the frame, NMS 0.5) → SAM 2.1 S, auto-labels cut at confidence 0.597. `seg` F1
-  66.4 on `train-sample` and 61.8 on `val-stride20`, against the champion's 69.6. 1.7 s per frame.
+  66.4 on `train-sample` and 61.8 on `val-stride20`. 1.7 s per frame.
 - **Sequence-mode config:** the same chain on every frame, tracked by BoT-SORT. `seg` F1 61.3 and
   HOTA 47.8 on `val-full`.
 - **What mattered:**
@@ -499,7 +493,6 @@ make autolabel-view RUN=<MLflow run id> # a run in aerial-auto-label
   own masks, video trackers (EdgeTAM, SAM 2.1 video), another floor, and Qwen3-VL-4B (20.3).
 - **Masks are not the bottleneck.** On ground-truth boxes they keep 97–98% at IoU 0.5, but trail
   hand-reviewed masks by 17–21 pt at IoU 0.75.
-- **The gap to the champion** is precision (14.5 pt), small objects and two-three-wheelers.
 - **Open:**
   - The finalists' one read on `test-dev-full`.
   - A lower floor for 4K frames (+13.4 pt on the 4K video).

@@ -100,7 +100,7 @@ def main(trial: Path) -> None:
     prefix = field_prefix(trial.stem, scoring_set)
     annotations, categories = [with_prompt(a) for a in coco["annotations"]], coco["categories"]
     fields = {f"{prefix}_det": ("detections", detector_boxes(annotations))}
-    if any("segmentation" in a for a in annotations):  # the champion row has no masks
+    if any("segmentation" in a for a in annotations):  # a box-only trial has no masks
         fields[f"{prefix}_seg"] = ("segmentations", annotations)
     for field, (label_type, anns) in fields.items():
         eval_key = f"eval_{field}"

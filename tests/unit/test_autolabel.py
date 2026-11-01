@@ -92,9 +92,6 @@ def _config(**sections: object) -> LabelingConfig:
 
 
 def test_skip_reasons() -> None:
-    champion = _config(detector={"model": labeler.CHAMPION})
-    assert run.skip_reason(champion, "train-sample")
-    assert run.skip_reason(champion, "val-stride20") is None
     tracked = _config(tracker={"model": "botsort"})
     assert run.skip_reason(tracked, "val-stride20")
     assert run.skip_reason(tracked, "val-full") is None

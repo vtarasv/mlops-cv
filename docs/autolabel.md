@@ -312,7 +312,7 @@ tuned on.
 **Why:** to check that `train-sample`'s picks and floor hold on other videos.
 
 ```bash
-uv run --env-file .env python -m mlops_cv.autolabel configs/autolabel/finalists.yaml --set val-stride20
+uv run --env-file .env python -m mlops_cv.autolabel configs/autolabel/image-mode.yaml --set val-stride20
 ```
 
 | Trial | Box | F1 | P | R | mAP50-95 small | two-three-wheeler mAP50-95 | Max-F1 conf | F1 at 0.597 | ms |

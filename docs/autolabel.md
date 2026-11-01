@@ -77,9 +77,8 @@ uv run python -m mlops_cv.autolabel.visdrone_vid   # builds the scoring sets
 uv run --env-file .env python -m mlops_cv.autolabel configs/autolabel/detector.yaml --set train-sample
 ```
 
-`--limit N` keeps the first N frames, `--every N` every Nth frame of each video and `--sequence
-NAME` (repeatable) only those videos. A stage file lists its trials, and `defaults` apply to every
-trial key by key:
+`--limit N` keeps the first N frames and `--sequence NAME` (repeatable) only those videos. A stage
+file lists its trials, and `defaults` apply to every trial key by key:
 
 ```yaml
 defaults:
@@ -199,7 +198,7 @@ objects shrink further. SAHI-style slicing is the standard fix.
 
 Tiling was too slow in fp32 (6 h), so **SAM 3 runs in fp16 from this stage on**. On the untiled
 row, fp16 scores 66.3 against fp32's 66.5 and moves boxes 0.2 px at the median, at 484 ms instead
-of 1,600. bf16 moves them 1.4 px and costs small objects their match (62.6).
+of 1,600.
 
 ```bash
 uv run --env-file .env python -m mlops_cv.autolabel configs/autolabel/tiling.yaml --set train-sample
@@ -270,11 +269,8 @@ uv run --env-file .env python -m mlops_cv.autolabel configs/autolabel/segmenter.
 | SAM 3 tracker | 65.3 | 67.1 | 63.6 | 10.5 | 1,321 | 1,807 |
 | SAM 3 own masks | 64.4 | 65.7 | 63.2 | 10.2 | 285 | 766 |
 
-**Result:**
-- **SAM 2.1 S stays.** Its mask boxes score 0.1 pt above the detector's own boxes and lift
-  small-object AP from 10.7 to 11.6. L is 0.2 pt behind at 1.3× the time.
-- **SAM 3's own masks are coarse:** one 288 px map per box, upsampled 5–9×, which loses small
-  objects' tight boxes.
+**Result:** **SAM 2.1 S stays.** Its mask boxes score 0.1 pt above the detector's own boxes and lift
+small-object AP from 10.7 to 11.6. L is 0.2 pt behind at 1.3× the time.
 
 ## 7. Segmenters on ground-truth boxes
 
@@ -282,13 +278,13 @@ uv run --env-file .env python -m mlops_cv.autolabel configs/autolabel/segmenter.
 mask's tight box is compared with the box that prompted it. Its mask is also compared with
 [AeroVIS](https://arxiv.org/abs/2607.08075)'s hand-reviewed masks, on the 460 `train-sample`
 frames AeroVIS shares with VID. AeroVIS's masks were made by SAM 3 from these boxes, so the SAM 3
-row is circular. Reported only, never selects.
+row is circular.
 
 **Why:** to tell how much of the `seg` score is the detector and how much the masks.
 
 ```bash
 uv run --env-file .env python -m mlops_cv.autolabel.gt_box_check --set train-sample \
-  --aerovis <local AeroVIS folder>   # non-commercial: keep it local, never in the repo
+  --aerovis <local AeroVIS folder>   # non-commercial
 ```
 
 | Segmenter (GT boxes in) | Mean box IoU | F1 @ IoU 0.5 | F1 @ IoU 0.75 | Mask IoU vs AeroVIS |
@@ -315,41 +311,12 @@ tuned on.
 uv run --env-file .env python -m mlops_cv.autolabel configs/autolabel/image-mode.yaml --set val-stride20
 ```
 
-| Trial | Box | F1 | P | R | mAP50-95 small | two-three-wheeler mAP50-95 | Max-F1 conf | F1 at 0.597 | ms |
+| Trial | Box | F1 | P | R | mAP50-95 | mAP50-95 small | Max-F1 conf | F1 at 0.597 | ms |
 |---|---|---|---|---|---|---|---|---|---|
-| **Image mode** | seg | **61.8** | 62.6 | 61.0 | 9.5 | 11.6 | 0.604 | 61.7 | 1,665 |
+| **Image mode** | seg | **61.8** | 62.6 | 61.0 | 24.2 | 9.5 | 0.604 | 61.7 | 1,665 |
 
 **Result:**
 - **The floor transfers:** the max-F1 confidence here is 0.604, and cutting at 0.597 costs 0.1 pt.
-
-## 9. Reference row: Qwen3-VL-4B
-
-**What:** `Qwen/Qwen3-VL-4B-Instruct` in 8-bit, asked once per frame for boxes of the 10 raw names,
-greedy, up to 12,288 new tokens. A VLM gives no scores, so every box gets confidence 1.0 and there
-is no floor. Greedy, it never ends its answer: after 10–41 boxes it repeats the last ones until the
-token cap, about 13 min a frame. A loop guard stops it at the first repeated box. It runs on 2
-frames per video (112 frames), beside SAM 3 and GDINO-T rescored on the same frames. Reported
-only, never selects.
-
-**Why:** to see whether a general VLM is a cheaper or better labeler.
-
-```bash
-PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True uv run --env-file .env \
-  python -m mlops_cv.autolabel configs/autolabel/qwen3-vl.yaml --set train-sample --every 5
-```
-
-| Detector | det F1 | P | R | Boxes per frame | Detector s per frame |
-|---|---|---|---|---|---|
-| SAM 3 fp16 | 67.0 | 68.5 | 65.4 | 47.4 | 0.49 |
-| GDINO-T | 57.9 | 58.4 | 57.4 | 49.6 | 0.24 |
-| Qwen3-VL-4B 8-bit | 20.3 | 23.9 | 17.6 | 35.0 | 53 (p50) |
-
-**Result:**
-- **Qwen3-VL-4B is 47 pt behind SAM 3 and about 100× slower.** It labels more people than there
-  are (21 a frame against 17) and finds 1 vehicle in 9.
-- **The loop guard stopped 91 of 112 answers.** 11 still ran to the token cap without an exact
-  repeat; the run took 4 h 50 min. `expandable_segments` keeps a 2688 px frame at the cap inside
-  8 GB (7.4 GB peak).
 
 ## Sequence mode
 
@@ -364,37 +331,41 @@ of tracker:
   segmenter on every frame and link the boxes into tracks. Their `track_high_thresh` and
   `new_track_thresh` take the confidence floor, since their 0.25 default is YOLO's score scale.
 
+The input is image mode's stored detections: SAM 3 fp16 boxes on the 10 raw names after the box filter. On each key frame, the boxes at or above the 0.597 floor seed new tracks or refresh live ones.
+
 `seg` scores every frame's auto-labels; `det` scores the detector's boxes on key frames only.
-Tracks are scored by TrackEval (`track/HOTA`, `IDF1`, `MOTA`, ID switches) per merged class. The
-merged classes aren't VisDrone-MOT's, so these don't compare with published numbers. Stages select
-on `seg` F1. Every trial reads one stored detector pass over `val-full`.
+Tracks are scored by TrackEval (`track/HOTA`, `IDF1`, `MOTA`, ID switches) per merged class.
+Stages select on `seg` F1. Every trial reads one stored detector pass over `val-full`.
 
-## 10. Key-frame interval
+## 9. Key-frame interval
 
-**What:** EdgeTAM at K = 5, 10 (the incumbent) and 20, beside image mode run on every frame
+**What:** EdgeTAM at K = 1, 5, 10 and 20, beside image mode run on every frame
 without tracking (reported only).
 
 **Why:** fewer key frames are cheaper, but the masks drift for longer between them.
 
 ```bash
 uv run --env-file .env python -m mlops_cv.autolabel configs/autolabel/key-interval.yaml --set val-full
+uv run --env-file .env python -m mlops_cv.autolabel configs/autolabel/video-tracker-k1.yaml --set val-full
 ```
 
 | Trial | seg F1 | det F1 | HOTA | IDF1 | ID switches | ms per frame |
 |---|---|---|---|---|---|---|
 | Image mode, no tracking (reference) | 61.6 | 61.2 | — | — | — | 1,724 |
-| **K = 5** | **53.2** | 61.0 | 39.9 | 46.0 | 1,307 | 615 |
-| K = 10 (incumbent) | 52.2 | 61.0 | 40.8 | 48.2 | 922 | 579 |
+| **K = 1** | **55.5** | 61.2 | 37.6 | 41.7 | 3,937 | 993 |
+| K = 5 | 53.2 | 61.0 | 39.9 | 46.0 | 1,307 | 615 |
+| K = 10 | 52.2 | 61.0 | 40.8 | 48.2 | 922 | 579 |
 | K = 20 | 51.5 | 61.1 | 40.8 | 48.5 | 666 | 565 |
 
 **Result:**
-- **K = 5 wins**, 1.0 pt over K = 10.
-- **EdgeTAM costs 8–10 pt against labeling every frame**, on every video: its masks between key
+- **K = 1 wins**, 2.3 pt over K = 5, but loses on tracks: 3× the ID switches, since a track ends
+  after 2 missed key frames, now 2 frames instead of 10. The tracker-model stage ran at K = 5.
+- **EdgeTAM costs 6–10 pt against labeling every frame**, on every video: its masks between key
   frames fit worse than SAM 2.1 S's on fresh boxes.
 - **The 4K video (3840×2160) is floor-bound.** The detector reaches 43.9 there, but SAM 3 scores
   distant objects below 0.597, so the cut auto-labels keep 17.9% recall and score 29.7.
 
-## 11. Tracker model
+## 10. Tracker model
 
 **What:** at K = 5, EdgeTAM (the incumbent) against SAM 2.1 S video, and the box trackers BoT-SORT
 and ByteTrack on SAM 2.1 S masks.
@@ -403,7 +374,7 @@ and ByteTrack on SAM 2.1 S masks.
 mode's labels, may keep the quality and add ids.
 
 ```bash
-# expandable segments: SAM 2.1 S video at 145 live tracks otherwise runs out of memory
+# expandable segments: SAM 2.1 S video may run out of memory
 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True uv run --env-file .env \
   python -m mlops_cv.autolabel configs/autolabel/tracker-model.yaml --set val-full
 ```
@@ -421,7 +392,7 @@ PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True uv run --env-file .env \
 - **SAM 2.1 S video recovers 3.2 pt over EdgeTAM**, but its masks still drift between key frames.
 - **No latency win.** BoT-SORT runs the detector and segmenter on every frame, as image mode does.
 
-## 12. Confidence floor
+## 11. Confidence floor
 
 **What:** BoT-SORT at floors 0.497, 0.597 (the incumbent) and 0.697.
 
@@ -434,7 +405,7 @@ uv run --env-file .env python -m mlops_cv.autolabel configs/autolabel/confidence
 | Floor | seg F1 | P | R | F1 at the floor | HOTA | IDF1 | ID switches |
 |---|---|---|---|---|---|---|---|
 | 0.497 | 61.7 | 62.9 | 60.6 | 60.9 | 47.5 | 59.2 | 527 |
-| **0.597 (incumbent)** | **61.3** | 61.9 | 60.8 | 61.3 | 47.8 | 60.7 | 394 |
+| **0.597** | **61.3** | 61.9 | 60.8 | 61.3 | 47.8 | 60.7 | 394 |
 | 0.697 | 58.3 | 65.9 | 52.2 | 58.3 | 45.1 | 57.6 | 405 |
 
 `seg` F1 per video, each at its own max-F1 point:
@@ -472,8 +443,6 @@ make autolabel-view RUN=<MLflow run id> # a run in aerial-auto-label
   confidence, so the scores above come from the validator alone.
 - Loading takes minutes: 2.3 min for one `train-sample` trial, 14 min for a sequence-mode trial on
   `val-full`.
-- FiftyOne 1.22.1 keeps a view of the whole frame behind every mask crop, which filled 24 GB on 4K
-  frames. The loader copies each crop.
 
 ## Summary
 
@@ -486,8 +455,8 @@ make autolabel-view RUN=<MLflow run id> # a run in aerial-auto-label
   - Scoring every box and dropping the nested-box rule: 29.6 → 58.0 on Grounding DINO-T.
   - SAM 3 as the detector: +8.5 pt.
   - A box tracker over video trackers: +8.1 pt.
-- **What didn't help:** plain nouns or merged-class names, tiling, bf16, a larger segmenter, SAM 3's
-  own masks, video trackers (EdgeTAM, SAM 2.1 video), another floor, and Qwen3-VL-4B (20.3).
+- **What didn't help:** plain nouns or merged-class names, tiling, a larger segmenter, SAM 3's
+  own masks, video trackers (EdgeTAM, SAM 2.1 video).
 - **Masks are not the bottleneck.** On ground-truth boxes they keep 97–98% at IoU 0.5, but trail
   hand-reviewed masks by 17–21 pt at IoU 0.75.
 - **Open:**

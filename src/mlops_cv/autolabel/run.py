@@ -11,7 +11,6 @@ from __future__ import annotations
 import argparse
 import gc
 import hashlib
-import itertools
 import json
 import logging
 import os
@@ -409,12 +408,6 @@ def run_trial(
     logger.info(f"{name}: {json.dumps(metrics, indent=1)}")
 
 
-def every_nth(images: list[visdrone_vid.Image], n: int) -> list[visdrone_vid.Image]:
-    """Each sequence's 1st, (n+1)th, ... frame; ``images`` are grouped by sequence."""
-    sequences = itertools.groupby(images, key=lambda im: im.sequence)
-    return [im for _, frames in sequences for im in list(frames)[::n]]
-
-
 def skip_reason(config: LabelingConfig, scoring_set: str) -> str | None:
     """Why a trial can't run on a scoring set, or ``None``."""
     if config.tracker and scoring_set not in visdrone_vid.SEQUENCE_SETS:
@@ -429,7 +422,6 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--set", choices=visdrone_vid.SETS, default="train-sample", dest="scoring_set")
     p.add_argument("--limit", type=int, help="label and score only the first N frames")
     p.add_argument("--sequence", action="append", dest="sequences", help="only these sequences")
-    p.add_argument("--every", type=int, help="only every Nth frame of each sequence, its 1st first")
     args = p.parse_args(argv)
 
     os.environ["MLFLOW__EXPERIMENT"] = AUTOLABEL_EXPERIMENT
@@ -442,9 +434,7 @@ def main(argv: list[str] | None = None) -> int:
     images = visdrone_vid.prepare(settings.data.raw_dir, settings.data.autolabel_dir, scoring_set)
     if args.sequences:
         images = [im for im in images if im.sequence in args.sequences]
-    if args.every:
-        images = every_nth(images, args.every)
-    full = args.limit is None and not args.sequences and not args.every
+    full = args.limit is None and not args.sequences
     images = images[: args.limit]
 
     from mlops_cv.tracking import client

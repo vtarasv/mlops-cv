@@ -6,9 +6,7 @@ Each stage is timed on its own, the GPU synchronised at its edges.
 
 from __future__ import annotations
 
-import json
 import logging
-import re
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -37,8 +35,6 @@ BOX_TRACKERS = ("botsort", "bytetrack")
 OVERLAP, EDGE_MARGIN, TILE_NMS_IOU = 0.2, 2, 0.5
 # The comparator merge: a same-class box this share inside a larger one is a cut-off piece of it.
 CONTAINED_IOS = 0.85
-# A VLM's answer budget: ~33 tokens a box, room for VisDrone's densest frames (~320 boxes)
-VLM_MAX_TOKENS = 12288
 
 # rows, labels and, keeping SAM 3's own masks, their low-res mask probabilities
 Detect = Callable[[np.ndarray], tuple[Any, ...]]
@@ -64,8 +60,7 @@ class Detector(BaseModel):
     threshold: float = CONF  # the detector's own score floor; it keeps its top ``MAX_DET``
     imgsz: int | None = None  # YOLOE's input size; ``None`` is 640, its training size
     tiling: Tiling | None = None
-    # SAM 3's weights (``None`` is fp32); ``int8`` loads a Qwen3-VL through bitsandbytes
-    dtype: Literal["bfloat16", "float16", "int8"] | None = None
+    dtype: Literal["bfloat16", "float16"] | None = None  # SAM 3's weights; ``None`` is fp32
 
 
 class BoxFilter(BaseModel):
@@ -409,91 +404,9 @@ def yoloe(cfg: Detector, device: str) -> Detect:
     return detect
 
 
-def vlm_entries(text: str) -> list[tuple[str, tuple[float, ...]]]:
-    """A Qwen3-VL answer's ``(label, bbox_2d)`` entries; each ``{...}`` parses alone.
-
-    So an answer cut at the token budget keeps its whole entries.
-    """
-    entries = []
-    for entry in re.findall(r"\{[^{}]*\}", text):
-        try:
-            item = json.loads(entry)
-            entries.append((str(item["label"]), tuple(float(v) for v in item["bbox_2d"])))
-        except (ValueError, KeyError, TypeError):
-            continue
-    return entries
-
-
-def vlm_rows(text: str, cfg: Detector, width: int, height: int) -> tuple[np.ndarray, list[str]]:
-    """A Qwen3-VL answer's boxes, 0-1000 -> px, conf 1.0; unknown labels and broken entries go."""
-    rows, labels = [], []
-    for label, box in vlm_entries(text):
-        if label in cfg.prompts and len(box) == 4:
-            x1, y1, x2, y2 = np.array(box) / 1000 * [width, height, width, height]
-            rows.append([x1, y1, x2, y2, 1.0, MERGED[cfg.prompts[label]]])
-            labels.append(label)
-    return np.array(rows, np.float32).reshape(-1, 6)[:MAX_DET], labels[:MAX_DET]
-
-
-class RepeatedBox:
-    """A transformers stopping criterion: stop at the first entry (label and box) seen before.
-
-    Greedy Qwen3-VL-4B repeats its last box or two up to the token cap instead of ending.
-    Batch 1; ``decode`` turns token ids into text, ``start`` is the prompt's length.
-    """
-
-    def __init__(self, decode: Callable[[Any], str], start: int) -> None:
-        self.decode, self.start, self.hit = decode, start, False
-
-    def __call__(self, input_ids: Any, scores: Any, **kwargs: Any) -> bool:
-        if "}" in self.decode(input_ids[0, -1:]):
-            entries = vlm_entries(self.decode(input_ids[0, self.start :]))
-            self.hit = len(set(entries)) < len(entries)
-        return self.hit
-
-
-def qwen3_vl(cfg: Detector, device: str) -> Detect:
-    """Qwen3-VL at native resolution, greedy, all prompts in one question; no scores."""
-    import torch
-    from transformers import AutoProcessor, BitsAndBytesConfig, Qwen3VLForConditionalGeneration
-
-    processor: Any = AutoProcessor.from_pretrained(cfg.model)
-    quant = BitsAndBytesConfig(load_in_8bit=True) if cfg.dtype == "int8" else None
-    dtype = "auto" if quant else getattr(torch, cfg.dtype or "bfloat16")
-    model: Any = Qwen3VLForConditionalGeneration.from_pretrained(
-        cfg.model, dtype=dtype, quantization_config=quant, device_map=device
-    ).eval()
-    # The Qwen3-VL report's ODinW template
-    names = ", ".join(cfg.prompts)
-    question = (
-        f'Locate every instance that belongs to the following categories: "{names}". '
-        "Report bbox coordinates in JSON format."
-    )
-    content = [{"type": "image"}, {"type": "text", "text": question}]
-    chat = [{"role": "user", "content": content}]
-    prompt = processor.apply_chat_template(chat, tokenize=False, add_generation_prompt=True)
-
-    def detect(image: np.ndarray) -> tuple[np.ndarray, list[str]]:
-        h, w = image.shape[:2]
-        inputs = processor(text=[prompt], images=[image], return_tensors="pt").to(device)
-        start = inputs["input_ids"].shape[1]
-        guard = RepeatedBox(processor.decode, start)
-        with torch.inference_mode():
-            out = model.generate(
-                **inputs, max_new_tokens=VLM_MAX_TOKENS, do_sample=False, stopping_criteria=[guard]
-            )
-        new = out.shape[1] - start
-        end = "loop guard" if guard.hit else "token cap" if new >= VLM_MAX_TOKENS else "eos"
-        logger.info(f"  qwen3-vl: {new} new tokens, stopped by {end}")
-        answer = processor.decode(out[0, start:], skip_special_tokens=True)
-        return vlm_rows(answer, cfg, w, h)
-
-    return detect
-
-
 def detector(cfg: Detector, device: str) -> Detect:
     """The detector's loader, picked by its model name."""
-    loaders = {"yoloe": yoloe, "owlv2": owlv2, "sam3": sam3, "Qwen3-VL": qwen3_vl}
+    loaders = {"yoloe": yoloe, "owlv2": owlv2, "sam3": sam3}
     load = next((f for key, f in loaders.items() if key in cfg.model), grounding_dino)
     return load(cfg, device)
 

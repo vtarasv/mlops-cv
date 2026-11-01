@@ -331,31 +331,36 @@ of tracker:
   segmenter on every frame and link the boxes into tracks. Their `track_high_thresh` and
   `new_track_thresh` take the confidence floor, since their 0.25 default is YOLO's score scale.
 
+The input is image mode's stored detections: SAM 3 fp16 boxes on the 10 raw names after the box filter. On each key frame, the boxes at or above the 0.597 floor seed new tracks or refresh live ones.
+
 `seg` scores every frame's auto-labels; `det` scores the detector's boxes on key frames only.
 Tracks are scored by TrackEval (`track/HOTA`, `IDF1`, `MOTA`, ID switches) per merged class.
 Stages select on `seg` F1. Every trial reads one stored detector pass over `val-full`.
 
 ## 9. Key-frame interval
 
-**What:** EdgeTAM at K = 5, 10 (the incumbent) and 20, beside image mode run on every frame
+**What:** EdgeTAM at K = 1, 5, 10 and 20, beside image mode run on every frame
 without tracking (reported only).
 
 **Why:** fewer key frames are cheaper, but the masks drift for longer between them.
 
 ```bash
 uv run --env-file .env python -m mlops_cv.autolabel configs/autolabel/key-interval.yaml --set val-full
+uv run --env-file .env python -m mlops_cv.autolabel configs/autolabel/video-tracker-k1.yaml --set val-full
 ```
 
 | Trial | seg F1 | det F1 | HOTA | IDF1 | ID switches | ms per frame |
 |---|---|---|---|---|---|---|
 | Image mode, no tracking (reference) | 61.6 | 61.2 | — | — | — | 1,724 |
-| **K = 5** | **53.2** | 61.0 | 39.9 | 46.0 | 1,307 | 615 |
-| K = 10 (incumbent) | 52.2 | 61.0 | 40.8 | 48.2 | 922 | 579 |
+| **K = 1** | **55.5** | 61.2 | 37.6 | 41.7 | 3,937 | 993 |
+| K = 5 | 53.2 | 61.0 | 39.9 | 46.0 | 1,307 | 615 |
+| K = 10 | 52.2 | 61.0 | 40.8 | 48.2 | 922 | 579 |
 | K = 20 | 51.5 | 61.1 | 40.8 | 48.5 | 666 | 565 |
 
 **Result:**
-- **K = 5 wins**, 1.0 pt over K = 10.
-- **EdgeTAM costs 8–10 pt against labeling every frame**, on every video: its masks between key
+- **K = 1 wins**, 2.3 pt over K = 5, but loses on tracks: 3× the ID switches, since a track ends
+  after 2 missed key frames, now 2 frames instead of 10. The tracker-model stage ran at K = 5.
+- **EdgeTAM costs 6–10 pt against labeling every frame**, on every video: its masks between key
   frames fit worse than SAM 2.1 S's on fresh boxes.
 - **The 4K video (3840×2160) is floor-bound.** The detector reaches 43.9 there, but SAM 3 scores
   distant objects below 0.597, so the cut auto-labels keep 17.9% recall and score 29.7.
@@ -369,7 +374,7 @@ and ByteTrack on SAM 2.1 S masks.
 mode's labels, may keep the quality and add ids.
 
 ```bash
-# expandable segments: SAM 2.1 S video at 145 live tracks otherwise runs out of memory
+# expandable segments: SAM 2.1 S video may run out of memory
 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True uv run --env-file .env \
   python -m mlops_cv.autolabel configs/autolabel/tracker-model.yaml --set val-full
 ```
@@ -400,7 +405,7 @@ uv run --env-file .env python -m mlops_cv.autolabel configs/autolabel/confidence
 | Floor | seg F1 | P | R | F1 at the floor | HOTA | IDF1 | ID switches |
 |---|---|---|---|---|---|---|---|
 | 0.497 | 61.7 | 62.9 | 60.6 | 60.9 | 47.5 | 59.2 | 527 |
-| **0.597 (incumbent)** | **61.3** | 61.9 | 60.8 | 61.3 | 47.8 | 60.7 | 394 |
+| **0.597** | **61.3** | 61.9 | 60.8 | 61.3 | 47.8 | 60.7 | 394 |
 | 0.697 | 58.3 | 65.9 | 52.2 | 58.3 | 45.1 | 57.6 | 405 |
 
 `seg` F1 per video, each at its own max-F1 point:
@@ -438,8 +443,6 @@ make autolabel-view RUN=<MLflow run id> # a run in aerial-auto-label
   confidence, so the scores above come from the validator alone.
 - Loading takes minutes: 2.3 min for one `train-sample` trial, 14 min for a sequence-mode trial on
   `val-full`.
-- FiftyOne 1.22.1 keeps a view of the whole frame behind every mask crop, which filled 24 GB on 4K
-  frames. The loader copies each crop.
 
 ## Summary
 
@@ -453,7 +456,7 @@ make autolabel-view RUN=<MLflow run id> # a run in aerial-auto-label
   - SAM 3 as the detector: +8.5 pt.
   - A box tracker over video trackers: +8.1 pt.
 - **What didn't help:** plain nouns or merged-class names, tiling, a larger segmenter, SAM 3's
-  own masks, video trackers (EdgeTAM, SAM 2.1 video) and another floor.
+  own masks, video trackers (EdgeTAM, SAM 2.1 video).
 - **Masks are not the bottleneck.** On ground-truth boxes they keep 97–98% at IoU 0.5, but trail
   hand-reviewed masks by 17–21 pt at IoU 0.75.
 - **Open:**

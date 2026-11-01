@@ -235,10 +235,9 @@ def test_top_rows_keep_the_best_boxes_above_the_floor(monkeypatch: pytest.Monkey
 
 
 def test_detector_loader_is_picked_by_model_name(monkeypatch: pytest.MonkeyPatch) -> None:
-    for name in ("grounding_dino", "owlv2", "sam3", "yoloe", "qwen3_vl"):
+    for name in ("grounding_dino", "owlv2", "sam3", "yoloe"):
         monkeypatch.setattr(labeler, name, lambda cfg, device, name=name: name)
     pick = {
-        "Qwen/Qwen3-VL-4B-Instruct": "qwen3_vl",
         "IDEA-Research/grounding-dino-base": "grounding_dino",
         "google/owlv2-base-patch16-ensemble": "owlv2",
         "facebook/sam3": "sam3",
@@ -246,34 +245,6 @@ def test_detector_loader_is_picked_by_model_name(monkeypatch: pytest.MonkeyPatch
     }
     for model, loader in pick.items():
         assert labeler.detector(labeler.Detector(model=model), "cpu") == loader
-
-
-def test_vlm_rows_scale_boxes_and_keep_whole_entries_of_a_cut_answer() -> None:
-    cfg = labeler.Detector(model="m", prompts={"car": "vehicle", "people": "person"})
-    answer = (
-        '```json\n[\n\t{"bbox_2d": [100, 200, 300, 400], "label": "car"},\n'
-        '\t{"bbox_2d": [0, 0, 10, 10], "label": "boat"},\n'
-        '\t{"label": "people", "bbox_2d": [500, 500, 1000, 1000]},\n'
-        '\t{"bbox_2d": [1, 2, 3], "label": "car"},\n'
-        '\t{"bbox_2d": [7, 7, 9'
-    )
-    rows, labels = labeler.vlm_rows(answer, cfg, 2000, 1000)
-    assert labels == ["car", "people"]
-    assert rows.tolist() == [
-        [200, 200, 600, 400, 1, labeler.MERGED["vehicle"]],
-        [1000, 500, 2000, 1000, 1, labeler.MERGED["person"]],
-    ]
-    assert labeler.vlm_rows("no boxes", cfg, 1, 1)[0].shape == (0, 6)
-
-
-def test_repeated_box_guard_stops_at_the_first_repeated_entry() -> None:
-    car = '{"bbox_2d": [1, 2, 3, 4], "label": "car"}'
-    van = '{"bbox_2d": [1, 2, 3, 4], "label": "van"}'
-    tokens = ["<prompt>", "[", car, ",", van, ",", car]
-    guard = labeler.RepeatedBox("".join, start=1)
-    ids = np.array([tokens], dtype=object)
-    stops = [guard(ids[:, :n], None) for n in range(2, len(tokens) + 1)]
-    assert stops == [False] * 5 + [True]
 
 
 def test_an_unset_detector_field_keeps_the_stored_detections_key() -> None:
@@ -344,11 +315,6 @@ def _image(
         sequence,
         1,
     )
-
-
-def test_every_nth_frame_restarts_at_each_sequence() -> None:
-    images = [_image(f"{q}{i}", [], sequence=q) for q, n in (("a", 10), ("b", 3)) for i in range(n)]
-    assert [im.name for im in run.every_nth(images, 5)] == ["a0", "a5", "b0"]
 
 
 def test_cap_subset_and_recall_ceiling() -> None:

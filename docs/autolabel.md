@@ -39,8 +39,7 @@ tuned on it would learn the wrong labeling protocol.
   The F1 is read at the validator's max-F1 point. mAP and per-class scores are recorded but never
   decide.
 - **Win margin: 0.5 pt.** A new setting replaces the current one only if it wins by 0.5 pt. A
-  rerun gives the same score (nothing is trained), so there is no noise floor to measure; the
-  margin is [tuning](tuning.md)'s. Latency is reported and never decides.
+  rerun gives the same score (nothing is trained), so there is no noise floor to measure.
 - **A few settings at a time.** Each stage changes one or two settings, keeps the best and passes
   it on. Image-mode stages run on `train-sample`, sequence-mode stages on `val-full`.
 - **Every box is scored.** The detector keeps its top 300 boxes above 0.001, so the validator's
@@ -48,9 +47,8 @@ tuned on it would learn the wrong labeling protocol.
   floor**, which cuts only the stored auto-labels.
 - **Stored detections.** A run over a whole set stores the detector's raw boxes in
   `<set>/detections/<hash of the detector settings>.npz`. A later trial with the same detector
-  reads them and reruns only the filter and the segmenter, so a filter stage rescores on CPU in
-  minutes. The key ignores the detector's code: delete the file after changing it.
-- **Starting point.** The smoke chain: Grounding DINO-T at a 0.25 floor, NMS 0.6, the keep-outer
+  reads them and reruns only the filter and the segmenter.
+- **Starting point.** Grounding DINO-T at a 0.25 floor, NMS 0.6, the keep-outer
   nested-box rule, a 0.4 score floor, then SAM 2.1 S.
 - **Latency** is batch 1 per frame, decoded image to RLE, with the first 3 frames left out, on the
   laptop in [tuning](tuning.md#hardware).
@@ -63,7 +61,7 @@ evaluator is the same, but the boxes fed to it differ:
 | | Repo (training, tuning, evaluation) | Auto-labeling |
 |---|---|---|
 | Ground truth inside ignored regions | kept | dropped when ≥ half its area is inside |
-| Predictions inside ignored regions | kept, so a hit is a false positive | dropped by the same rule |
+| Predictions inside ignored regions | kept (hit is a false positive) | dropped by the same rule |
 
 Ignored regions are crowds and distant traffic the annotators left unlabeled. A zero-shot
 detector fires there, and the repo's convention would charge it false positives for real objects,
@@ -71,7 +69,8 @@ so the auto-labeler follows VisDrone's own toolkit and drops both sides.
 
 ## How to run
 
-`.env` sets `DATA__RAW_DIR` (raw VisDrone-VID) and `DATA__AUTOLABEL_DIR` (the scoring sets).
+`.env` sets `DATA__RAW_DIR` (raw VisDrone-VID) and `DATA__AUTOLABEL_DIR` (the scoring sets);
+see [data](data.md) for download instructions.
 
 ```bash
 uv run python -m mlops_cv.autolabel.visdrone_vid   # builds the scoring sets
@@ -100,7 +99,7 @@ Each section below gives the command that produced its table. Stage files are in
 0.7} × the nested-box rule {off, keep outer, keep inner}. The rule looks at two boxes where one
 lies at least 80% inside the other and keeps either the outer or the inner one. Every filter also
 drops boxes under 8 px on a side or over 5% of the frame, which removes almost no ground truth.
-The incumbent is the smoke filter (NMS 0.6, keep outer).
+The incumbent is the starting point's filter (NMS 0.6, keep outer).
 
 **Why:** the detector now keeps every box down to 0.001, so the filter alone decides what survives.
 
@@ -127,7 +126,7 @@ The detector returns 300 boxes per frame; the ground truth holds 49.
 
 **Result:**
 - **NMS 0.5 with no nested-box rule wins**, 14.2 pt over the incumbent.
-- **The old floors were the bottleneck.** The smoke filter scored 29.6 at its old floors (0.25 and
+- **The old floors were the bottleneck.** The incumbent scored 29.6 at its old floors (0.25 and
   0.4), 43.8 at 0.001, and dropping the nested-box rule takes it to 58.0.
 - **The nested-box rule hurts both ways.** It ignores scores, so a low-scoring group box deletes
   the objects inside it (keep outer), and a low-scoring fragment deletes the object around it (keep
@@ -307,8 +306,8 @@ uv run --env-file .env python -m mlops_cv.autolabel.gt_box_check --set train-sam
 
 ## 8. Finalists on `val-stride20`
 
-**What:** the winning image-mode config (`configs/autolabel/image-mode.yaml`) and the smoke chain
-on 146 frames never tuned on.
+**What:** the winning image-mode config (`configs/autolabel/image-mode.yaml`) on 146 frames never
+tuned on.
 
 **Why:** to check that `train-sample`'s picks and floor hold on other videos.
 
@@ -318,11 +317,9 @@ uv run --env-file .env python -m mlops_cv.autolabel configs/autolabel/finalists.
 
 | Trial | Box | F1 | P | R | mAP50-95 small | two-three-wheeler mAP50-95 | Max-F1 conf | F1 at 0.597 | ms |
 |---|---|---|---|---|---|---|---|---|---|
-| Smoke chain | seg | 28.5 | 82.3 | 17.2 | 1.2 | 4.3 | ≤ 0.40 | — | 341 |
 | **Image mode** | seg | **61.8** | 62.6 | 61.0 | 9.5 | 11.6 | 0.604 | 61.7 | 1,665 |
 
 **Result:**
-- **Image mode beats the smoke chain by 33 pt.**
 - **The floor transfers:** the max-F1 confidence here is 0.604, and cutting at 0.597 costs 0.1 pt.
 
 ## 9. Reference row: Qwen3-VL-4B

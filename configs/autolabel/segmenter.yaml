@@ -1,6 +1,6 @@
 # Image-mode stage 6: the segmenter on stage 5's winner, SAM 3 end to end on the 10 raw names,
 # untiled, fp16, NMS 0.5 (boxes from its store, except own masks, which rerun the detector).
-# SAM 2.1 S (the smoke's, the incumbent) and L, SAM 3's tracker prompted with the kept boxes
+# SAM 2.1 S (the incumbent) and L, SAM 3's tracker prompted with the kept boxes
 # (segmenters in fp32), and SAM 3's own masks. The stored auto-labels are cut at the carried
 # confidence floor.
 defaults:

@@ -64,7 +64,7 @@ def strided(stride: int) -> Callable[[list[int]], list[int]]:
 # Scoring set -> (YOLO split, frame picker per sequence).
 SETS: dict[str, tuple[str, Callable[[list[int]], list[int]]]] = {
     "train-sample": ("train", evenly_spaced(SAMPLE_FRAMES)),  # image mode tunes here
-    "val-stride20": ("val", strided(20)),  # the champion meets the image-mode finalists here
+    "val-stride20": ("val", strided(20)),  # the image-mode finalists meet here
     "val-full": ("val", strided(1)),  # sequence mode tunes here
     "test-dev-full": ("test", strided(1)),  # the finalists are reported here once
 }

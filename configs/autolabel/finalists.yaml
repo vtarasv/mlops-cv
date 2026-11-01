@@ -1,6 +1,6 @@
 # Image-mode finalists on val-stride20: the smoke chain (GDINO-T at its 0.25 floor -> the smoke
-# box filter -> SAM 2.1 S) and the tuning grid's winner (image-mode.yaml), beside the champion
-# YOLO26 (boxes only, unfiltered). The winner also reads P, R and F1 at its confidence floor.
+# box filter -> SAM 2.1 S) and the tuning grid's winner (image-mode.yaml).
+# The winner also reads P, R and F1 at its confidence floor.
 trials:
   - name: smoke
     detector:
@@ -37,5 +37,3 @@ trials:
     box_filter: {min_side: 8, max_area: 0.05, nms_iou: 0.5}
     segmenter: facebook/sam2.1-hiera-small
     confidence_floor: 0.597
-  - name: champion
-    detector: {model: champion}

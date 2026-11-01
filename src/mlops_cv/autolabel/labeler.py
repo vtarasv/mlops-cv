@@ -1,6 +1,6 @@
 """The labeling config and the auto-labeler it builds: one decoded image -> boxes and RLE masks.
 
-Every model loads through transformers, except YOLOE and the champion's YOLO26 (ultralytics).
+Every model loads through transformers, except YOLOE (ultralytics).
 Each stage is timed on its own, the GPU synchronised at its edges.
 """
 
@@ -26,8 +26,6 @@ logger = logging.getLogger(__name__)
 MergedClass = Literal["person", "vehicle", "two-three-wheeler"]
 MERGED = {name: c for c, name in YOLO_NAMES.items()}
 
-# The champion's YOLO26, resolved from the registry: the supervised reference row.
-CHAMPION = "champion"
 # Boxes per mask-decoder pass or mask upsample: bounds the full-resolution masks' memory.
 SEGMENT_CHUNK = 32
 # The segmenter value that keeps the detector's own masks (SAM 3 end to end).
@@ -61,7 +59,7 @@ class Tiling(BaseModel):
 class Detector(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    model: str  # a transformers repo id, an ultralytics YOLOE weights file, or ``champion``
+    model: str  # a transformers repo id or an ultralytics YOLOE weights file
     prompts: dict[str, MergedClass] = {}  # prompt text -> the merged class its boxes get
     threshold: float = CONF  # the detector's own score floor; it keeps its top ``MAX_DET``
     imgsz: int | None = None  # YOLOE's input size; ``None`` is 640, its training size
@@ -124,7 +122,7 @@ class Labels:
     """One image's auto-labels: the kept detector rows and, with a segmenter, a mask per row."""
 
     rows: np.ndarray  # (n, 6) x1 y1 x2 y2 conf merged-cls, source pixels
-    labels: list[str]  # the detector's label per row (a prompt, or a champion class)
+    labels: list[str]  # the detector's label per row (its prompt)
     masks: list[dict[str, Any]] | None  # COCO compressed RLE per row
     ms: dict[str, float]  # wall-clock per stage
     detected: int  # detector boxes before the filter
@@ -388,7 +386,7 @@ def sam3(cfg: Detector, device: str, masks: bool = False) -> Detect:
 
 
 def yoloe(cfg: Detector, device: str) -> Detect:
-    """YOLOE text-prompted, with val's floor, cap and one-to-many head, like the champion."""
+    """YOLOE text-prompted, with val's floor, cap and one-to-many head."""
     from ultralytics import YOLOE
 
     model = YOLOE(cfg.model)
@@ -495,43 +493,9 @@ def qwen3_vl(cfg: Detector, device: str) -> Detect:
 
 def detector(cfg: Detector, device: str) -> Detect:
     """The detector's loader, picked by its model name."""
-    if cfg.model == CHAMPION:
-        return champion(device)
     loaders = {"yoloe": yoloe, "owlv2": owlv2, "sam3": sam3, "Qwen3-VL": qwen3_vl}
     load = next((f for key, f in loaders.items() if key in cfg.model), grounding_dino)
     return load(cfg, device)
-
-
-def champion(device: str) -> Detect:
-    """The champion YOLO26 at its training imgsz, with val's floor, cap and one-to-many head."""
-    from ultralytics import YOLO
-
-    from mlops_cv.config import get_settings
-    from mlops_cv.optimize.variants import SERVER
-    from mlops_cv.tracking import champion as champion_mod
-    from mlops_cv.tracking import client
-    from mlops_cv.tracking.resolve import resolve_model, source_run_id
-
-    uri = client.champion_uri(get_settings(), SERVER)
-    weights, _ = resolve_model(uri)
-    imgsz = champion_mod.training_imgsz(source_run_id(uri))
-    model = YOLO(str(weights))
-
-    def detect(image: np.ndarray) -> tuple[np.ndarray, list[str]]:
-        bgr = np.ascontiguousarray(image[..., ::-1])
-        result: Any = model.predict(
-            bgr,
-            imgsz=imgsz,
-            device=device,
-            conf=CONF,
-            max_det=MAX_DET,
-            end2end=False,
-            verbose=False,
-        )[0]
-        rows = result.boxes.data.cpu().numpy()
-        return rows, [YOLO_NAMES[int(c)] for c in rows[:, 5]]
-
-    return detect
 
 
 def rle(masks: Any) -> list[dict[str, Any]]:

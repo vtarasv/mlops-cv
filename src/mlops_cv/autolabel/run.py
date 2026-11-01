@@ -27,7 +27,6 @@ import yaml
 from mlops_cv.autolabel import sequence, track_scores, visdrone_vid
 from mlops_cv.autolabel.labeler import (
     BOX_TRACKERS,
-    CHAMPION,
     OWN,
     Labeler,
     LabelingConfig,
@@ -418,8 +417,6 @@ def every_nth(images: list[visdrone_vid.Image], n: int) -> list[visdrone_vid.Ima
 
 def skip_reason(config: LabelingConfig, scoring_set: str) -> str | None:
     """Why a trial can't run on a scoring set, or ``None``."""
-    if config.detector.model == CHAMPION and visdrone_vid.SETS[scoring_set][0] == "train":
-        return f"the champion trained on {scoring_set}'s split"
     if config.tracker and scoring_set not in visdrone_vid.SEQUENCE_SETS:
         return f"tracking needs whole sequences: {', '.join(visdrone_vid.SEQUENCE_SETS)}"
     return None

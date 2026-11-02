@@ -71,11 +71,6 @@ def params(config: LabelingConfig) -> dict[str, Any]:
     }
 
 
-def track_rows(labels: Labels) -> np.ndarray:
-    """``(n, 7)``: the auto-labels' boxes, conf, class and track id."""
-    return np.column_stack([labels.rows, np.asarray(labels.track_ids)])
-
-
 def uncapped(images: list[visdrone_vid.Image], cap: int) -> list[str]:
     """The images where no raw category has more than ``cap`` ground-truth boxes."""
     return [
@@ -283,7 +278,9 @@ def run_trial(
     else:
         labels, live = label_sequences(config, images, device, detections, store)
         pairs = zip(images, labels, strict=True)
-        tracked = [visdrone_vid.drop_ignored(track_rows(lab), im) for im, lab in pairs]
+        # (n, 7) rows: x1 y1 x2 y2 conf class track-id
+        rows = [(im, np.column_stack([lab.rows, np.asarray(lab.track_ids)])) for im, lab in pairs]
+        tracked = [visdrone_vid.drop_ignored(r, im) for im, r in rows]
         metrics = (
             amortised_latency(labels, config.tracker)
             | track_scores.readings(images, tracked)

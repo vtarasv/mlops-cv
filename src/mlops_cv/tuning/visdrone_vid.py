@@ -7,7 +7,6 @@ frames and keeps only the ground truth the rule keeps; labeling trials score aga
 
 from __future__ import annotations
 
-import argparse
 import logging
 import shutil
 from collections import defaultdict
@@ -209,9 +208,6 @@ def build_rule_split(raw_dir: Path, subset_dir: Path, split: str) -> tuple[int, 
 
 @exits_on_startup_error
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description="Write the subset's VisDrone-rule train and val.")
-    p.parse_args(argv)
-
     from mlops_cv.config import get_settings
 
     settings = get_settings()

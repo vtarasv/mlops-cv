@@ -34,7 +34,7 @@ uv run python -m mlops_cv.evaluation --model runs:/<run_id>/weights/best.pt --ru
 A run trains for one **deployment target** (`--target server|edge`, default `server`), which
 picks the registered model (`aerial-object-detector-server` / `-edge`) and the production default
 size: server `yolo26m`, edge `yolo26n`, both at imgsz 1280 with the shared recipe
-([tuning.md](tuning/yolo26-visdrone-vid.md#final-recipe)). The model is evaluated, exported and served at the imgsz it
+([tuning](tuning/yolo26-visdrone-vid.md#final-recipe)). The model is evaluated, exported and served at the imgsz it
 trained at, read back from the run's `imgsz` param. CLI flags
 `--model --epochs --imgsz --batch --seed --device --no-amp` override those defaults. `--set key=value` (repeatable, YAML-parsed) passes any other `model.train()` argument,
 and `--no-register` makes the run a [trial](tuning/yolo26-visdrone-vid.md). The dataset is always `DATA__SUBSET_DIR`,

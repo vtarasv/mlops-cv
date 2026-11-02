@@ -6,7 +6,7 @@
 	streaming-up streaming-down streaming-logs \
 	link-sim link-produce stream-view \
 	serving-up serving-down serving-logs \
-	fiftyone-up fiftyone-down fiftyone-logs autolabel-view \
+	fiftyone-up fiftyone-down fiftyone-logs \
 	stack-up stack-down
 
 MLFLOW_COMPOSE := docker compose -f docker-compose/docker-compose.mlflow.yml --env-file docker-compose/.env.mlflow
@@ -244,11 +244,6 @@ fiftyone-down:
 
 fiftyone-logs:
 	$(FIFTYONE_COMPOSE) logs -f
-
-# Load labeling trial RUN=<MLflow run id> into the FiftyOne App (reloading overwrites its fields).
-autolabel-view: mlflow-up fiftyone-up
-	args=$$(uv run python -m mlops_cv.tuning.autolabel_visdrone_vid.view "$(RUN)") && \
-		$(FIFTYONE_COMPOSE) exec fiftyone python /opt/load_trial.py $$args
 
 # Everything at once: MLflow + CT images + Airflow + streaming + serving.
 stack-up: airflow-up streaming-up serving-up

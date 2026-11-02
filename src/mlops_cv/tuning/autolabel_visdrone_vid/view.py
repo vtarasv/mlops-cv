@@ -1,7 +1,8 @@
 """Fetch a labeling trial's annotation files for the annotation editor; prints the loader's args.
 
 They land in ``runs/autolabel/<run name>/annotations/``, which the FiftyOne App mounts as is.
-``make autolabel-view RUN=<run id>`` then loads them there with ``docker/fiftyone/load_trial.py``.
+``docker/fiftyone/load_trial.py`` then loads them in the App
+(docs/tuning/autolabel-visdrone-vid.md).
 """
 
 from __future__ import annotations

@@ -19,7 +19,7 @@ committed `uv.lock`:
 | `mlops-cv-monitor` | `Dockerfile.monitor` | `python:3.12-slim` | `monitoring` | the drift monitor (no torch, no CUDA, no ONNX) |
 | airflow image | `Dockerfile.airflow` | `apache/airflow:3.2.2-python3.12` | base deps + providers-docker + mlflow-skinny (pip) | scheduler / api-server / dag-processor / triggerer |
 | mlflow image | `Dockerfile.mlflow` | `ghcr.io/mlflow/mlflow:v3.14.0` | — (adds psycopg2 + boto3) | the tracking server |
-| `mlops-cv-fiftyone` | `Dockerfile.fiftyone` | `voxel51/fiftyone:1.22.1-python3.12` | — (adds pycocotools) | the annotation editor ([auto-labeling](autolabel.md#viewing-a-trial)) |
+| `mlops-cv-fiftyone` | `Dockerfile.fiftyone` | `voxel51/fiftyone:1.22.1-python3.12` | — (adds `docker/fiftyone/load_trial.py`) | the annotation editor ([labeling trials](tuning/autolabel-visdrone-vid.md#viewing-a-trial)) |
 
 The GPU images carry no CUDA base: CUDA, cuDNN and TensorRT come from the venv's wheels, and the
 ORT images register `nvidia/*/lib` with `ldconfig` so a torch-free process finds them. The

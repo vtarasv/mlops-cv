@@ -1,7 +1,7 @@
 # The labeler on every frame of the clips, tracked by BoT-SORT: the winner so far. The confidence
 # floor (0.597) sets track_high_thresh = new_track_thresh.
 trials:
-  - name: botsort-sam2.1-s
+  - name: botsort
     detector:
       model: facebook/sam3
       prompts:

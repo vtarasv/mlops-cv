@@ -34,10 +34,10 @@ uv run python -m mlops_cv.evaluation --model runs:/<run_id>/weights/best.pt --ru
 A run trains for one **deployment target** (`--target server|edge`, default `server`), which
 picks the registered model (`aerial-object-detector-server` / `-edge`) and the production default
 size: server `yolo26m`, edge `yolo26n`, both at imgsz 1280 with the shared recipe
-([tuning.md](tuning.md#final-recipe)). The model is evaluated, exported and served at the imgsz it
+([tuning.md](tuning/yolo26-visdrone-vid.md#final-recipe)). The model is evaluated, exported and served at the imgsz it
 trained at, read back from the run's `imgsz` param. CLI flags
 `--model --epochs --imgsz --batch --seed --device --no-amp` override those defaults. `--set key=value` (repeatable, YAML-parsed) passes any other `model.train()` argument,
-and `--no-register` makes the run a [trial](tuning.md). The dataset is always `DATA__SUBSET_DIR`,
+and `--no-register` makes the run a [trial](tuning/yolo26-visdrone-vid.md). The dataset is always `DATA__SUBSET_DIR`,
 so the manifest and data-version lineage match the weights. The run logs to the server named by
 `MLFLOW__TRACKING_URI` (the local stack by default). ultralytics keeps its settings in the repo's
 `.ultralytics/` (`YOLO_CONFIG_DIR`, set when `mlops_cv` is imported).

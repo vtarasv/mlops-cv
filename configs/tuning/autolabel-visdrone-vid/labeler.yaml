@@ -2,7 +2,7 @@
 # names, untiled, fp16 -> box filter (NMS 0.5). The confidence floor (0.597) cuts the kept
 # auto-labels, not the scored ones.
 trials:
-  - name: sam3-sam2.1-s
+  - name: sam3
     detector:
       model: facebook/sam3
       prompts:

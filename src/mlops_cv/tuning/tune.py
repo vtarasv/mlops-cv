@@ -34,11 +34,19 @@ FLAGS = ("model", "imgsz", "epochs", "batch", "seed")
 
 
 def load_stage(path: Path) -> dict[str, dict[str, Any]]:
-    """``{run name: knobs}``, each trial's knobs over the stage's ``defaults``."""
+    """``{run name: knobs}``, each trial's knobs over the stage's ``defaults``.
+
+    A trial's section (a mapping) updates the default's keys, one level deep; any value inside
+    one replaces the default's whole.
+    """
     stage = yaml.safe_load(path.read_text(encoding="utf-8"))
+    defaults = stage.get("defaults", {})
     trials: dict[str, dict[str, Any]] = {}
     for entry in stage["trials"]:
-        knobs = {**stage.get("defaults", {}), **entry}
+        knobs = {**defaults}
+        for key, value in entry.items():
+            base = knobs.get(key)
+            knobs[key] = {**base, **value} if isinstance(base, dict) else value
         name = f"{path.stem}-{knobs.pop('name')}"
         if name in trials:
             raise ValueError(f"trial {name} repeats in {path}")

@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 MODELS = ("yolo26n", "yolo26s", "yolo26m")
 
-# Each deployment target's production default size (docs/tuning.md § Final recipe).
+# Each deployment target's production default size (docs/tuning/yolo26-visdrone-vid.md).
 TARGET_MODELS = {SERVER: "yolo26m", EDGE: "yolo26n"}
 
 # A trial's final val and latency both read this split.

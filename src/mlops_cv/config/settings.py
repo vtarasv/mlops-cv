@@ -8,8 +8,9 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -19,7 +20,6 @@ class DataSettings(BaseModel):
     raw_dir: Path = Path("data/raw")
     subset_dir: Path = Path("data/visdrone-vid-small")
     dataset_yaml: Path = Path("configs/datasets/VisDrone-VID-merged.yaml")
-    autolabel_dir: Path = Path("data/autolabel")  # the auto-labeler's scoring datasets
 
 
 class MlflowSettings(BaseModel):
@@ -36,7 +36,10 @@ class MlflowSettings(BaseModel):
 
 
 class TrainingSettings(BaseModel):
-    """The shared YOLO26 recipe (docs/tuning.md § Final recipe); the target picks the size."""
+    """The shared YOLO26 recipe (its § Final recipe); the target picks the size.
+
+    See docs/tuning/yolo26-visdrone-vid.md.
+    """
 
     weights: str = "yolo26s.pt"  # its directory is the pretrained-weights cache
     epochs: int = 30
@@ -93,6 +96,56 @@ class ServingSettings(BaseModel):
     max_inflight: int = Field(default=2, ge=1)  # detects at once, per service or consumer
 
 
+MergedClass = Literal["person", "vehicle", "two-three-wheeler"]
+
+
+class AutolabelDetector(BaseModel):
+    """The auto-labeler's text-prompted detector."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    model: str = "facebook/sam3"
+    # prompt text -> the merged class its boxes get; VisDrone's 10 raw names
+    prompts: dict[str, MergedClass] = {
+        "pedestrian": "person",
+        "people": "person",
+        "bicycle": "two-three-wheeler",
+        "car": "vehicle",
+        "van": "vehicle",
+        "truck": "vehicle",
+        "tricycle": "two-three-wheeler",
+        "awning-tricycle": "two-three-wheeler",
+        "bus": "vehicle",
+        "motor": "two-three-wheeler",
+    }
+    threshold: float = 0.001  # the detector's own score floor (val's); it keeps its top 300
+    dtype: Literal["bfloat16", "float16"] | None = "float16"  # ``None`` is fp32
+
+
+class BoxFilter(BaseModel):
+    """The box filter's stages, applied in this order; ``None`` turns a stage off."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    min_side: float | None = 8  # px
+    max_area: float | None = 0.05  # share of the frame
+    min_score: float | None = None
+    nms_iou: float | None = 0.5  # class-agnostic
+    nested_ios: float | None = None  # of two boxes this share nested, drop one
+    nested_keep: Literal["outer", "inner"] = "outer"  # ... the box the nested-box rule keeps
+    max_objects: int | None = None  # the highest-scoring K
+
+
+class AutolabelSettings(BaseModel):
+    """The labeling config (docs/tuning/autolabel-visdrone-vid.md): the winner so far."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    detector: AutolabelDetector = AutolabelDetector()
+    box_filter: BoxFilter = BoxFilter()
+    confidence_floor: float = 0.597  # auto-labels below it are not kept
+
+
 class Settings(BaseSettings):
     """Process-wide configuration."""
 
@@ -113,6 +166,7 @@ class Settings(BaseSettings):
     monitoring: MonitoringSettings = MonitoringSettings()
     optimize: OptimizeSettings = OptimizeSettings()
     serving: ServingSettings = ServingSettings()
+    autolabel: AutolabelSettings = AutolabelSettings()
 
 
 def load_settings(base_dir: str | Path = ".") -> Settings:

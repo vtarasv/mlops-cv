@@ -29,6 +29,19 @@ from PIL import Image
 # person <- 1,2 ; vehicle <- 4,5,6,9 ; two-three-wheeler <- 3,7,8,10
 CLASS_MERGE: dict[int, int] = {1: 0, 2: 0, 4: 1, 5: 1, 6: 1, 9: 1, 3: 2, 7: 2, 8: 2, 10: 2}
 YOLO_NAMES: dict[int, str] = {0: "person", 1: "vehicle", 2: "two-three-wheeler"}
+# The raw categories' names; 0 is an ignored region and 11 "others".
+RAW_NAMES: dict[int, str] = {
+    1: "pedestrian",
+    2: "people",
+    3: "bicycle",
+    4: "car",
+    5: "van",
+    6: "truck",
+    7: "tricycle",
+    8: "awning-tricycle",
+    9: "bus",
+    10: "motor",
+}
 
 # Documented column indices (0-based) used by the converter.
 FRAME_COL, LEFT_COL, TOP_COL, WIDTH_COL, HEIGHT_COL, SCORE_COL, CATEGORY_COL = 0, 2, 3, 4, 5, 6, 7

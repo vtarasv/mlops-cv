@@ -28,13 +28,12 @@ from mlops_cv.config.settings import BoxFilter
 from mlops_cv.data.subset import IMAGES_DIRNAME
 from mlops_cv.startup import StartupError, exits_on_startup_error
 from mlops_cv.tuning import common
-from mlops_cv.tuning.autolabel_visdrone_vid import track_scores, tracks, visdrone_vid
+from mlops_cv.tuning.autolabel_visdrone_vid import EXPERIMENT, track_scores, tracks, visdrone_vid
 from mlops_cv.tuning.autolabel_visdrone_vid.open_vocab import Detector, TrialLabeler
 from mlops_cv.tuning.autolabel_visdrone_vid.tracks import BOX_TRACKERS, Tracker
 
 logger = logging.getLogger(__name__)
 
-AUTOLABEL_EXPERIMENT = "aerial-object-detection-autolabel-tune"
 # Stored detector passes and downloaded trials; the FiftyOne App mounts it at the same path.
 RUNS_DIR = Path("runs/autolabel")
 ANNOTATIONS = "annotations"  # the trial's artifact dir: one VisDrone-VID file per sequence
@@ -311,7 +310,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--sequence", action="append", dest="sequences", help="only these sequences")
     args = p.parse_args(argv)
 
-    os.environ["MLFLOW__EXPERIMENT"] = AUTOLABEL_EXPERIMENT
+    os.environ["MLFLOW__EXPERIMENT"] = EXPERIMENT
     from mlops_cv.config import get_settings
 
     settings = get_settings()

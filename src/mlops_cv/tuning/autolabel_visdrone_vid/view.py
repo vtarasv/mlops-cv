@@ -13,18 +13,14 @@ from pathlib import Path
 
 from mlops_cv.data.subset import raw_split_dir
 from mlops_cv.startup import StartupError, exits_on_startup_error
-from mlops_cv.tuning.autolabel_visdrone_vid.label_eval import (
-    ANNOTATIONS,
-    AUTOLABEL_EXPERIMENT,
-    RUNS_DIR,
-    SPLIT_TAG,
-)
+from mlops_cv.tuning.autolabel_visdrone_vid import EXPERIMENT
+from mlops_cv.tuning.autolabel_visdrone_vid.label_eval import ANNOTATIONS, RUNS_DIR, SPLIT_TAG
 
 
 @exits_on_startup_error
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="Download a labeling trial's annotation files.")
-    p.add_argument("run_id", help=f"a run in MLflow experiment {AUTOLABEL_EXPERIMENT}")
+    p.add_argument("run_id", help=f"a run in MLflow experiment {EXPERIMENT}")
     args = p.parse_args(argv)
 
     from mlops_cv.config import get_settings
@@ -36,7 +32,7 @@ def main(argv: list[str] | None = None) -> int:
     split = run.data.tags.get(SPLIT_TAG)
     if split is None:
         raise StartupError(
-            f"run {args.run_id} is no labeling trial: pass a run id from {AUTOLABEL_EXPERIMENT}"
+            f"run {args.run_id} is no labeling trial: pass a run id from {EXPERIMENT}"
         )
     out = RUNS_DIR.resolve() / run.info.run_name
     shutil.rmtree(out, ignore_errors=True)

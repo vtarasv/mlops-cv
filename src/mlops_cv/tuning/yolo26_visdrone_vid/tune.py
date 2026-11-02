@@ -22,7 +22,8 @@ from mlops_cv.data.subset import IMAGES_DIRNAME
 from mlops_cv.orchestration.handoff import best_weights_uri
 from mlops_cv.startup import exits_on_startup_error
 from mlops_cv.training.train import TRIAL_SPLIT
-from mlops_cv.tuning.common import TUNE_EXPERIMENT, load_stage
+from mlops_cv.tuning.common import load_stage
+from mlops_cv.tuning.yolo26_visdrone_vid import EXPERIMENT
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +51,7 @@ def _record_latency(mlflow: Any, name: str, imgsz: int, since_ms: int) -> None:
 
     settings = get_settings()
     run = mlflow.search_runs(
-        experiment_names=[TUNE_EXPERIMENT],
+        experiment_names=[EXPERIMENT],
         filter_string=f"attributes.run_name = '{name}' and attributes.start_time >= {since_ms}",
         order_by=["attributes.start_time DESC"],
         max_results=1,
@@ -73,7 +74,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("stage", type=Path, help="configs/tuning/<case>/<stage>.yaml")
     args = p.parse_args(argv)
 
-    os.environ["MLFLOW__EXPERIMENT"] = TUNE_EXPERIMENT  # trials inherit it: never production's
+    os.environ["MLFLOW__EXPERIMENT"] = EXPERIMENT  # trials inherit it: never production's
     settings = get_settings()
     logging.basicConfig(level=settings.log_level.upper(), format="%(message)s")
     trials = load_stage(args.stage)

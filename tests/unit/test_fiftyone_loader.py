@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -11,16 +12,12 @@ from mlops_cv.autolabel.labeler import Labels, annotation_lines
 from mlops_cv.data import convert_visdrone_vid
 
 SCRIPT = Path(__file__).parents[2] / "docker" / "fiftyone" / "load_trial.py"
+# The image copies the module beside the script; here it is the package's.
+sys.modules.setdefault("convert_visdrone_vid", convert_visdrone_vid)
 spec = importlib.util.spec_from_file_location("load_trial", SCRIPT)
 assert spec and spec.loader
 load_trial = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(load_trial)
-
-
-def test_the_copied_vocabulary_matches_ingestion() -> None:
-    assert load_trial.CLASS_MERGE == convert_visdrone_vid.CLASS_MERGE
-    assert load_trial.YOLO_NAMES == convert_visdrone_vid.YOLO_NAMES
-    assert load_trial.RAW_NAMES == convert_visdrone_vid.RAW_NAMES
 
 
 def test_names() -> None:

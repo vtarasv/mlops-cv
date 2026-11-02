@@ -9,8 +9,6 @@ from typing import Any
 import numpy as np
 import yaml
 
-TUNE_EXPERIMENT = "aerial-object-detection-tune"
-
 # val's own floor and box cap (``model.val`` defaults): detections scored here are predicted with
 # them. For a class-mapped model, the cap applies before the mapping drops classes, as in the model.
 CONF = 0.001
@@ -38,10 +36,10 @@ def load_stage(path: Path) -> dict[str, dict[str, Any]]:
     return trials
 
 
-def finished_trial(mlflow: Any, name: str) -> Any:
-    """The latest finished run named ``name`` in the tune experiment."""
+def finished_trial(mlflow: Any, experiment: str, name: str) -> Any:
+    """The latest finished run named ``name`` in ``experiment``."""
     runs = mlflow.search_runs(
-        experiment_names=[TUNE_EXPERIMENT],
+        experiment_names=[experiment],
         filter_string=f"attributes.run_name = '{name}' and attributes.status = 'FINISHED'",
         order_by=["attributes.start_time DESC"],
         max_results=1,

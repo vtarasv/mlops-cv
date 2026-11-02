@@ -15,22 +15,10 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+# mlops_cv.data's module, copied beside this script: the image has no mlops_cv.
+from convert_visdrone_vid import CLASS_MERGE, RAW_NAMES, YOLO_NAMES
+
 GROUND_TRUTH, IGNORED = "ground_truth", "ignored"
-# mlops_cv.data.convert_visdrone_vid's, copied: the image has no mlops_cv.
-CLASS_MERGE = {1: 0, 2: 0, 4: 1, 5: 1, 6: 1, 9: 1, 3: 2, 7: 2, 8: 2, 10: 2}
-YOLO_NAMES = {0: "person", 1: "vehicle", 2: "two-three-wheeler"}
-RAW_NAMES = {
-    1: "pedestrian",
-    2: "people",
-    3: "bicycle",
-    4: "car",
-    5: "van",
-    6: "truck",
-    7: "tricycle",
-    8: "awning-tricycle",
-    9: "bus",
-    10: "motor",
-}
 IGNORED_CATEGORY = 0
 
 

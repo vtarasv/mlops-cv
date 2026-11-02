@@ -457,6 +457,7 @@ def _rows(*scores: float) -> np.ndarray:
 
 
 def test_key_frames_start_match_and_end_tracks() -> None:
+    pytest.importorskip("lap")
     tracks = sequence.Tracks(Tracker(model="m", unmatched_keys=2))
     ended, boxes = tracks.key_frame([], _rows(0.9, 0.5), ["a", "b"], np.zeros((2, 0)), np.eye(0))
     assert ended == set() and boxes == {1: 0, 2: 1}
@@ -471,6 +472,7 @@ def test_key_frames_start_match_and_end_tracks() -> None:
 
 
 def test_duplicates_end_before_matching_and_the_cap_keeps_the_best_new_boxes() -> None:
+    pytest.importorskip("lap")
     tracks = sequence.Tracks(Tracker(model="m", max_objects=3))
     tracks.key_frame([], _rows(0.9, 0.8), ["a", "a"], np.zeros((2, 0)), np.eye(0))
     mask_iou = np.array([[1.0, 0.95], [0.95, 1.0]])
@@ -482,6 +484,7 @@ def test_duplicates_end_before_matching_and_the_cap_keeps_the_best_new_boxes() -
 
 
 def test_empty_masks_end_a_track() -> None:
+    pytest.importorskip("lap")
     tracks = sequence.Tracks(Tracker(model="m", empty_frames=2))
     tracks.key_frame([], _rows(0.9), ["a"], np.zeros((1, 0)), np.eye(0))
     assert tracks.observe([1], [0]) == set()

@@ -1,7 +1,8 @@
-"""Load a labeling trial's auto-labels into the FiftyOne App: ``make autolabel-view RUN=<id>``.
+"""Load a labeling trial's auto-labels into the FiftyOne App.
 
-Runs inside the App container, so the client always matches the server. Both sides are
-VisDrone-VID annotation files: the raw split's ground truth and the trial's, one per sequence.
+Runs inside the App container (docs/tuning/autolabel-visdrone-vid.md), so the client always
+matches the server. Both sides are VisDrone-VID annotation files: the raw split's ground truth
+and the trial's, one per sequence.
 One dataset per raw split grows by the frames each trial labels.
 """
 

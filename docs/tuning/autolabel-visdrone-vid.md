@@ -84,8 +84,10 @@ The annotation editor is FiftyOne 1.22.1 (`docker-compose/docker-compose.fiftyon
 VisDrone-VID and `runs/autolabel/` mounted read-only at their host paths.
 
 ```bash
-make fiftyone-up                        # http://localhost:5151
-make autolabel-view RUN=<MLflow run id> # a run in aerial-object-detection-autolabel-tune
+make mlflow-up fiftyone-up  # the App on http://localhost:5151
+# <run id>: a run in aerial-object-detection-autolabel-tune
+docker exec fiftyone python /opt/load_trial.py \
+  $(uv run python -m mlops_cv.tuning.autolabel_visdrone_vid.view <run id>)
 ```
 
 - Each raw split is one dataset, `visdrone-vid-<split>`, with `ground_truth` and `ignored`. It grows

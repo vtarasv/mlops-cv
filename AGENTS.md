@@ -35,7 +35,9 @@ Single-context: root `GLOSSARY.md` + `docs/adr/`, created lazily. See `docs/agen
 
 ## After each ticket
 
-1. Run the `ponytail:ponytail-review` skill on the diff and apply its cuts.
+1. Review the diff since the branch point with `ponytail:ponytail-review` and
+   `mattpocock-skills:code-review` (Standards against this file, Spec against the ticket); apply
+   their cuts and fixes.
 2. Run `make ci` (ruff check, ruff format check, pytest) and `make typecheck` (pyright). Done means
    zero findings, zero errors, all tests green. Pyright is local only: CI's sync skips the
    training/optimize groups its imports need. On a Mac, its only allowed errors are the two

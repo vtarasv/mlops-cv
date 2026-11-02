@@ -13,7 +13,8 @@ VisDrone-VID ground-truth line (one per object per frame, comma-separated, 0-bas
     8:truncation
     9:occlusion
 
-``score`` is 1 (considered) or 0 (ignored region — skipped). bbox is absolute pixels with
+``score`` is 1 (considered) or 0 (ignored region — skipped) in ground truth; an auto-label's is its
+float confidence, always above 0. bbox is absolute pixels with
 (left, top) the top-left corner. The output YOLO line is ``<cls> <xc> <yc> <w> <h>`` with the box
 *center* and size normalized to [0, 1] by the image width/height.
 """
@@ -67,7 +68,7 @@ def convert_annotation_line(line: str, img_w: int, img_h: int) -> tuple[int, Yol
         frame_index = int(parts[FRAME_COL])
         left, top = float(parts[LEFT_COL]), float(parts[TOP_COL])
         width, height = float(parts[WIDTH_COL]), float(parts[HEIGHT_COL])
-        score, category = int(parts[SCORE_COL]), int(parts[CATEGORY_COL])
+        score, category = float(parts[SCORE_COL]), int(parts[CATEGORY_COL])
     except ValueError:
         return None
     if score == 0 or category not in CLASS_MERGE:

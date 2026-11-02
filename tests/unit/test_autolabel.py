@@ -33,7 +33,7 @@ def test_default_prompts_are_the_raw_names_merged() -> None:
 
 
 def test_defaults_are_the_labeler_stage() -> None:
-    from mlops_cv.tuning.label_eval import load_stage
+    from mlops_cv.tuning.autolabel_visdrone_vid.label_eval import load_stage
 
     (trial,) = load_stage(STAGES / "labeler.yaml").values()
     settings = AutolabelSettings()

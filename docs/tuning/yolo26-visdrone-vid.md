@@ -108,7 +108,7 @@ two COCO classes that map to the same class, only the higher-confidence copy is 
 **Why:** the starting point. It shows how much training on VisDrone adds.
 
 ```bash
-uv run python -m mlops_cv.tuning.zero_shot   # runs zero-shot-<size><imgsz>
+uv run python -m mlops_cv.tuning.yolo26_visdrone_vid.zero_shot   # runs zero-shot-<size><imgsz>
 ```
 
 | Model | imgsz | val mAP50-95 | mAP50 | person | vehicle | two-three-wheeler | mAP50-95_small | p50 ms |
@@ -362,8 +362,8 @@ trial and never pick a winner.
 **Why:** the second head costs nothing to try. SAHI is the standard trick for small objects.
 
 ```bash
-uv run python -m mlops_cv.tuning.sahi_eval stage2-n1280 stage5-s1280-zoom0.75-1.5 stage2-m1280
-uv run python -m mlops_cv.tuning.sahi_eval --slice 640 stage2-n1280 stage5-s1280-zoom0.75-1.5 stage2-m1280
+uv run python -m mlops_cv.tuning.yolo26_visdrone_vid.sahi_eval stage2-n1280 stage5-s1280-zoom0.75-1.5 stage2-m1280
+uv run python -m mlops_cv.tuning.yolo26_visdrone_vid.sahi_eval --slice 640 stage2-n1280 stage5-s1280-zoom0.75-1.5 stage2-m1280
 ```
 
 The first command runs `<trial>-o2m` and `<trial>-sahi`; `--slice 640` runs `<trial>-sahi640`. s
@@ -406,12 +406,12 @@ Val stays full frames.
 **Why:** the SAHI paper's gains came from training on tiles and then predicting on tiles.
 
 ```bash
-uv run python -m mlops_cv.tuning.slices --imgsz 1280   # writes images/train-sliced1280 into the subset
+uv run python -m mlops_cv.tuning.yolo26_visdrone_vid.slices --imgsz 1280   # writes images/train-sliced1280 into the subset
 export DATA__DATASET_YAML=configs/tuning/yolo26-visdrone-vid/datasets/VisDrone-VID-merged-sliced1280.yaml
 uv run python -m mlops_cv.tuning.tune configs/tuning/yolo26-visdrone-vid/sliced.yaml
 uv run python -m mlops_cv.tuning.tune configs/tuning/yolo26-visdrone-vid/sliced-e8.yaml
 unset DATA__DATASET_YAML
-uv run python -m mlops_cv.tuning.sahi_eval sliced-n1280 sliced-s1280-zoom0.75-1.5 sliced-m1280 \
+uv run python -m mlops_cv.tuning.yolo26_visdrone_vid.sahi_eval sliced-n1280 sliced-s1280-zoom0.75-1.5 sliced-m1280 \
   sliced-e8-n1280 sliced-e8-s1280-zoom0.75-1.5 sliced-e8-m1280
 ```
 
@@ -440,9 +440,9 @@ seeds (22.5/22.9/22.8), and latency is the trial's own.
 **Why:** to check that val's picks hold on videos the selection never saw. It picks nothing.
 
 ```bash
-uv run python -m mlops_cv.tuning.test_read stage1-n640 stage1-s640-seed0 stage1-s640-seed1 \
+uv run python -m mlops_cv.tuning.yolo26_visdrone_vid.test_read stage1-n640 stage1-s640-seed0 stage1-s640-seed1 \
   stage1-s640-seed2 stage1-m640 stage2-n1280 stage2-s1280 stage2-m1280   # <trial>-test
-uv run python -m mlops_cv.tuning.test_read --o2m stage2-n1280 stage2-s1280 stage2-m1280   # <trial>-test-o2m
+uv run python -m mlops_cv.tuning.yolo26_visdrone_vid.test_read --o2m stage2-n1280 stage2-s1280 stage2-m1280   # <trial>-test-o2m
 ```
 
 | Model | imgsz | val mAP50-95 | test mAP50-95 | test one-to-many | person | vehicle | two-three-wheeler | test mAP50-95_small | p50 ms |
@@ -477,7 +477,7 @@ a small tuned VID model beats the best public YOLO26 on our footage. It can't se
 training data.
 
 ```bash
-uv run python -m mlops_cv.tuning.third_party
+uv run python -m mlops_cv.tuning.yolo26_visdrone_vid.third_party
 # downloads the pinned checkpoints into runs/third-party/;
 # runs dronefreak-yolo26{s,m}1280-test[-o2m] and stage2-{s,m}1280-predict-test[-o2m]
 ```
@@ -533,8 +533,8 @@ for s in 10 5 2; do
   uv run python -m mlops_cv.tuning.tune configs/tuning/yolo26-visdrone-vid/stride$s.yaml
 done
 unset DATA__SUBSET_DIR
-uv run python -m mlops_cv.tuning.test_read stride10-n1280
-uv run python -m mlops_cv.tuning.test_read --o2m stride10-n1280
+uv run python -m mlops_cv.tuning.yolo26_visdrone_vid.test_read stride10-n1280
+uv run python -m mlops_cv.tuning.yolo26_visdrone_vid.test_read --o2m stride10-n1280
 ```
 
 | Train stride | train frames | val mAP50-95 | person | vehicle | two-three-wheeler | mAP50-95_small | last six | best epoch | GPU h |

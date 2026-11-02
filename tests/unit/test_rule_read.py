@@ -10,8 +10,8 @@ import yaml
 
 pytest.importorskip("ultralytics")
 
-from mlops_cv.tuning.rule_read import both_rules  # noqa: E402
-from mlops_cv.tuning.visdrone_vid import Image  # noqa: E402
+from mlops_cv.tuning.autolabel_visdrone_vid.rule_read import both_rules  # noqa: E402
+from mlops_cv.tuning.autolabel_visdrone_vid.visdrone_vid import Image  # noqa: E402
 
 
 def test_a_false_positive_in_an_ignored_region_counts_only_under_the_repo_rule(

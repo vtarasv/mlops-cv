@@ -89,7 +89,7 @@ def main() -> int:
     from mlops_cv.orchestration.handoff import best_weights_uri
     from mlops_cv.tracking import client
     from mlops_cv.tracking.resolve import resolve_model
-    from mlops_cv.tuning.zero_shot import class_lut, merge_classes, result_rows
+    from mlops_cv.tuning.yolo26_visdrone_vid.zero_shot import class_lut, merge_classes, result_rows
 
     mlflow = client.connect(settings)
     data_yaml = dataset_yaml(settings)

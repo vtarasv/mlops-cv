@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from mlops_cv.startup import StartupError
-from mlops_cv.tuning.third_party import _download
+from mlops_cv.tuning.yolo26_visdrone_vid.third_party import _download
 
 
 def test_a_cached_checkpoint_with_the_pinned_hash_is_reused(tmp_path: Path) -> None:

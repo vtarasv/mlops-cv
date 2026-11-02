@@ -22,7 +22,7 @@ import numpy as np
 from pydantic import BaseModel, ConfigDict
 
 from mlops_cv.autolabel.labeler import Labeler, Labels, above, read_rgb
-from mlops_cv.tuning import visdrone_vid
+from mlops_cv.tuning.autolabel_visdrone_vid import visdrone_vid
 
 logger = logging.getLogger(__name__)
 

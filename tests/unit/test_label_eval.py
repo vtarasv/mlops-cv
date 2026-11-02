@@ -15,9 +15,15 @@ from pydantic import ValidationError
 
 from mlops_cv.autolabel.labeler import Labels
 from mlops_cv.data.subset import MANIFEST_FIELDS, csv_line, image_relpath, label_relpath
-from mlops_cv.tuning import label_eval, open_vocab, track_scores, tracks, visdrone_vid
-from mlops_cv.tuning.label_eval import LabelingConfig
-from mlops_cv.tuning.tracks import Tracker
+from mlops_cv.tuning.autolabel_visdrone_vid import (
+    label_eval,
+    open_vocab,
+    track_scores,
+    tracks,
+    visdrone_vid,
+)
+from mlops_cv.tuning.autolabel_visdrone_vid.label_eval import LabelingConfig
+from mlops_cv.tuning.autolabel_visdrone_vid.tracks import Tracker
 
 STAGES = Path(__file__).parents[2] / "configs" / "tuning" / "autolabel-visdrone-vid"
 

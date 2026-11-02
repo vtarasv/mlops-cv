@@ -61,8 +61,8 @@ flowchart LR
 `DATA__SUBSET_DIR`; see [data](../data.md).
 
 ```bash
-uv run python -m mlops_cv.tuning.visdrone_vid   # builds train- and val-visdrone-rule
-uv run --env-file .env python -m mlops_cv.tuning.label_eval \
+uv run python -m mlops_cv.tuning.autolabel_visdrone_vid.visdrone_vid   # builds train- and val-visdrone-rule
+uv run --env-file .env python -m mlops_cv.tuning.autolabel_visdrone_vid.label_eval \
   configs/tuning/autolabel-visdrone-vid/detector.yaml --split train
 ```
 
@@ -104,7 +104,7 @@ predict-path score after the slash; the 0.1–0.3 pt gap is the padding differen
 [YOLO26 tuning](yolo26-visdrone-vid.md#10-other-ways-to-run-the-same-weights-the-second-head-and-sahi).
 
 ```bash
-uv run python -m mlops_cv.tuning.rule_read stage2-n1280 stage2-s1280 stage2-m1280
+uv run python -m mlops_cv.tuning.autolabel_visdrone_vid.rule_read stage2-n1280 stage2-s1280 stage2-m1280
 ```
 
 Each trial logs `<trial>-val-visdrone-rule` to `aerial-object-detection-tune`, with

@@ -22,6 +22,7 @@ from mlops_cv.data.subset import (
     manifest_rows,
     raw_split_dir,
     stamp_split_yaml,
+    visdrone_rule_split,
 )
 
 
@@ -53,6 +54,13 @@ def test_relpaths_are_posix_style_and_split_scoped() -> None:
     assert label_relpath("val", "seqA_0000007") == "labels/val/seqA_0000007.txt"
     assert demo_image_relpath("seqB", 3) == "demo/images/seqB/0000003.jpg"
     assert demo_label_relpath("seqB", 3) == "demo/labels/seqB/0000003.txt"
+
+
+def test_visdrone_rule_split_names() -> None:
+    assert visdrone_rule_split("val") == "val-visdrone-rule"
+    assert image_relpath(visdrone_rule_split("train"), "s_0000001") == (
+        "images/train-visdrone-rule/s_0000001.jpg"
+    )
 
 
 def test_raw_split_dir_maps_yolo_names() -> None:

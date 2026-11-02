@@ -20,7 +20,7 @@ FIFTYONE_COMPOSE := docker compose -f docker-compose/docker-compose.fiftyone.yml
 #   HOST_RAW_DIR      : reuses DATA__RAW_DIR from the root .env (raw VisDrone-VID for the ingest task)
 #   HOST_SUBSET_DIR   : reuses DATA__SUBSET_DIR from the root .env (the training subset the DAG mounts)
 #   HOST_WEIGHTS      : reuses TRAINING__WEIGHTS from the root .env (pretrained-weights cache)
-#   HOST_AUTOLABEL_DIR: reuses DATA__AUTOLABEL_DIR from the root .env (the FiftyOne App mounts it)
+#   HOST_AUTOLABEL_RUNS: the repo's runs/autolabel/ (downloaded labeling trials the FiftyOne App mounts)
 #   DOCKER_GID        : host docker group id — the scheduler needs it to use the mounted socket
 #   HOST_USER         : host uid:gid — the DAG's task containers run as it, so their outputs stay yours
 #   HOST_USERNAME     : host login — the task containers' USER, so `mlflow.user` names you
@@ -33,7 +33,7 @@ export MONITOR_IMAGE := mlops-cv-monitor:0.1.0
 export HOST_RAW_DIR := $(shell sed -n 's/^DATA__RAW_DIR=//p' .env 2>/dev/null)
 export HOST_SUBSET_DIR := $(shell sed -n 's/^DATA__SUBSET_DIR=//p' .env 2>/dev/null)
 export HOST_WEIGHTS := $(shell sed -n 's/^TRAINING__WEIGHTS=//p' .env 2>/dev/null)
-export HOST_AUTOLABEL_DIR := $(shell sed -n 's/^DATA__AUTOLABEL_DIR=//p' .env 2>/dev/null)
+export HOST_AUTOLABEL_RUNS := $(CURDIR)/runs/autolabel
 export DOCKER_GID := $(shell getent group docker 2>/dev/null | cut -d: -f3)
 export HOST_USER := $(shell id -u):$(shell id -g)
 export HOST_USERNAME := $(shell id -un)
@@ -95,7 +95,7 @@ train: mlflow-up
 	uv run python -m mlops_cv.training $(if $(TARGET),--target "$(TARGET)")
 
 # Run one tuning stage (configs/tuning/$(STAGE).yaml, e.g. STAGE=yolo26-visdrone-vid/stage2)
-# -> unregistered trial runs in the tune experiment. Other experiment commands: docs/tuning.md.
+# -> unregistered trial runs in the tune experiment. Other experiment commands: docs/tuning/yolo26-visdrone-vid.md.
 tune: mlflow-up
 	uv run python -m mlops_cv.tuning.tune configs/tuning/$(STAGE).yaml
 
@@ -236,6 +236,7 @@ serving-logs:
 
 # FiftyOne annotation editor (App + MongoDB) on http://localhost:5151. Down keeps the volume.
 fiftyone-up:
+	mkdir -p $(HOST_AUTOLABEL_RUNS)
 	$(FIFTYONE_COMPOSE) up -d --build --wait
 
 fiftyone-down:
@@ -246,8 +247,8 @@ fiftyone-logs:
 
 # Load labeling trial RUN=<MLflow run id> into the FiftyOne App (reloading overwrites its fields).
 autolabel-view: mlflow-up fiftyone-up
-	trial=$$(uv run python -m mlops_cv.autolabel.view "$(RUN)") && \
-		$(FIFTYONE_COMPOSE) exec fiftyone python /scripts/load_trial.py "$$trial"
+	args=$$(uv run python -m mlops_cv.tuning.view "$(RUN)") && \
+		$(FIFTYONE_COMPOSE) exec fiftyone python /opt/load_trial.py $$args
 
 # Everything at once: MLflow + CT images + Airflow + streaming + serving.
 stack-up: airflow-up streaming-up serving-up

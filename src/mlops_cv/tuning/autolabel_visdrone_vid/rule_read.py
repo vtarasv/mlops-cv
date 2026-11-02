@@ -40,16 +40,15 @@ def both_rules(
 
 @exits_on_startup_error
 def main(argv: list[str] | None = None) -> int:
-    from mlops_cv.tuning.autolabel_visdrone_vid.label_eval import AUTOLABEL_EXPERIMENT
+    from mlops_cv.tuning import yolo26_visdrone_vid
+    from mlops_cv.tuning.autolabel_visdrone_vid import EXPERIMENT
     from mlops_cv.tuning.common import CONF, MAX_DET, finished_trial
 
     p = argparse.ArgumentParser(description="Score tuning trials' best.pt under VisDrone's rule.")
     p.add_argument("trials", nargs="+", help="trial run names, e.g. stage2-s1280")
     args = p.parse_args(argv)
 
-    os.environ["MLFLOW__EXPERIMENT"] = (
-        AUTOLABEL_EXPERIMENT  # the trials stay in the tune experiment
-    )
+    os.environ["MLFLOW__EXPERIMENT"] = EXPERIMENT  # the trials stay in YOLO tuning's
     from mlops_cv.config import get_settings
 
     settings = get_settings()
@@ -69,7 +68,7 @@ def main(argv: list[str] | None = None) -> int:
     rule_yaml, repo_yaml = visdrone_vid.rule_yaml(settings, SPLIT), dataset_yaml(settings)
 
     for trial in args.trials:
-        run = finished_trial(mlflow, trial)
+        run = finished_trial(mlflow, yolo26_visdrone_vid.EXPERIMENT, trial)
         imgsz = int(run.data.params["imgsz"])
         weights, _ = resolve_model(best_weights_uri(run.info.run_id))
         detections = {

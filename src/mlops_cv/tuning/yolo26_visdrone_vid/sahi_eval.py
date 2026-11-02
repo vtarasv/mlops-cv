@@ -153,14 +153,15 @@ def sahi_arm(
 @exits_on_startup_error
 def main(argv: list[str] | None = None) -> int:
     from mlops_cv.training.train import TRIAL_SPLIT, TRIAL_VAL_BATCH
-    from mlops_cv.tuning.common import TUNE_EXPERIMENT, finished_trial
+    from mlops_cv.tuning.common import finished_trial
+    from mlops_cv.tuning.yolo26_visdrone_vid import EXPERIMENT
 
     p = argparse.ArgumentParser(description="Evaluation-only arms on tuning trials' best.pt.")
     p.add_argument("trials", nargs="+", help="trial run names, e.g. stage5-s1280-zoom0.75-1.5")
     p.add_argument("--slice", type=int, help="SAHI slice px (default: imgsz); sahi arm only")
     args = p.parse_args(argv)
 
-    os.environ["MLFLOW__EXPERIMENT"] = TUNE_EXPERIMENT  # never production's experiment
+    os.environ["MLFLOW__EXPERIMENT"] = EXPERIMENT  # never production's experiment
     from mlops_cv.config import get_settings
 
     settings = get_settings()
@@ -180,7 +181,7 @@ def main(argv: list[str] | None = None) -> int:
     device = settings.training.device
 
     for trial in args.trials:
-        run = finished_trial(mlflow, trial)
+        run = finished_trial(mlflow, EXPERIMENT, trial)
         imgsz = int(run.data.params["imgsz"])
         weights, _ = resolve_model(best_weights_uri(run.info.run_id))
         slice_size = args.slice or imgsz

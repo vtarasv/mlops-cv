@@ -40,8 +40,8 @@ beside YOLO26 s trained on ground truth.
   floor to measure.
 - **Stages.** A stage file lists its trials. `defaults` apply to every trial, section by section,
   and a knob no file sets is production's (`AutolabelSettings`). A trial logs to the MLflow
-  experiment `aerial-object-detection-autolabel-tune`, as `<stage>-<trial>-<split>`, with its boxes as VisDrone-VID
-  annotation files under the artifact `annotations/`.
+  experiment `aerial-object-autolabel-tune`, as `<stage>-<trial>-<split>`, with its boxes as
+  VisDrone-VID annotation files under the artifact `annotations/`.
 - **Stored detector passes.** A run over a whole frame set stores the detector's raw boxes in
   `runs/autolabel/detections/<frames>-<hash of the detector settings>.npz`. A later trial with the
   same detector reads them and reruns only the merge and the box filter.
@@ -85,7 +85,7 @@ VisDrone-VID and `runs/autolabel/` mounted read-only at their host paths.
 
 ```bash
 make mlflow-up fiftyone-up  # the App on http://localhost:5151
-# <run id>: a run in aerial-object-detection-autolabel-tune
+# <run id>: a run in aerial-object-autolabel-tune
 docker exec fiftyone python /opt/load_trial.py \
   $(uv run python -m mlops_cv.tuning.autolabel_visdrone_vid.view <run id>)
 ```
@@ -109,7 +109,7 @@ predict-path score after the slash; the 0.1–0.3 pt gap is the padding differen
 uv run python -m mlops_cv.tuning.autolabel_visdrone_vid.rule_read stage2-n1280 stage2-s1280 stage2-m1280
 ```
 
-Each trial logs `<trial>-val-visdrone-rule` to `aerial-object-detection-autolabel-tune`, with
+Each trial logs `<trial>-val-visdrone-rule` to `aerial-object-autolabel-tune`, with
 `val-visdrone-rule/` and `val/` (repo rule) keys.
 
 | Model | repo rule mAP50-95 | VisDrone rule mAP50-95 | mAP50 | mAP75 |

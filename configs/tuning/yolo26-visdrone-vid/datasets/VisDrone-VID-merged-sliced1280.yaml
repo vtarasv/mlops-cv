@@ -1,4 +1,4 @@
-# VisDrone-VID-merged.yaml with train's 1280 slices beside the full frames (python -m mlops_cv.tuning.slices).
+# VisDrone-VID-merged.yaml with train's 1280 slices beside the full frames (python -m mlops_cv.tuning.yolo26_visdrone_vid.slices).
 # Val and test stay full frames.
 path: /abs/data/visdrone-vid-small
 train: [images/train, images/train-sliced1280]

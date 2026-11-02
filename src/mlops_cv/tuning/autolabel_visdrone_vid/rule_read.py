@@ -18,7 +18,7 @@ import numpy as np
 
 from mlops_cv.data.subset import visdrone_rule_split
 from mlops_cv.startup import exits_on_startup_error
-from mlops_cv.tuning import visdrone_vid
+from mlops_cv.tuning.autolabel_visdrone_vid import visdrone_vid
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ def main(argv: list[str] | None = None) -> int:
     from mlops_cv.orchestration.handoff import best_weights_uri
     from mlops_cv.tracking import client
     from mlops_cv.tracking.resolve import resolve_model
-    from mlops_cv.tuning.zero_shot import result_rows
+    from mlops_cv.tuning.yolo26_visdrone_vid.zero_shot import result_rows
 
     mlflow = client.connect(settings)
     subset_dir = settings.data.subset_dir

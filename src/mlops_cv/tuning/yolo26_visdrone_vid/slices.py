@@ -15,7 +15,7 @@ import shutil
 import numpy as np
 
 from mlops_cv.data.subset import IMAGES_DIRNAME, image_relpath, label_relpath
-from mlops_cv.tuning.sahi_eval import OVERLAP
+from mlops_cv.tuning.yolo26_visdrone_vid.sahi_eval import OVERLAP
 
 logger = logging.getLogger(__name__)
 

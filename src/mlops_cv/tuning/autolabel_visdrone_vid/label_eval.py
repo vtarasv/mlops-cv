@@ -27,9 +27,10 @@ from mlops_cv.autolabel.labeler import Labels, annotation_lines, read_rgb
 from mlops_cv.config.settings import BoxFilter
 from mlops_cv.data.subset import IMAGES_DIRNAME, visdrone_rule_split
 from mlops_cv.startup import StartupError, exits_on_startup_error
-from mlops_cv.tuning import track_scores, tracks, tune, visdrone_vid
-from mlops_cv.tuning.open_vocab import Detector, TrialLabeler
-from mlops_cv.tuning.tracks import BOX_TRACKERS, Tracker
+from mlops_cv.tuning import tune
+from mlops_cv.tuning.autolabel_visdrone_vid import track_scores, tracks, visdrone_vid
+from mlops_cv.tuning.autolabel_visdrone_vid.open_vocab import Detector, TrialLabeler
+from mlops_cv.tuning.autolabel_visdrone_vid.tracks import BOX_TRACKERS, Tracker
 
 logger = logging.getLogger(__name__)
 
@@ -313,7 +314,9 @@ def main(argv: list[str] | None = None) -> int:
     trials = load_stage(args.stage)
     rule = settings.data.subset_dir / IMAGES_DIRNAME / visdrone_rule_split(args.split)
     if not rule.is_dir():
-        raise StartupError(f"no {rule}: run python -m mlops_cv.tuning.visdrone_vid")
+        raise StartupError(
+            f"no {rule}: run python -m mlops_cv.tuning.autolabel_visdrone_vid.visdrone_vid"
+        )
     full = args.limit is None and not args.sequences
     frame_sets: dict[bool, list[visdrone_vid.Image]] = {}
 

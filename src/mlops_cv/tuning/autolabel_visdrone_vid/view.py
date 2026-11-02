@@ -12,7 +12,12 @@ from pathlib import Path
 
 from mlops_cv.data.subset import raw_split_dir
 from mlops_cv.startup import StartupError, exits_on_startup_error
-from mlops_cv.tuning.label_eval import ANNOTATIONS, AUTOLABEL_EXPERIMENT, RUNS_DIR, SPLIT_TAG
+from mlops_cv.tuning.autolabel_visdrone_vid.label_eval import (
+    ANNOTATIONS,
+    AUTOLABEL_EXPERIMENT,
+    RUNS_DIR,
+    SPLIT_TAG,
+)
 
 
 @exits_on_startup_error

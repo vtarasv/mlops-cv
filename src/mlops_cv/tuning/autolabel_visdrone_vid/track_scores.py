@@ -19,7 +19,7 @@ from typing import Any
 import numpy as np
 
 from mlops_cv.data.convert_visdrone_vid import YOLO_NAMES
-from mlops_cv.tuning import visdrone_vid
+from mlops_cv.tuning.autolabel_visdrone_vid import visdrone_vid
 
 TRACK = "track"
 # TrackEval metric -> the fields reported; HOTA's are means over its localisation thresholds.

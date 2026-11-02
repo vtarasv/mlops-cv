@@ -247,7 +247,7 @@ fiftyone-logs:
 
 # Load labeling trial RUN=<MLflow run id> into the FiftyOne App (reloading overwrites its fields).
 autolabel-view: mlflow-up fiftyone-up
-	args=$$(uv run python -m mlops_cv.tuning.view "$(RUN)") && \
+	args=$$(uv run python -m mlops_cv.tuning.autolabel_visdrone_vid.view "$(RUN)") && \
 		$(FIFTYONE_COMPOSE) exec fiftyone python /opt/load_trial.py $$args
 
 # Everything at once: MLflow + CT images + Airflow + streaming + serving.

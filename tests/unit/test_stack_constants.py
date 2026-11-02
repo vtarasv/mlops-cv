@@ -56,7 +56,7 @@ def test_service_and_monitor_listen_where_the_serving_stack_says() -> None:
 
 
 def test_the_fiftyone_app_mounts_where_labeling_trials_land() -> None:
-    from mlops_cv.tuning.label_eval import RUNS_DIR
+    from mlops_cv.tuning.autolabel_visdrone_vid.label_eval import RUNS_DIR
 
     makefile = (COMPOSE.parent / "Makefile").read_text(encoding="utf-8")
     assert f"export HOST_AUTOLABEL_RUNS := $(CURDIR)/{RUNS_DIR.as_posix()}\n" in makefile

@@ -408,9 +408,11 @@ uv run --env-file .env python -m mlops_cv.autolabel configs/autolabel/confidence
 | **0.597** | **61.3** | 61.9 | 60.8 | 61.3 | 47.8 | 60.7 | 394 |
 | 0.697 | 58.3 | 65.9 | 52.2 | 58.3 | 45.1 | 57.6 | 405 |
 
-`seg` F1 per video, each at its own max-F1 point:
+F1 per video, each at its own max-F1 point. *det, no floor* scores the detector's boxes after
+the box filter, down to 0.001, as if the video had a floor of its own. The other
+columns score the stored auto-labels' mask boxes, cut at the floor.
 
-| Video | det (uncut) | 0.497 | 0.597 | 0.697 |
+| Video | det, no floor | 0.497 | 0.597 | 0.697 |
 |---|---|---|---|---|
 | uav0000086_00000_v | 76.3 | 76.3 | 73.8 | 66.6 |
 | uav0000117_02622_v | 65.3 | 65.9 | 65.5 | 57.8 |
@@ -450,9 +452,11 @@ PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True uv run --env-file .env \
 | Sequence mode | `val-full` | 61.3 | 61.9 | 60.8 | 21.6 | 47.8 | 60.7 | 394 | 1,766 |
 | **Sequence mode** | `test-dev-full` | **61.4** | 65.9 | 57.6 | 20.2 | 46.7 | 60.1 | 1,299 | 1,172 |
 
-`seg` F1 per video, each at its own max-F1 point:
+F1 per video, each at its own max-F1 point. *det, no floor* scores the detector's boxes after
+the box filter, down to 0.001, as if the video had a floor of its own. The other
+columns score the stored auto-labels' mask boxes, cut at the floor.
 
-| Video | Size | Frames | det (uncut) | Image mode | Sequence mode |
+| Video | Size | Frames | det, no floor | Image mode | Sequence mode |
 |---|---|---|---|---|---|
 | uav0000009_03358_v | 1360×765 | 219 | 61.8 | 62.2 | 63.0 |
 | uav0000073_00600_v | 1920×1080 | 328 | 55.6 | 55.8 | 54.9 |

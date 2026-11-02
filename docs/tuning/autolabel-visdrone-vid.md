@@ -94,6 +94,30 @@ make autolabel-view RUN=<MLflow run id> # a run in aerial-auto-label
 - Each field gets FiftyOne's own TP/FP/FN flags at IoU 0.5, for browsing only: they count every
   confidence, so the scores come from the validator alone.
 
+## YOLO reference rows
+
+YOLO26 trained on ground truth, on the scale that YOLO trained on auto-labels reads: the final
+YOLO tuning recipe's `stage2-{n,s,m}1280` trials (`best.pt` from runs `4131a712`, `8567958a`,
+`e8715d0c`), predicting val once at imgsz 1280 with val's floor and cap. The same predictions are
+scored under both rules. The repo-rule column is the trial's `model.val` score, with this
+predict-path score after the slash; the 0.1–0.3 pt gap is the padding difference described in
+[YOLO26 tuning](yolo26-visdrone-vid.md#10-other-ways-to-run-the-same-weights-the-second-head-and-sahi).
+
+```bash
+uv run python -m mlops_cv.tuning.rule_read stage2-n1280 stage2-s1280 stage2-m1280
+```
+
+Each trial logs `<trial>-val-visdrone-rule` to `aerial-object-detection-tune`, with
+`val-visdrone-rule/` and `val/` (repo rule) keys.
+
+| Model | repo rule mAP50-95 | VisDrone rule mAP50-95 | mAP50 | mAP75 |
+|---|---|---|---|---|
+| yolo26n | 28.4 / 28.5 | 29.0 | 57.0 | 25.9 |
+| yolo26s | 30.8 / 30.5 | **31.1** | 61.5 | 27.2 |
+| yolo26m | 32.9 / 32.6 | 33.5 | 66.3 | 29.3 |
+
+VisDrone's rule lifts each size by 0.5–0.9 pt over the same predictions under the repo rule.
+
 ## 1. Box detector
 
 _Not run yet._ GDINO-T, GDINO-B, OWLv2-B/16, YOLOE-26-L and SAM 3 on subset train.

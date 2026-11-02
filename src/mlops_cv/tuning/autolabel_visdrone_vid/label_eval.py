@@ -34,7 +34,7 @@ from mlops_cv.tuning.autolabel_visdrone_vid.tracks import BOX_TRACKERS, Tracker
 
 logger = logging.getLogger(__name__)
 
-AUTOLABEL_EXPERIMENT = "aerial-auto-label"
+AUTOLABEL_EXPERIMENT = "aerial-object-detection-autolabel-tune"
 # Stored detector passes and downloaded trials; the FiftyOne App mounts it at the same path.
 RUNS_DIR = Path("runs/autolabel")
 ANNOTATIONS = "annotations"  # the trial's artifact dir: one VisDrone-VID file per sequence

@@ -69,7 +69,7 @@ Start MLflow once, then run a stage file:
 
 ```bash
 make mlflow-up
-uv run python -m mlops_cv.tuning.tune configs/tuning/yolo26-visdrone-vid/stage2.yaml
+uv run python -m mlops_cv.tuning.yolo26_visdrone_vid.tune configs/tuning/yolo26-visdrone-vid/stage2.yaml
 # the same, through make:  make tune STAGE=yolo26-visdrone-vid/stage2
 ```
 
@@ -132,7 +132,7 @@ processes. The data order stays fixed, so this spread is a lower bound.
 **Why:** to know how far a score moves by chance, so that a real gain can be told from noise.
 
 ```bash
-uv run python -m mlops_cv.tuning.tune configs/tuning/yolo26-visdrone-vid/stage1.yaml   # also stage 1
+uv run python -m mlops_cv.tuning.yolo26_visdrone_vid.tune configs/tuning/yolo26-visdrone-vid/stage1.yaml   # also stage 1
 ```
 
 | Seed | val mAP50-95 | person | vehicle | two-three-wheeler | mAP50-95_small |
@@ -176,7 +176,7 @@ Same command as the noise floor (`stage1.yaml`).
 at 1280, 1.7% are. A larger input gives each object more pixels.
 
 ```bash
-uv run python -m mlops_cv.tuning.tune configs/tuning/yolo26-visdrone-vid/stage2.yaml
+uv run python -m mlops_cv.tuning.yolo26_visdrone_vid.tune configs/tuning/yolo26-visdrone-vid/stage2.yaml
 ```
 
 | Model | imgsz | val mAP50-95 | person | vehicle | two-three-wheeler | mAP50-95_small | p50 ms | best epoch | s/epoch |
@@ -204,7 +204,7 @@ uv run python -m mlops_cv.tuning.tune configs/tuning/yolo26-visdrone-vid/stage2.
 **Why:** the ultralytics default is 100 epochs; 30 was the repo's guess.
 
 ```bash
-uv run python -m mlops_cv.tuning.tune configs/tuning/yolo26-visdrone-vid/stage3.yaml
+uv run python -m mlops_cv.tuning.yolo26_visdrone_vid.tune configs/tuning/yolo26-visdrone-vid/stage3.yaml
 ```
 
 | Model | epochs | val mAP50-95 | person | vehicle | two-three-wheeler | mAP50-95_small | last six | best epoch | GPU h |
@@ -236,7 +236,7 @@ The research behind the stage order ranked optimizer and lr0 third by expected e
 size and epochs, at a small-to-medium effect.
 
 ```bash
-uv run python -m mlops_cv.tuning.tune configs/tuning/yolo26-visdrone-vid/stage4.yaml
+uv run python -m mlops_cv.tuning.yolo26_visdrone_vid.tune configs/tuning/yolo26-visdrone-vid/stage4.yaml
 ```
 
 | Optimizer | lr0 | val mAP50-95 | person | vehicle | two-three-wheeler | mAP50-95_small | last six | best epoch |
@@ -261,7 +261,7 @@ uv run python -m mlops_cv.tuning.tune configs/tuning/yolo26-visdrone-vid/stage4.
 the usual small-dataset advice is to halve it.
 
 ```bash
-uv run python -m mlops_cv.tuning.tune configs/tuning/yolo26-visdrone-vid/stage5.yaml
+uv run python -m mlops_cv.tuning.yolo26_visdrone_vid.tune configs/tuning/yolo26-visdrone-vid/stage5.yaml
 ```
 
 | scale | mosaic | val mAP50-95 | person | vehicle | two-three-wheeler | mAP50-95_small | last six | best epoch |
@@ -291,8 +291,8 @@ frames, and stage 6 checks whether that helps here. Stage 7 targets two-three-wh
 and weakest class.
 
 ```bash
-uv run python -m mlops_cv.tuning.tune configs/tuning/yolo26-visdrone-vid/stage6.yaml
-uv run python -m mlops_cv.tuning.tune configs/tuning/yolo26-visdrone-vid/stage7.yaml
+uv run python -m mlops_cv.tuning.yolo26_visdrone_vid.tune configs/tuning/yolo26-visdrone-vid/stage6.yaml
+uv run python -m mlops_cv.tuning.yolo26_visdrone_vid.tune configs/tuning/yolo26-visdrone-vid/stage7.yaml
 ```
 
 | Setup | val mAP50-95 | person | vehicle | two-three-wheeler | mAP50-95_small | last six | best epoch |
@@ -317,7 +317,7 @@ freezes the whole backbone (`freeze=11`), planned because m at 1280 won stage 2.
 **Why:** stages 4–7 ran on s only.
 
 ```bash
-uv run python -m mlops_cv.tuning.tune configs/tuning/yolo26-visdrone-vid/confirm.yaml
+uv run python -m mlops_cv.tuning.yolo26_visdrone_vid.tune configs/tuning/yolo26-visdrone-vid/confirm.yaml
 ```
 
 | Trial | val mAP50-95 | mAP50-95_small | last six | best epoch | GPU h |
@@ -408,8 +408,8 @@ Val stays full frames.
 ```bash
 uv run python -m mlops_cv.tuning.yolo26_visdrone_vid.slices --imgsz 1280   # writes images/train-sliced1280 into the subset
 export DATA__DATASET_YAML=configs/tuning/yolo26-visdrone-vid/datasets/VisDrone-VID-merged-sliced1280.yaml
-uv run python -m mlops_cv.tuning.tune configs/tuning/yolo26-visdrone-vid/sliced.yaml
-uv run python -m mlops_cv.tuning.tune configs/tuning/yolo26-visdrone-vid/sliced-e8.yaml
+uv run python -m mlops_cv.tuning.yolo26_visdrone_vid.tune configs/tuning/yolo26-visdrone-vid/sliced.yaml
+uv run python -m mlops_cv.tuning.yolo26_visdrone_vid.tune configs/tuning/yolo26-visdrone-vid/sliced-e8.yaml
 unset DATA__DATASET_YAML
 uv run python -m mlops_cv.tuning.yolo26_visdrone_vid.sahi_eval sliced-n1280 sliced-s1280-zoom0.75-1.5 sliced-m1280 \
   sliced-e8-n1280 sliced-e8-s1280-zoom0.75-1.5 sliced-e8-m1280
@@ -530,7 +530,7 @@ for s in 10 5 2; do
     --train-frame-stride $s --output-dir $SUBSETS/visdrone-vid-train-s$s
   export DATA__SUBSET_DIR=$SUBSETS/visdrone-vid-train-s$s
   uv run python -m mlops_cv.pipelines.profile_pipeline --runner DirectRunner   # data version tag
-  uv run python -m mlops_cv.tuning.tune configs/tuning/yolo26-visdrone-vid/stride$s.yaml
+  uv run python -m mlops_cv.tuning.yolo26_visdrone_vid.tune configs/tuning/yolo26-visdrone-vid/stride$s.yaml
 done
 unset DATA__SUBSET_DIR
 uv run python -m mlops_cv.tuning.yolo26_visdrone_vid.test_read stride10-n1280

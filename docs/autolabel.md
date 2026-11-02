@@ -19,7 +19,7 @@ tuned on it would learn the wrong labeling protocol.
   | `train-sample` | 560: 10 evenly spaced from each of VID train's 56 videos | image-mode stages (nothing is trained) |
   | `val-stride20` | 146: every 20th VID val frame, the repo subset's val | image-mode finalists |
   | `val-full` | 2,846: every frame of VID val's 7 videos | sequence-mode stages |
-  | `test-dev-full` | 6,635: every frame of VID test-dev's 17 videos | the finalists, read once at the end |
+  | `test-dev-full` | 6,635: every frame of VID test-dev's 17 videos | both labeling configs, read once at the end |
 
 - **Labeling chain.** The detector is prompted with class names, each mapped to one of the 3
   merged classes:
@@ -427,6 +427,66 @@ uv run --env-file .env python -m mlops_cv.autolabel configs/autolabel/confidence
   threshold follows the dense videos, and a floor per resolution is outside the grid.
 - Sequence mode's labeling config is `configs/autolabel/sequence-mode.yaml`.
 
+## 12. Test-dev read
+
+**What:** both labeling configs, read once on `test-dev-full`: 6,635 frames from 17 videos, 680 to
+2720 px wide, with no 4K video. Image mode runs first and stores the detector pass; sequence mode
+reads it. Nothing selects.
+
+**Why:** to check that the picks made on `train-sample` and `val-full` hold on videos never tuned
+on.
+
+```bash
+uv run --env-file .env python -m mlops_cv.autolabel.visdrone_vid --set test-dev-full
+uv run --env-file .env python -m mlops_cv.autolabel configs/autolabel/image-mode.yaml --set test-dev-full
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True uv run --env-file .env \
+  python -m mlops_cv.autolabel configs/autolabel/sequence-mode.yaml --set test-dev-full
+```
+
+Mean latency per frame.
+
+| Config | Set | seg F1 | P | R | mAP50-95 | HOTA | IDF1 | ID switches | ms per frame |
+|---|---|---|---|---|---|---|---|---|---|
+| Image mode | `val-full` | 61.6 | 62.7 | 60.5 | 24.3 | — | — | — | 1,724 |
+| **Image mode** | `test-dev-full` | **61.5** | 64.2 | 59.0 | 22.5 | — | — | — | 1,183 |
+| Sequence mode | `val-full` | 61.3 | 61.9 | 60.8 | 21.6 | 47.8 | 60.7 | 394 | 1,766 |
+| **Sequence mode** | `test-dev-full` | **61.4** | 65.9 | 57.6 | 20.2 | 46.7 | 60.1 | 1,299 | 1,172 |
+
+`seg` F1 per video, each at its own max-F1 point:
+
+| Video | Size | Frames | det (uncut) | Image mode | Sequence mode |
+|---|---|---|---|---|---|
+| uav0000009_03358_v | 1360×765 | 219 | 61.8 | 62.2 | 63.0 |
+| uav0000073_00600_v | 1920×1080 | 328 | 55.6 | 55.8 | 54.9 |
+| uav0000073_04464_v | 1920×1080 | 312 | 61.7 | 61.9 | 60.9 |
+| uav0000077_00720_v | 1360×765 | 780 | 68.5 | 67.9 | 68.2 |
+| uav0000088_00290_v | 960×540 | 296 | 66.7 | 63.3 | 62.4 |
+| uav0000119_02301_v | 1360×765 | 179 | 60.0 | 59.0 | 59.3 |
+| uav0000120_04775_v | 1360×765 | 1000 | 64.9 | 64.2 | 63.7 |
+| uav0000161_00000_v | 960×540 | 308 | 65.2 | 64.0 | 63.2 |
+| uav0000188_00000_v | 960×540 | 260 | 42.5 | 43.6 | 43.3 |
+| uav0000201_00000_v | 1344×756 | 677 | 38.3 | 40.9 | 40.5 |
+| uav0000249_00001_v | 1920×1080 | 360 | 65.0 | 67.1 | 66.7 |
+| uav0000249_02688_v | 1344×756 | 244 | 58.7 | 58.6 | 58.8 |
+| uav0000297_00000_v | 1904×1071 | 146 | 49.8 | 50.3 | 50.3 |
+| uav0000297_02761_v | 1904×1071 | 373 | 67.9 | 66.8 | 66.3 |
+| uav0000306_00230_v | 680×382 | 420 | 50.6 | 49.9 | 49.7 |
+| uav0000355_00001_v | 1360×765 | 468 | 61.6 | 62.1 | 61.8 |
+| uav0000370_00001_v | 2720×1530 | 265 | 67.1 | 68.7 | 69.0 |
+
+**Result:**
+- **Val's reads hold.** Image mode scores 61.5 on test-dev against 61.6 on `val-full` and 61.8 on
+  `val-stride20`; sequence mode scores 61.4 against 61.3. `train-sample`, where the stages
+  selected, reads 5 pt higher (66.4).
+- **The floor transfers.** Image mode's max-F1 confidence is 0.579, and cutting at 0.597 costs
+  nothing (61.5).
+- **Tracking adds ids at no F1 cost.** Sequence mode is within 1 pt of image mode on every video.
+  HOTA and IDF1 sit about 1 pt under val's, but ID switches per frame rise 1.4×.
+- **The videos spread from 41 to 69.** Every video is under 4K, so the floor problem of val's 4K
+  video doesn't arise here.
+- **Cost.** Test-dev's frames are smaller than val's: 1.2 s per frame. Image mode took 2.2 h, and
+  sequence mode took 1.2 h on its stored pass.
+
 ## Viewing a trial
 
 The annotation editor is FiftyOne 1.22.1 (`docker-compose/docker-compose.fiftyone.yml`), with raw
@@ -448,9 +508,9 @@ make autolabel-view RUN=<MLflow run id> # a run in aerial-auto-label
 
 - **Image-mode config:** SAM 3 fp16 on the 10 raw VisDrone names, untiled → box filter (min side
   8 px, ≤ 5% of the frame, NMS 0.5) → SAM 2.1 S, auto-labels cut at confidence 0.597. `seg` F1
-  66.4 on `train-sample` and 61.8 on `val-stride20`. 1.7 s per frame.
+  66.4 on `train-sample`, 61.8 on `val-stride20` and 61.5 on `test-dev-full`. 1.2–1.7 s per frame.
 - **Sequence-mode config:** the same chain on every frame, tracked by BoT-SORT. `seg` F1 61.3 and
-  HOTA 47.8 on `val-full`.
+  HOTA 47.8 on `val-full`; 61.4 and 46.7 on `test-dev-full`.
 - **What mattered:**
   - Scoring every box and dropping the nested-box rule: 29.6 → 58.0 on Grounding DINO-T.
   - SAM 3 as the detector: +8.5 pt.
@@ -459,6 +519,5 @@ make autolabel-view RUN=<MLflow run id> # a run in aerial-auto-label
   own masks, video trackers (EdgeTAM, SAM 2.1 video).
 - **Masks are not the bottleneck.** On ground-truth boxes they keep 97–98% at IoU 0.5, but trail
   hand-reviewed masks by 17–21 pt at IoU 0.75.
-- **Open:**
-  - The finalists' one read on `test-dev-full`.
-  - A lower floor for 4K frames (+13.4 pt on the 4K video).
+- **Not adopted:** a lower floor for 4K frames. It gains 13.4 pt on val's one 4K video, and
+  test-dev has none.

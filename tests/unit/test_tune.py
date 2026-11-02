@@ -7,7 +7,7 @@ from pathlib import Path
 from mlops_cv.config import load_settings
 from mlops_cv.training.train import build_parser
 from mlops_cv.tuning.common import load_stage
-from mlops_cv.tuning.tune import trial_argv
+from mlops_cv.tuning.yolo26_visdrone_vid.tune import trial_argv
 
 STAGE = """
 defaults: {patience: 0, close_mosaic: 10, imgsz: 640}

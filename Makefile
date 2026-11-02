@@ -97,7 +97,7 @@ train: mlflow-up
 # Run one tuning stage (configs/tuning/$(STAGE).yaml, e.g. STAGE=yolo26-visdrone-vid/stage2)
 # -> unregistered trial runs in the tune experiment. Other experiment commands: docs/tuning/yolo26-visdrone-vid.md.
 tune: mlflow-up
-	uv run python -m mlops_cv.tuning.tune configs/tuning/$(STAGE).yaml
+	uv run python -m mlops_cv.tuning.yolo26_visdrone_vid.tune configs/tuning/$(STAGE).yaml
 
 # Evaluate an MLflow model -> test metrics + report + gate + demo videos + TP/FP crops in MLflow.
 # Pass MODEL=<models:/aerial-object-detector-server@champion | runs:/<run_id>/weights/best.pt>.

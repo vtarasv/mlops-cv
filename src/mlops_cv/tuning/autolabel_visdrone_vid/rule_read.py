@@ -3,7 +3,8 @@
 It measures, never selects. Each trial predicts val once at its imgsz with val's floor and cap,
 and the same predictions are scored twice: under VisDrone's rule (``val-visdrone-rule/`` keys,
 the labeling trials' scale) and under the repo's (``val/``). Each trial is one
-``<trial>-val-visdrone-rule`` run in the tune experiment, tagged ``tune.stage=visdrone-rule-read``.
+``<trial>-val-visdrone-rule`` run in the labeling trials' experiment, tagged
+``tune.stage=visdrone-rule-read``.
 """
 
 from __future__ import annotations
@@ -39,13 +40,16 @@ def both_rules(
 
 @exits_on_startup_error
 def main(argv: list[str] | None = None) -> int:
-    from mlops_cv.tuning.common import CONF, MAX_DET, TUNE_EXPERIMENT, finished_trial
+    from mlops_cv.tuning.autolabel_visdrone_vid.label_eval import AUTOLABEL_EXPERIMENT
+    from mlops_cv.tuning.common import CONF, MAX_DET, finished_trial
 
     p = argparse.ArgumentParser(description="Score tuning trials' best.pt under VisDrone's rule.")
     p.add_argument("trials", nargs="+", help="trial run names, e.g. stage2-s1280")
     args = p.parse_args(argv)
 
-    os.environ["MLFLOW__EXPERIMENT"] = TUNE_EXPERIMENT  # never production's experiment
+    os.environ["MLFLOW__EXPERIMENT"] = (
+        AUTOLABEL_EXPERIMENT  # the trials stay in the tune experiment
+    )
     from mlops_cv.config import get_settings
 
     settings = get_settings()

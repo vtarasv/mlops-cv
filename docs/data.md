@@ -16,7 +16,8 @@ flowchart LR
 The VID ZIPs are hosted on **Google Drive / Baidu Yun** (linked from the
 [VisDrone-Dataset](https://github.com/VisDrone/VisDrone-Dataset) repo). Download `VisDrone2019-VID-train`,
 `VisDrone2019-VID-val`, and `VisDrone2019-VID-test-dev`, unzip, and point the converter at the parent
-directory. Each split is already a set of **extracted frames** (not video files):
+directory. VisDrone has no license: its authors keep all rights and release it for research
+(see the README's License section). Each split is already a set of **extracted frames** (not video files):
 
 ```
 <DATA__RAW_DIR>/

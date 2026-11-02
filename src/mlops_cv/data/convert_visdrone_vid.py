@@ -24,8 +24,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from PIL import Image
-
 # person <- 1,2 ; vehicle <- 4,5,6,9 ; two-three-wheeler <- 3,7,8,10
 CLASS_MERGE: dict[int, int] = {1: 0, 2: 0, 4: 1, 5: 1, 6: 1, 9: 1, 3: 2, 7: 2, 8: 2, 10: 2}
 YOLO_NAMES: dict[int, str] = {0: "person", 1: "vehicle", 2: "two-three-wheeler"}
@@ -111,6 +109,8 @@ def convert_sequence_text(text: str, image_size: tuple[int, int]) -> dict[int, l
 
 def image_size(path: str | Path) -> tuple[int, int]:
     """Return an image's ``(width, height)``."""
+    from PIL import Image
+
     with Image.open(path) as im:
         return im.size
 

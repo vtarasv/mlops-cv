@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import typing
 from pathlib import Path
 
 import numpy as np
@@ -10,11 +9,8 @@ import pytest
 
 from mlops_cv.autolabel import labeler
 from mlops_cv.autolabel.labeler import Labels
-from mlops_cv.config.settings import AutolabelSettings, BoxFilter, MergedClass
+from mlops_cv.config.settings import AutolabelDetector, AutolabelSettings, BoxFilter
 from mlops_cv.data.convert_visdrone_vid import (
-    CLASS_MERGE,
-    RAW_NAMES,
-    YOLO_NAMES,
     convert_sequence_text,
 )
 from mlops_cv.tuning.common import CONF, MAX_DET
@@ -22,14 +18,14 @@ from mlops_cv.tuning.common import CONF, MAX_DET
 STAGES = Path(__file__).parents[2] / "configs" / "tuning" / "autolabel-visdrone-vid"
 
 
-def test_merged_class_literal_matches_the_merge() -> None:
-    assert set(typing.get_args(MergedClass)) == set(YOLO_NAMES.values())
+def test_prompts_name_merged_classes_only() -> None:
+    assert AutolabelDetector(prompts={"car": "vehicle"}).prompts == {"car": "vehicle"}
+    with pytest.raises(ValueError, match="not a merged class"):
+        AutolabelDetector(prompts={"car": "automobile"})
 
 
-def test_default_prompts_are_the_raw_names_merged() -> None:
-    detector = AutolabelSettings().detector
-    assert detector.prompts == {n: YOLO_NAMES[CLASS_MERGE[c]] for c, n in RAW_NAMES.items()}
-    assert detector.threshold == CONF
+def test_the_detector_scores_like_val() -> None:
+    assert AutolabelSettings().detector.threshold == CONF
     assert AutolabelSettings().max_det == MAX_DET
 
 

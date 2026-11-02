@@ -10,8 +10,10 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from mlops_cv.data.convert_visdrone_vid import CLASS_MERGE, RAW_NAMES, YOLO_NAMES
 
 
 class DataSettings(BaseModel):
@@ -96,9 +98,6 @@ class ServingSettings(BaseModel):
     max_inflight: int = Field(default=2, ge=1)  # detects at once, per service or consumer
 
 
-MergedClass = Literal["person", "vehicle", "two-three-wheeler"]
-
-
 class AutolabelDetector(BaseModel):
     """The auto-labeler's text-prompted detector."""
 
@@ -106,20 +105,18 @@ class AutolabelDetector(BaseModel):
 
     model: str = "facebook/sam3"
     # prompt text -> the merged class its boxes get; VisDrone's 10 raw names
-    prompts: dict[str, MergedClass] = {
-        "pedestrian": "person",
-        "people": "person",
-        "bicycle": "two-three-wheeler",
-        "car": "vehicle",
-        "van": "vehicle",
-        "truck": "vehicle",
-        "tricycle": "two-three-wheeler",
-        "awning-tricycle": "two-three-wheeler",
-        "bus": "vehicle",
-        "motor": "two-three-wheeler",
-    }
+    prompts: dict[str, str] = Field(
+        default_factory=lambda: {n: YOLO_NAMES[CLASS_MERGE[c]] for c, n in RAW_NAMES.items()}
+    )
     threshold: float = 0.001  # the detector's own score floor (val's); it keeps its top 300
     dtype: Literal["bfloat16", "float16"] | None = "float16"  # ``None`` is fp32
+
+    @field_validator("prompts")
+    @classmethod
+    def _merged_classes(cls, prompts: dict[str, str]) -> dict[str, str]:
+        if unknown := set(prompts.values()) - set(YOLO_NAMES.values()):
+            raise ValueError(f"not a merged class: {sorted(unknown)}")
+        return prompts
 
 
 class BoxFilter(BaseModel):

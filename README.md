@@ -227,3 +227,14 @@ cloud; only the values change. Details: [docs/config.md](docs/config.md).
 Start at [docs/index.md](docs/index.md). Each component has its own page. The infrastructure pages
 (MLflow, orchestration, data pipelines, streaming, containers) end with a *cloud migration* section
 describing what changes when that piece moves to a managed service.
+
+## License
+
+The code is licensed under [AGPL-3.0](LICENSE), the license of
+[ultralytics](https://github.com/ultralytics/ultralytics), which the code imports.
+
+The [VisDrone](https://github.com/VisDrone/VisDrone-Dataset) dataset is not part of this repo and
+has no license of its own: the AISKYEYE team (Tianjin University) keeps all rights and releases it
+as a research benchmark. Models trained on it carry that restriction, and this repo ships none. Get
+the authors' permission before using the data or the trained models commercially, and cite
+[their paper](https://doi.org/10.1109/TPAMI.2021.3119563) when publishing results.

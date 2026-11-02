@@ -443,9 +443,7 @@ PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True uv run --env-file .env \
   python -m mlops_cv.autolabel configs/autolabel/sequence-mode.yaml --set test-dev-full
 ```
 
-Mean latency per frame.
-
-| Config | Set | seg F1 | P | R | mAP50-95 | HOTA | IDF1 | ID switches | ms per frame |
+| Config | Set | seg F1 | P | R | mAP50-95 | HOTA | IDF1 | ID switches | Mean ms per frame |
 |---|---|---|---|---|---|---|---|---|---|
 | Image mode | `val-full` | 61.6 | 62.7 | 60.5 | 24.3 | — | — | — | 1,724 |
 | **Image mode** | `test-dev-full` | **61.5** | 64.2 | 59.0 | 22.5 | — | — | — | 1,183 |

@@ -327,9 +327,11 @@ of tracker:
   frame, and carry the masks between them. Key-frame boxes are matched one-to-one to the live
   tracks at IoU ≥ 0.3, and each box left over starts a new track. A track ends after 25 frames with an empty mask or 2 key frames without a
   match.
-- **Box trackers** (BoT-SORT, ByteTrack: ultralytics' defaults) run the detector, filter and
-  segmenter on every frame and link the boxes into tracks. Their `track_high_thresh` and
-  `new_track_thresh` take the confidence floor, since their 0.25 default is YOLO's score scale.
+- **Box trackers** (BoT-SORT, ByteTrack: ultralytics' defaults) don't label. Image mode's chain
+  labels every frame, and the tracker links its boxes into tracks: a detection it puts on a track
+  becomes an auto-label with that `track_id`, and the rest are dropped. Their `track_high_thresh`
+  and `new_track_thresh` take the confidence floor, since their 0.25 default is YOLO's score
+  scale.
 
 The input is image mode's stored detections: SAM 3 fp16 boxes on the 10 raw names after the box filter. On each key frame, the boxes at or above the 0.597 floor seed new tracks or refresh live ones.
 

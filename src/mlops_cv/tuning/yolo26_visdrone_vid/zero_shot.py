@@ -17,7 +17,7 @@ import numpy as np
 
 from mlops_cv.data.convert_visdrone_vid import YOLO_NAMES
 from mlops_cv.startup import exits_on_startup_error
-from mlops_cv.tuning.tune import CONF, MAX_DET, readings
+from mlops_cv.tuning.common import CONF, MAX_DET, readings
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +64,7 @@ def result_rows(result: Any) -> np.ndarray:
 @exits_on_startup_error
 def main() -> int:
     from mlops_cv.training.train import MODELS, TRIAL_SPLIT
-    from mlops_cv.tuning.tune import TUNE_EXPERIMENT
+    from mlops_cv.tuning.common import TUNE_EXPERIMENT
 
     os.environ["MLFLOW__EXPERIMENT"] = TUNE_EXPERIMENT  # never production's experiment
     from mlops_cv.config import get_settings

@@ -4,11 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from mlops_cv.config import load_settings
 from mlops_cv.training.train import build_parser
-from mlops_cv.tuning.tune import load_stage, trial_argv
+from mlops_cv.tuning.common import load_stage
+from mlops_cv.tuning.tune import trial_argv
 
 STAGE = """
 defaults: {patience: 0, close_mosaic: 10, imgsz: 640}
@@ -22,28 +21,6 @@ def _stage(tmp_path: Path, text: str = STAGE) -> Path:
     path = tmp_path / "stage1.yaml"
     path.write_text(text, encoding="utf-8")
     return path
-
-
-def test_trials_take_the_stage_defaults_and_its_name(tmp_path: Path) -> None:
-    trials = load_stage(_stage(tmp_path))
-    assert list(trials) == ["stage1-a", "stage1-b"]
-    assert trials["stage1-a"] == {
-        "patience": 0,
-        "close_mosaic": 10,
-        "imgsz": 640,
-        "model": "yolo26n",
-    }
-    assert trials["stage1-b"]["imgsz"] == 1280  # a trial's own knob wins
-
-
-def test_a_trial_section_updates_the_default_one_level_deep(tmp_path: Path) -> None:
-    text = "defaults: {f: {a: 1, b: {x: 1}}}\ntrials: [{name: t, f: {b: {y: 2}}}]"
-    assert load_stage(_stage(tmp_path, text))["stage1-t"] == {"f": {"a": 1, "b": {"y": 2}}}
-
-
-def test_a_repeated_trial_name_is_refused(tmp_path: Path) -> None:
-    with pytest.raises(ValueError, match="stage1-a repeats"):
-        load_stage(_stage(tmp_path, "trials: [{name: a}, {name: a}]"))
 
 
 def test_knobs_reach_model_train_with_their_types(tmp_path: Path) -> None:

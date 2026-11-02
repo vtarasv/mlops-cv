@@ -180,7 +180,7 @@ def readings(
     frames: Collection[str] | None = None,
     floor: float | None = None,
 ) -> dict[str, float]:
-    """``tune.readings`` plus mAP75 and the max-F1 confidence; with ``floor``, P and R there."""
+    """``common.readings`` plus mAP75 and the max-F1 confidence; with ``floor``, P and R there."""
     from ultralytics.utils.metrics import smooth
 
     from mlops_cv.evaluation.score_detections import score_with_ap_small
@@ -192,7 +192,7 @@ def readings(
         per_class_metrics,
     )
 
-    # ``tune.readings``' keys, assembled here: the extras need the validator's metrics.
+    # ``common.readings``' keys, assembled here: the extras need the validator's metrics.
     metrics, ap_s = score_with_ap_small(detections, data_yaml, split, frames)
     box = metrics.box
     # ultralytics' own max-F1 index (``ap_per_class``), mapped onto its confidence axis.

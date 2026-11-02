@@ -27,7 +27,7 @@ from mlops_cv.autolabel.labeler import Labels, annotation_lines, read_rgb
 from mlops_cv.config.settings import BoxFilter
 from mlops_cv.data.subset import IMAGES_DIRNAME
 from mlops_cv.startup import StartupError, exits_on_startup_error
-from mlops_cv.tuning import tune
+from mlops_cv.tuning import common
 from mlops_cv.tuning.autolabel_visdrone_vid import track_scores, tracks, visdrone_vid
 from mlops_cv.tuning.autolabel_visdrone_vid.open_vocab import Detector, TrialLabeler
 from mlops_cv.tuning.autolabel_visdrone_vid.tracks import BOX_TRACKERS, Tracker
@@ -60,7 +60,7 @@ class LabelingConfig(BaseModel):
 
 def load_stage(path: Path) -> dict[str, LabelingConfig]:
     """``{run name: labeling config}``, through the tuning grid's own stage loader."""
-    return {name: LabelingConfig.model_validate(k) for name, k in tune.load_stage(path).items()}
+    return {name: LabelingConfig.model_validate(k) for name, k in common.load_stage(path).items()}
 
 
 def params(config: LabelingConfig) -> dict[str, Any]:
@@ -208,7 +208,7 @@ def label_frames(
     if raw:
         logger.info(f"  detector boxes from {store}")
     labeler = TrialLabeler(
-        config.detector, config.box_filter, device, tune.MAX_DET, detect=raw is None
+        config.detector, config.box_filter, device, common.MAX_DET, detect=raw is None
     )
     out, detected = [], []
     for i, im in enumerate(images, start=1):
@@ -250,7 +250,7 @@ def label_sequences(
         return [lab for lab, _ in tracked], [n for _, n in tracked]
     raw = load_detections(store, images) if store and store.exists() else None
     labeler = TrialLabeler(
-        config.detector, config.box_filter, device, tune.MAX_DET, detect=raw is None
+        config.detector, config.box_filter, device, common.MAX_DET, detect=raw is None
     )
     out = list(tracks.video_tracks(labeler, config.tracker, images, raw, floor))
     del labeler

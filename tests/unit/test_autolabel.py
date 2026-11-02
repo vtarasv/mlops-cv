@@ -17,7 +17,7 @@ from mlops_cv.data.convert_visdrone_vid import (
     YOLO_NAMES,
     convert_sequence_text,
 )
-from mlops_cv.tuning.tune import CONF, MAX_DET
+from mlops_cv.tuning.common import CONF, MAX_DET
 
 STAGES = Path(__file__).parents[2] / "configs" / "tuning" / "autolabel-visdrone-vid"
 

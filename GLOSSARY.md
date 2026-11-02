@@ -70,7 +70,8 @@ _Avoid_: demo data, raw frames
 
 **Ingestion**:
 The pipeline that turns VisDrone-VID into the subset and its demo store. It is the only step on
-the detector's path that reads a raw dataset; the auto-labeler reads raw datasets directly.
+the detector's path that reads a raw dataset; labeling trials read it directly for the ignored
+regions and the full clips.
 _Avoid_: conversion, preprocessing
 
 **Profiling**:
@@ -206,7 +207,7 @@ _Avoid_: variance, seed noise
 **Win margin**:
 How far a trial must beat its stage's winner so far on val mAP50-95 to count as a win. It sits
 above the noise floor, which is measured on one val sample with the data order held fixed. A
-labeling trial has no noise floor; its win margin is on F1.
+labeling trial has no noise floor; its win margin is on mAP50-95 too, or on HOTA for a tracker.
 _Avoid_: threshold, tolerance
 
 **Confirmation stage**:
@@ -381,39 +382,26 @@ _Avoid_: model drift, output drift
 ### Auto-labeling
 
 **Auto-labeler**:
-A chain of pretrained, text-prompted models that labels images or frames it was never trained on:
-an open-vocabulary detector, a box filter, and a segmenter that turns each kept box into
-a mask. A single model that does all three counts too.
+A chain of pretrained, text-prompted models that labels frames it was never trained on with
+boxes: an open-vocabulary detector, then a box filter. A tracker may link its boxes into tracks.
 _Also_: auto-labeling pipeline
 
 **Box filter**:
-The auto-labeler's step between the open-vocabulary detector and the segmenter. It drops
-detections that are too small, too large, too unsure or duplicated, so the segmenter only sees
-boxes worth a mask.
+The auto-labeler's step after the open-vocabulary detector. It drops detections that are too
+small, too large, too unsure or duplicated.
 _Avoid_: post-processing, NMS (that is one of its rules)
 
 **Auto-label**:
-One object as the auto-labeler reports it: a merged class, a score, a box and a mask, and in
-sequence mode a track.
+One object as the auto-labeler reports it: a merged class, a confidence and a box, and with a
+tracker a track.
 _Avoid_: detection (that is the detector's output), pseudo-label
 
-**Image mode**:
-Auto-labeling each image on its own, with no memory of other images. Single VisDrone-VID frames
-are labeled this way, and sequence mode's key frames reuse it.
-_Also_: image case
-
-**Sequence mode**:
-Auto-labeling a sequence frame by frame: objects found on key frames are tracked through the
-frames in between. VisDrone-VID is labeled this way.
-_Also_: video case
-
 **Key frame**:
-A sequence-mode frame on which the open-vocabulary detector runs and objects not yet tracked
-start being tracked.
+A frame on which a video tracker's detector runs and objects not yet tracked start being tracked.
 
 **Track**:
-One object followed through a sequence under one id, from the key frame where it starts to the
-frame where it ends. Its auto-labels share that id.
+One object followed through a sequence under one id, from the frame where it starts to the frame
+where it ends. Its auto-labels share that id.
 _Avoid_: tracklet, trajectory
 
 **Key-frame interval**:
@@ -422,16 +410,15 @@ the subset.
 _Avoid_: frame stride, detection stride
 
 **Labeling config**:
-The tuned settings of the auto-labeler for one raw dataset: prompts, thresholds, box filter and
-segmenter settings, and in sequence mode the key-frame interval and tracking settings. Its
-confidence floor is the winning labeling trial's max-F1 confidence; auto-labels below it are not
-kept. In sequence mode the floor applies on key frames: a box below it starts no track and
-refreshes none.
+The tuned settings of the auto-labeler for one raw dataset: the detector, its prompts and
+thresholds, the box filter, and the tracker's settings. Auto-labels below its confidence floor
+are not kept, and a box below it starts no track and refreshes none. The winning one is
+`AutolabelSettings`' defaults.
 _Avoid_: per-dataset parameters
 
 **Labeling trial**:
-One labeling config run on a tuning split and scored against that split's ground truth. Nothing
-is trained.
+One labeling config run on a subset split, or on the full clips behind it, and scored against
+that split's ground truth under VisDrone's ignored-region rule. Nothing is trained.
 _Avoid_: trial (that is a training run of the detector's tuning)
 
 **Annotation editor**:

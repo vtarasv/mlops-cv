@@ -13,7 +13,8 @@ VisDrone-VID ground-truth line (one per object per frame, comma-separated, 0-bas
     8:truncation
     9:occlusion
 
-``score`` is 1 (considered) or 0 (ignored region — skipped). bbox is absolute pixels with
+``score`` is 1 (considered) or 0 (ignored region — skipped) in ground truth; an auto-label's is its
+float confidence, always above 0. bbox is absolute pixels with
 (left, top) the top-left corner. The output YOLO line is ``<cls> <xc> <yc> <w> <h>`` with the box
 *center* and size normalized to [0, 1] by the image width/height.
 """
@@ -28,6 +29,19 @@ from PIL import Image
 # person <- 1,2 ; vehicle <- 4,5,6,9 ; two-three-wheeler <- 3,7,8,10
 CLASS_MERGE: dict[int, int] = {1: 0, 2: 0, 4: 1, 5: 1, 6: 1, 9: 1, 3: 2, 7: 2, 8: 2, 10: 2}
 YOLO_NAMES: dict[int, str] = {0: "person", 1: "vehicle", 2: "two-three-wheeler"}
+# The raw categories' names; 0 is an ignored region and 11 "others".
+RAW_NAMES: dict[int, str] = {
+    1: "pedestrian",
+    2: "people",
+    3: "bicycle",
+    4: "car",
+    5: "van",
+    6: "truck",
+    7: "tricycle",
+    8: "awning-tricycle",
+    9: "bus",
+    10: "motor",
+}
 
 # Documented column indices (0-based) used by the converter.
 FRAME_COL, LEFT_COL, TOP_COL, WIDTH_COL, HEIGHT_COL, SCORE_COL, CATEGORY_COL = 0, 2, 3, 4, 5, 6, 7
@@ -67,7 +81,7 @@ def convert_annotation_line(line: str, img_w: int, img_h: int) -> tuple[int, Yol
         frame_index = int(parts[FRAME_COL])
         left, top = float(parts[LEFT_COL]), float(parts[TOP_COL])
         width, height = float(parts[WIDTH_COL]), float(parts[HEIGHT_COL])
-        score, category = int(parts[SCORE_COL]), int(parts[CATEGORY_COL])
+        score, category = float(parts[SCORE_COL]), int(parts[CATEGORY_COL])
     except ValueError:
         return None
     if score == 0 or category not in CLASS_MERGE:

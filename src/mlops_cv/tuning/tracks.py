@@ -1,9 +1,10 @@
-"""Sequence mode: key-frame tracking with a video model, and ultralytics' box-tracker controls.
+"""Tracking for labeling trials: ultralytics' box trackers, and video trackers on key frames.
 
 A video trial runs the detector (or reads its stored boxes) and the box filter on key frames
 only. Kept boxes at or above the confidence floor match the live tracks by box IoU against each
-track's mask box; the rest join the running tracker as new objects. The tracker is never reset,
-and its memory is pruned to the seed frames plus the last 16.
+track's box; the rest join the running tracker as new objects. A video tracker's masks never
+leave it: each is cut to its tight box. The tracker is never reset, and its memory is pruned to
+the seed frames plus the last 16.
 """
 
 from __future__ import annotations
@@ -18,23 +19,19 @@ from operator import attrgetter
 from typing import Any
 
 import numpy as np
+from pydantic import BaseModel, ConfigDict
 
-from mlops_cv.autolabel import visdrone_vid
-from mlops_cv.autolabel.labeler import (
-    SEGMENT_CHUNK,
-    Labeler,
-    LabelingConfig,
-    Labels,
-    Tracker,
-    mask_areas,
-    read_rgb,
-    rle,
-)
+from mlops_cv.autolabel.labeler import Labeler, Labels, above, read_rgb
+from mlops_cv.tuning import visdrone_vid
 
 logger = logging.getLogger(__name__)
 
-# Non-seed frames a video tracker keeps: memory stays flat at unchanged latency (ticket 07).
+# ultralytics' box trackers, run with their default settings; any other tracker is a video model.
+BOX_TRACKERS = ("botsort", "bytetrack")
+# Non-seed frames a video tracker keeps: memory stays flat at unchanged latency.
 KEEP_FRAMES = 16
+# Masks per post-processing pass: bounds the full-resolution masks' memory.
+MASK_CHUNK = 32
 # A transformers video session's per-object stores, indexed by object position.
 PER_OBJECT = (
     "point_inputs_per_obj",
@@ -42,6 +39,20 @@ PER_OBJECT = (
     "output_dict_per_obj",
     "frames_tracked_per_obj",
 )
+
+
+class Tracker(BaseModel):
+    """The key-frame rules apply to the video trackers, not to ``BOX_TRACKERS``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    model: str  # one of ``BOX_TRACKERS``, or a transformers video repo (EdgeTAM, SAM 2.1)
+    key_interval: int = 10  # K: frame 0 and every K-th frame after it are key frames
+    new_iou: float = 0.3  # tau: a kept box below it against every live track is a new object
+    empty_frames: int = 25  # a track ends after this many consecutive empty-mask frames
+    unmatched_keys: int = 2  # ... or after this many consecutive key frames without a match
+    duplicate_iou: float = 0.8  # of two tracks whose boxes overlap above it, the younger ends
+    max_objects: int | None = None  # live-track cap; new objects beyond it aren't added
 
 
 @dataclass
@@ -66,7 +77,7 @@ def match(iou: np.ndarray, tau: float) -> tuple[dict[int, int], np.ndarray]:
 
 
 def younger_duplicates(iou: np.ndarray, ids: list[int], threshold: float) -> set[int]:
-    """Of each two tracks whose masks overlap at IoU > ``threshold``, the younger (higher id)."""
+    """Of each two tracks whose boxes overlap at IoU > ``threshold``, the younger (higher id)."""
     ended: set[int] = set()
     for a, b in zip(*np.nonzero(np.triu(iou > threshold, 1)), strict=True):
         if ids[a] not in ended and ids[b] not in ended:
@@ -88,7 +99,7 @@ class Tracks:
         return ids
 
     def observe(self, ids: list[int], areas: Any) -> set[int]:
-        """One frame's mask areas per track -> the tracks the empty-mask rule ends."""
+        """One frame's box areas per track -> the tracks the empty-mask rule ends."""
         for i, area in zip(ids, areas, strict=True):
             track = self.live[i]
             track.empty = 0 if area else track.empty + 1
@@ -100,7 +111,7 @@ class Tracks:
         rows: np.ndarray,
         labels: list[str],
         box_iou: np.ndarray,
-        mask_iou: np.ndarray,
+        track_iou: np.ndarray,
     ) -> tuple[set[int], dict[int, int]]:
         """One key frame -> (the tracks it ends, ``{track: kept box}`` for matched and new tracks).
 
@@ -108,7 +119,7 @@ class Tracks:
         Duplicates end first, so a track about to end can't take a box.
         """
         cfg = self.cfg
-        duplicates = younger_duplicates(mask_iou, ids, cfg.duplicate_iou)
+        duplicates = younger_duplicates(track_iou, ids, cfg.duplicate_iou)
         cols = [j for j, i in enumerate(ids) if i not in duplicates]
         pairs, new = match(box_iou[:, cols], cfg.new_iou)
         matched = {ids[cols[t]]: b for b, t in pairs.items()}
@@ -170,23 +181,30 @@ def prune(session: Any, frame: int) -> None:
                 store[frame].pop("high_res_masks", None)
 
 
-def above(labels: Labels, floor: float | None) -> Labels:
-    """``labels`` without the rows scoring below ``floor``."""
-    if floor is None:
-        return labels
-    keep = np.flatnonzero(labels.rows[:, 4] >= floor)
-    rows, names = labels.rows[keep], [labels.labels[i] for i in keep]
-    return Labels(rows, names, None, labels.ms, labels.detected)
+def tight_boxes(masks: Any) -> np.ndarray:
+    """``(n, H, W)`` bool torch masks -> ``(n, 4)`` xyxy tight boxes; an empty mask's is all 0."""
+    import torch
+
+    cols, rows = masks.any(1), masks.any(2)
+    x1, y1 = cols.int().argmax(1), rows.int().argmax(1)
+    x2 = cols.shape[1] - cols.flip(1).int().argmax(1)
+    y2 = rows.shape[1] - rows.flip(1).int().argmax(1)
+    boxes = torch.stack([x1, y1, x2, y2], 1) * cols.any(1, keepdim=True)
+    return boxes.float().cpu().numpy().reshape(-1, 4)
 
 
-def coco_iou(a: Any, b: Any) -> np.ndarray:
-    """pycocotools' IoU between xywh boxes or RLEs, shaped ``(len(a), len(b))`` even when empty."""
-    from pycocotools import mask
+def box_iou(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """IoU between xyxy boxes, shaped ``(len(a), len(b))`` even when empty."""
+    import torch
+    from torchvision.ops import box_iou as iou
 
-    mask_utils: Any = mask
     if not len(a) or not len(b):
         return np.zeros((len(a), len(b)))
-    return np.asarray(mask_utils.iou(a, b, [0] * len(b)), float)
+    return iou(torch.as_tensor(a, dtype=torch.float), torch.as_tensor(b, dtype=torch.float)).numpy()
+
+
+def area(boxes: np.ndarray) -> np.ndarray:
+    return (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
 
 
 class VideoTracker:
@@ -201,16 +219,19 @@ class VideoTracker:
         model: Any = AutoModel.from_pretrained(cfg.model)
         self.model = model.to(device, dtype=self.dtype).eval()
 
-    def _forward(self, session: Any, inputs: Any, k: int) -> tuple[list[int], list[dict]]:
+    def _forward(self, session: Any, inputs: Any, k: int) -> tuple[list[int], np.ndarray]:
+        """One frame through the session -> its object ids and their masks' tight boxes."""
         out = self.model(inference_session=session, frame=inputs.pixel_values[0], frame_idx=k)
-        rles: list[dict] = []
-        for c in range(0, len(out.pred_masks), SEGMENT_CHUNK):
-            chunk = [out.pred_masks[c : c + SEGMENT_CHUNK]]
+        boxes = [np.zeros((0, 4), np.float32)]
+        for c in range(0, len(out.pred_masks), MASK_CHUNK):
+            chunk = [out.pred_masks[c : c + MASK_CHUNK]]
             masks = self.processor.post_process_masks(chunk, inputs.original_sizes, binarize=True)
-            rles += rle(masks[0][:, 0])
-        return list(out.object_ids), rles
+            boxes.append(tight_boxes(masks[0][:, 0]))
+        return list(out.object_ids), np.concatenate(boxes)
 
-    def _add(self, session: Any, inputs: Any, k: int, ids: list[int], boxes: np.ndarray) -> list:
+    def _add(
+        self, session: Any, inputs: Any, k: int, ids: list[int], boxes: np.ndarray
+    ) -> np.ndarray:
         """Seed new objects on frame ``k`` with the live ones hidden, so they don't run twice."""
         live = objects(session)
         set_objects(session, {})
@@ -221,43 +242,33 @@ class VideoTracker:
             input_boxes=[boxes.tolist()],
             original_size=inputs.original_sizes[0],
         )
-        _, rles = self._forward(session, inputs, k)
+        _, tracked = self._forward(session, inputs, k)
         set_objects(session, live | objects(session))
-        return rles
+        return tracked
 
     def _step(
         self, session: Any, tracks: Tracks, rgb: np.ndarray, k: int, key: Labels | None
-    ) -> tuple[dict[int, dict], dict[int, int]]:
-        """Track frame ``k``, then a key frame's rules -> live masks, ``{track: kept box}``."""
-        from pycocotools import mask
-
-        mask_utils: Any = mask
+    ) -> dict[int, np.ndarray]:
+        """Track frame ``k``, then a key frame's rules -> each live track's box."""
         inputs = self.processor(images=rgb, device=self.device, return_tensors="pt")
-        ids, rles = self._forward(session, inputs, k) if tracks.live else ([], [])
-        ended = tracks.observe(ids, mask_areas(rles))
-        masks = {i: m for i, m in zip(ids, rles, strict=True) if i not in ended}
-        boxes: dict[int, int] = {}
+        ids, tracked = self._forward(session, inputs, k) if tracks.live else ([], np.zeros((0, 4)))
+        ended = tracks.observe(ids, area(tracked))
+        boxes = {i: b for i, b in zip(ids, tracked, strict=True) if i not in ended}
         if key is not None:
-            ids = list(masks)
-            xywh = np.column_stack([key.rows[:, :2], key.rows[:, 2:4] - key.rows[:, :2]])
-            mask_boxes = mask_utils.toBbox(list(masks.values())) if masks else []
-            key_ended, boxes = tracks.key_frame(
-                ids,
-                key.rows,
-                key.labels,
-                coco_iou(xywh.astype(float), mask_boxes),
-                coco_iou(list(masks.values()), list(masks.values())),
+            ids, live = list(boxes), np.array(list(boxes.values())).reshape(-1, 4)
+            key_ended, matched = tracks.key_frame(
+                ids, key.rows, key.labels, box_iou(key.rows[:, :4], live), box_iou(live, live)
             )
             ended |= key_ended
-            new = [i for i in boxes if i not in masks]
+            new = [i for i in matched if i not in boxes]
             if new:
-                seeds = key.rows[[boxes[i] for i in new], :4]
-                masks |= dict(zip(new, self._add(session, inputs, k, new, seeds), strict=True))
+                seeds = key.rows[[matched[i] for i in new], :4]
+                boxes |= dict(zip(new, self._add(session, inputs, k, new, seeds), strict=True))
         if ended:
             set_objects(session, {o: s for o, s in objects(session).items() if o not in ended})
-            masks = {i: m for i, m in masks.items() if i not in ended}
+            boxes = {i: b for i, b in boxes.items() if i not in ended}
         prune(session, k)
-        return masks, boxes
+        return boxes
 
     def frames(
         self,
@@ -269,14 +280,10 @@ class VideoTracker:
         """One sequence -> per frame: its auto-labels, the key frame's detections, live tracks.
 
         ``stored`` detector boxes, by frame name, replace the detector. Only kept boxes at or
-        above ``floor`` start or refresh a track. An empty mask is no auto-label. A row's box is
-        its matching detection's on a key frame and NaN elsewhere: the auto-label's box is its
-        mask's.
+        above ``floor`` start or refresh a track. An empty mask is no auto-label.
         """
         import torch
-        from pycocotools import mask
 
-        mask_utils: Any = mask
         session = self.processor.init_video_session(
             inference_device=self.device, video_storage_device="cpu", dtype=self.dtype
         )
@@ -288,17 +295,12 @@ class VideoTracker:
                 key = labeler.finish(rgb, stored[im.name]) if stored else labeler(rgb)
             seeds = None if key is None else above(key, floor)
             with torch.inference_mode():
-                (masks, boxes), ms = labeler.timed(self._step, session, tracks, rgb, k, seeds)
-            ids = [i for i, m in masks.items() if mask_utils.area(m)]
-            rows = np.full((len(ids), 6), np.nan, np.float32)
-            for row, i in zip(rows, ids, strict=True):
-                if seeds is not None and i in boxes:
-                    row[:4] = seeds.rows[boxes[i], :4]
-                row[4:] = tracks.live[i].score, tracks.live[i].cls
+                boxes, ms = labeler.timed(self._step, session, tracks, rgb, k, seeds)
+            ids = [i for i, (x1, y1, x2, y2) in boxes.items() if x2 > x1 and y2 > y1]
+            rows = [[*boxes[i], tracks.live[i].score, tracks.live[i].cls] for i in ids]
             labels = Labels(
-                rows,
+                np.array(rows, np.float32).reshape(-1, 6),
                 [tracks.live[i].label for i in ids],
-                [masks[i] for i in ids],
                 (key.ms if key else {}) | {"tracker": ms},
                 key.detected if key else 0,
                 np.array(ids, int),
@@ -307,20 +309,18 @@ class VideoTracker:
 
 
 def video_tracks(
-    config: LabelingConfig,
+    labeler: Labeler,
+    cfg: Tracker,
     images: list[visdrone_vid.Image],
-    device: str,
     raw: list[Labels] | None = None,
+    floor: float | None = None,
 ) -> Iterator[tuple[Labels, Labels | None, int]]:
     """A video-tracker trial over every sequence in ``images``, a new session per sequence.
 
     ``raw``, the stored detector boxes per image, replaces the detector on key frames.
     """
-    assert config.tracker is not None
-    labeler = Labeler(config, device, detect=raw is None)
-    tracker = VideoTracker(config.tracker, labeler.device)
+    tracker = VideoTracker(cfg, labeler.device)
     stored = None if raw is None else {im.name: r for im, r in zip(images, raw, strict=True)}
-    floor = config.confidence_floor
     for sequence, frames in groupby(images, key=attrgetter("sequence")):
         frames = list(frames)
         peak = 0
@@ -328,7 +328,7 @@ def video_tracks(
             peak = max(peak, out[2])
             yield out
         logger.info(f"  {sequence}: {len(frames)} frames, peak {peak} live tracks")
-    del labeler, tracker
+    del tracker
     gc.collect()
 
 
@@ -341,8 +341,7 @@ def box_tracks(
     """ultralytics' ``name`` tracker at its defaults over a cached detection pass, per frame.
 
     ``floor`` replaces its ``track_high_thresh`` and ``new_track_thresh``, which default to YOLO's
-    score scale. The tracker reports the detections it assigned a track to; their rows and masks
-    are kept.
+    score scale. The tracker reports the detections it assigned a track to; their rows are kept.
     """
     from ultralytics.engine.results import Boxes
     from ultralytics.trackers.track import TRACKER_MAP
@@ -363,11 +362,9 @@ def box_tracks(
         out = tracker.update(Boxes(det.rows, (im.height, im.width)), bgr).reshape(-1, 8)
         ms = (time.perf_counter() - start) * 1000
         idx = out[:, 7].astype(int)
-        masks = None if det.masks is None else [det.masks[i] for i in idx]
         labels = Labels(
             det.rows[idx],
             [det.labels[i] for i in idx],
-            masks,
             det.ms | {"tracker": ms},
             det.detected,
             out[:, 4].astype(int),

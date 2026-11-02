@@ -18,12 +18,12 @@ from typing import Any
 
 import numpy as np
 
-from mlops_cv.autolabel import visdrone_vid
 from mlops_cv.data.convert_visdrone_vid import YOLO_NAMES
+from mlops_cv.tuning import visdrone_vid
 
 TRACK = "track"
 # TrackEval metric -> the fields reported; HOTA's are means over its localisation thresholds.
-FIELDS = {"HOTA": ("HOTA", "DetA", "AssA"), "Identity": ("IDF1",), "CLEAR": ("MOTA", "IDSW")}
+FIELDS = {"HOTA": ("HOTA", "DetA", "AssA"), "Identity": ("IDF1",), "CLEAR": ("IDSW",)}
 
 
 def mot_files(
@@ -83,7 +83,7 @@ def summary(res: dict[str, Any], prefix: str) -> dict[str, float]:
 
 
 def readings(images: list[visdrone_vid.Image], tracked: list[np.ndarray]) -> dict[str, float]:
-    """HOTA (DetA, AssA), IDF1, MOTA and ID switches, det-averaged and per merged class."""
+    """HOTA (DetA, AssA), IDF1 and ID switches, det-averaged and per merged class."""
     import trackeval
 
     lines, seq_info = mot_files(images, tracked)

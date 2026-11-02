@@ -1,7 +1,7 @@
 # FiftyOne annotation editor: the App + its MongoDB, on its own network (it never calls MLflow).
-# Raw VisDrone-VID and the scoring sets are mounted read-only at their host paths, so the
-# samples' absolute paths and the scoring sets' frame links resolve. Trials load through
-# `make autolabel-view RUN=<run id>` (docs/autolabel.md).
+# Raw VisDrone-VID and the repo's runs/autolabel/ (downloaded labeling trials) are mounted
+# read-only at their host paths, so the samples' absolute paths resolve. Trials load through
+# `make autolabel-view RUN=<run id>` (docs/tuning/autolabel-visdrone-vid.md).
 #
 #   make fiftyone-up   # http://localhost:5151
 
@@ -41,8 +41,7 @@ services:
       - "127.0.0.1:${FIFTYONE_PORT}:${FIFTYONE_PORT}"
     volumes:
       - ${HOST_RAW_DIR:?set DATA__RAW_DIR in the root .env (or export HOST_RAW_DIR)}:${HOST_RAW_DIR}:ro,z
-      - ${HOST_AUTOLABEL_DIR:?set DATA__AUTOLABEL_DIR in the root .env (or export HOST_AUTOLABEL_DIR)}:${HOST_AUTOLABEL_DIR}:ro,z
-      - ./fiftyone:/scripts:ro,z
+      - ${HOST_AUTOLABEL_RUNS:?run through make (or export HOST_AUTOLABEL_RUNS)}:${HOST_AUTOLABEL_RUNS}:ro,z
     healthcheck:
       test:
         - CMD

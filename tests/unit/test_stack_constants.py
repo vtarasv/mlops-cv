@@ -53,3 +53,10 @@ def test_service_and_monitor_listen_where_the_serving_stack_says() -> None:
     env = _env("serving")
     assert int(env["SERVING_PORT"]) == ServingSettings().port
     assert int(env["MONITOR_METRICS_PORT"]) == MonitoringSettings().metrics_port
+
+
+def test_the_fiftyone_app_mounts_where_labeling_trials_land() -> None:
+    from mlops_cv.tuning.label_eval import RUNS_DIR
+
+    makefile = (COMPOSE.parent / "Makefile").read_text(encoding="utf-8")
+    assert f"export HOST_AUTOLABEL_RUNS := $(CURDIR)/{RUNS_DIR.as_posix()}\n" in makefile

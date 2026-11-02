@@ -55,7 +55,9 @@ Each annotation line is comma-separated:
 ```
 
 `bbox_*` are absolute pixels with `(left, top)` the top-left corner. In the **ground truth**,
-`score` is `1` (counts) or `0` (ignored — skipped). The 10 raw categories collapse to 3:
+`score` is `1` (counts) or `0` (ignored — skipped). An [auto-label](autolabel.md) file writes its
+float confidence there, always above 0, so ingestion reads it like ground truth. The 10 raw
+categories collapse to 3:
 
 | Merged class (id)        | VisDrone raw categories                                   |
 |--------------------------|-----------------------------------------------------------|

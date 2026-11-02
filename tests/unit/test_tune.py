@@ -36,6 +36,11 @@ def test_trials_take_the_stage_defaults_and_its_name(tmp_path: Path) -> None:
     assert trials["stage1-b"]["imgsz"] == 1280  # a trial's own knob wins
 
 
+def test_a_trial_section_updates_the_default_one_level_deep(tmp_path: Path) -> None:
+    text = "defaults: {f: {a: 1, b: {x: 1}}}\ntrials: [{name: t, f: {b: {y: 2}}}]"
+    assert load_stage(_stage(tmp_path, text))["stage1-t"] == {"f": {"a": 1, "b": {"y": 2}}}
+
+
 def test_a_repeated_trial_name_is_refused(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="stage1-a repeats"):
         load_stage(_stage(tmp_path, "trials: [{name: a}, {name: a}]"))

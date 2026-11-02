@@ -9,7 +9,7 @@ was decided. Scores are mAP50-95 in %, on val unless a section says test.
 
 - **Data.** The subset keeps every 20th video frame: train 1238 frames from 56 videos, val 146
   from 7, test 337 from 17. The ten VisDrone categories are merged into three classes: person,
-  vehicle and two-three-wheeler ([data](data.md#annotation-format-and-3-class-merge)).
+  vehicle and two-three-wheeler ([data](../data.md#annotation-format-and-3-class-merge)).
 - **Trial.** One training run with one set of settings. Trials log to the MLflow experiment
   `aerial-object-detection-tune` and are never registered as model versions.
 - **Score.** A trial is judged by the val mAP50-95 of its best checkpoint (`best.pt`). Per-class AP
@@ -91,7 +91,7 @@ they finish, the runner measures each trial's latency with nothing else on the G
 |---|---|
 | `val/mAP50-95`, `val/mAP50`, `val/precision`, `val/recall` | `best.pt` on val |
 | `val/mAP50-95/<class>` | per merged class |
-| `val/mAP50-95_small` | COCO small-object AP ([evaluation](evaluation.md)) |
+| `val/mAP50-95_small` | COCO small-object AP ([evaluation](../evaluation.md)) |
 | `latency/p50_ms`, `latency/p95_ms`, `latency/mean_ms` | batch-1 predict at the trial's imgsz |
 | `metrics/*` | ultralytics' per-epoch curves |
 

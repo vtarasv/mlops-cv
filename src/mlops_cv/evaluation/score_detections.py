@@ -133,6 +133,7 @@ def readings(
     from mlops_cv.tracking.metric_keys import (
         AT_FLOOR,
         CONF_AT_MAX_F1,
+        MAP75,
         MAP_SMALL,
         PRIMARY,
         headline_metrics,
@@ -154,7 +155,8 @@ def readings(
         }
     return (
         headline_metrics(box, prefix=prefix)
-        | {metric_key(prefix, MAP_SMALL): ap_s, metric_key(prefix, CONF_AT_MAX_F1): conf}
+        | {metric_key(prefix, MAP75): float(box.map75), metric_key(prefix, MAP_SMALL): ap_s}
+        | {metric_key(prefix, CONF_AT_MAX_F1): conf}
         | per_class_metrics(
             metrics.maps,
             metrics.ap_class_index,

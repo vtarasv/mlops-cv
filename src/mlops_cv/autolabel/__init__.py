@@ -1,5 +1,5 @@
-"""The auto-labeler: zero-shot detector -> box filter -> segmenter, scored against VisDrone GT.
+"""The auto-labeler: SAM 3 -> box filter, configured by ``AutolabelSettings``.
 
-Experiment code only: nothing in production imports it. Stage configs live under
-``configs/autolabel/``; ``docs/autolabel.md`` records each stage's command and results.
+Its labeling config is chosen by the experiments in ``mlops_cv.tuning``
+(``docs/tuning/autolabel-visdrone-vid.md``); ``docs/autolabel.md`` describes it.
 """

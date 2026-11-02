@@ -1,6 +1,6 @@
-# Image-mode stage 3: prompts, boxes only, through stage 1's box filter. SAM 3 end to end with the
-# 10 raw names (the incumbent, stage 2's winner; its stored boxes rescore on CPU) against the 3
-# merged-class names, each its own prompt. The detector keeps its top 300 boxes above 0.001.
+# Prompts, through the box-filter stage's winner. SAM 3 end to end in fp32 with the 10 raw names
+# (the winner so far; its stored boxes rescore on CPU) against the 3 merged-class names, each its
+# own prompt. The detector keeps its top 300 boxes above 0.001.
 defaults:
   detector:
     model: facebook/sam3
@@ -15,6 +15,7 @@ defaults:
       awning-tricycle: two-three-wheeler
       bus: vehicle
       motor: two-three-wheeler
+    dtype: null
   box_filter: {min_side: 8, max_area: 0.05, nms_iou: 0.5}
 trials:
   - name: sam3-raw

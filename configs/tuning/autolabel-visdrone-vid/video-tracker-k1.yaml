@@ -1,5 +1,5 @@
-# Sequence-mode stage 1b on val-full: EdgeTAM at K = 1, every frame a key frame, beside the
-# key-interval stage's K = 5, 10 and 20. Everything else is that stage's.
+# EdgeTAM at K = 1 on the clips, every frame seeded, beside the key-interval stage's K = 5, 10
+# and 20. Everything else is that stage's.
 defaults:
   detector:
     model: facebook/sam3

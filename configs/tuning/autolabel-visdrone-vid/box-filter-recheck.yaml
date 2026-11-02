@@ -1,7 +1,6 @@
-# Image-mode stage 5: stage 1's 12 box-filter settings rescored on stage 4's winner, SAM 3 end to
-# end on the 10 raw names, untiled, fp16, from its stored boxes (CPU only). NMS IoU {off, 0.5,
-# 0.6, 0.7} x the nested-box rule {off, keep outer, keep inner at IoS 0.8}. The incumbent is the
-# carried filter: nms0.5-nested-off.
+# The box-filter stage's 12 settings rescored on SAM 3 end to end on the 10 raw names, untiled,
+# fp16, from its stored boxes (CPU only). NMS IoU {off, 0.5, 0.6, 0.7} x the nested-box rule
+# {off, keep outer, keep inner at IoS 0.8}. The winner so far is nms0.5-nested-off.
 defaults:
   detector:
     model: facebook/sam3
@@ -17,7 +16,7 @@ defaults:
       bus: vehicle
       motor: two-three-wheeler
     dtype: float16
-  box_filter: {min_side: 8, max_area: 0.05}
+  box_filter: {min_side: 8, max_area: 0.05, nms_iou: null}
 trials:
   - name: nms-off-nested-off
   - name: nms-off-outer

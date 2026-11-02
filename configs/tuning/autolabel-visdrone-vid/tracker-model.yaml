@@ -1,7 +1,7 @@
-# Sequence-mode stage 2 on val-full: the tracker model at stage 1's K = 5. EdgeTAM is the
-# incumbent (stage 1's key-interval-edgetam-k5 run, same config); SAM 2.1 S video is its sibling
-# (L lost image mode). BoT-SORT and ByteTrack are contenders: one shared pass of the stored
-# detector boxes, the box filter and SAM 2.1 S on every frame, the floor as their track thresholds.
+# The tracker model on the clips, video trackers at K = 5. EdgeTAM is the winner so far
+# (key-interval-edgetam-k5, same config); SAM 2.1 S video is its sibling. BoT-SORT and ByteTrack
+# share one pass of the stored detector boxes and the box filter on every frame, the floor as
+# their track thresholds.
 defaults:
   detector:
     model: facebook/sam3
@@ -21,10 +21,8 @@ defaults:
   confidence_floor: 0.597
 trials:
   - name: botsort
-    segmenter: facebook/sam2.1-hiera-small
     tracker: {model: botsort}
   - name: bytetrack
-    segmenter: facebook/sam2.1-hiera-small
     tracker: {model: bytetrack}
   - name: edgetam-k5
     tracker: {model: yonigozlan/EdgeTAM-hf, key_interval: 5}

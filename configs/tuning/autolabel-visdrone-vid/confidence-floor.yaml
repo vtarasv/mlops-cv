@@ -1,7 +1,6 @@
-# Sequence-mode stage 3 on val-full: the confidence floor on stage 2's winner, BoT-SORT + SAM 2.1 S.
-# The floor sets track_high_thresh = new_track_thresh and cuts the stored auto-labels. 0.597 is the
-# incumbent (stage 2's tracker-model-botsort run, same config); every floor shares one pass of the
-# stored detector boxes, the box filter and SAM 2.1 S.
+# The confidence floor on BoT-SORT, on the clips. The floor sets track_high_thresh =
+# new_track_thresh. 0.597 is the winner so far (tracker-model-botsort, same config); every floor
+# shares one pass of the stored detector boxes and the box filter.
 defaults:
   detector:
     model: facebook/sam3
@@ -18,7 +17,6 @@ defaults:
       motor: two-three-wheeler
     dtype: float16
   box_filter: {min_side: 8, max_area: 0.05, nms_iou: 0.5}
-  segmenter: facebook/sam2.1-hiera-small
   tracker: {model: botsort}
 trials:
   - name: botsort-0.497

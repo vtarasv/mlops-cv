@@ -1,6 +1,6 @@
-# Image mode's labeling config, the tuning grid's winner: SAM 3 end to end on the 10 raw names,
-# untiled, fp16 -> box filter (NMS 0.5) -> SAM 2.1 S (fp32). The stored auto-labels are cut at
-# the confidence floor, the winner's max-F1 confidence on train-sample.
+# The labeler's labeling config, AutolabelSettings' defaults: SAM 3 end to end on the 10 raw
+# names, untiled, fp16 -> box filter (NMS 0.5). The confidence floor (0.597) cuts the kept
+# auto-labels, not the scored ones.
 trials:
   - name: sam3-sam2.1-s
     detector:
@@ -18,5 +18,4 @@ trials:
         motor: two-three-wheeler
       dtype: float16
     box_filter: {min_side: 8, max_area: 0.05, nms_iou: 0.5}
-    segmenter: facebook/sam2.1-hiera-small
     confidence_floor: 0.597

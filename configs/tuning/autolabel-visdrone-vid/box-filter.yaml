@@ -1,8 +1,7 @@
-# Image-mode stage 1: the box filter on Grounding DINO-T with the 10 raw names, boxes only.
-# The detector keeps its top 300 boxes above 0.001 and the filter has no score floor: the
-# validator's max-F1 point selects. NMS IoU {off, 0.5, 0.6, 0.7} x the nested-box rule {off,
-# keep outer, keep inner at IoS 0.8}. The detector runs once; every trial rescores its stored
-# boxes. The incumbent is nms0.6-outer.
+# The box filter on Grounding DINO-T with the 10 raw names. The detector keeps its top 300 boxes
+# above 0.001 and the filter has no score floor, so the validator scores every box. NMS IoU {off,
+# 0.5, 0.6, 0.7} x the nested-box rule {off, keep outer, keep inner at IoS 0.8}. The detector
+# runs once; every trial rescores its stored boxes. The winner so far is nms0.6-outer.
 defaults:
   detector:
     model: IDEA-Research/grounding-dino-tiny
@@ -17,7 +16,7 @@ defaults:
       awning-tricycle: two-three-wheeler
       bus: vehicle
       motor: two-three-wheeler
-  box_filter: {min_side: 8, max_area: 0.05}
+  box_filter: {min_side: 8, max_area: 0.05, nms_iou: null}
 trials:
   - name: nms-off-nested-off
   - name: nms-off-outer

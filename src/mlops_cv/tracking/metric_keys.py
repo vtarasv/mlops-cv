@@ -29,13 +29,6 @@ PRIMARY = "mAP50-95"
 # COCO small-object AP (boxes under 32² source pixels), from faster-coco-eval.
 MAP_SMALL = "mAP50-95_small"
 
-# mAP at IoU 0.75, reported beside a labeling trial's mAP50-95.
-MAP75 = "mAP75"
-# The confidence at the validator's max-F1 point, where it reads P and R.
-CONF_AT_MAX_F1 = "conf_at_max_F1"
-# Where P and R read at a fixed confidence (a labeling config's floor) live under a prefix.
-AT_FLOOR = "at_floor"
-
 # The prefix ultralytics' MLflow callback logs per-epoch val metrics under.
 TRAIN_PREFIX = "metrics"
 

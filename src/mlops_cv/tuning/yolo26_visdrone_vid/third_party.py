@@ -85,10 +85,10 @@ def main() -> int:
     from mlops_cv.data.convert_visdrone_vid import YOLO_NAMES
     from mlops_cv.data.subset import IMAGES_DIRNAME, dataset_yaml
     from mlops_cv.evaluation.evaluate import latency_stub
-    from mlops_cv.evaluation.score_detections import CONF, MAX_DET, readings
     from mlops_cv.orchestration.handoff import best_weights_uri
     from mlops_cv.tracking import client
     from mlops_cv.tracking.resolve import resolve_model
+    from mlops_cv.tuning.tune import CONF, MAX_DET, readings
     from mlops_cv.tuning.yolo26_visdrone_vid.zero_shot import class_lut, merge_classes, result_rows
 
     mlflow = client.connect(settings)

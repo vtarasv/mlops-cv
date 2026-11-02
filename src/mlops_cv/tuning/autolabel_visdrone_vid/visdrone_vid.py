@@ -1,4 +1,4 @@
-"""Raw VisDrone-VID frames, the toolkit's ignored-region rule and the VisDrone-rule splits.
+"""Raw VisDrone-VID frames, the toolkit's ignored-region rule, the VisDrone-rule splits and scores.
 
 Ingestion drops the ignored regions, so they are read back from the raw annotations. Each
 VisDrone-rule split (``images/<split>-visdrone-rule``, labels alongside) links the subset split's
@@ -28,7 +28,6 @@ from mlops_cv.data.subset import (
     manifest_rows,
     raw_split_dir,
     stamp_split_yaml,
-    visdrone_rule_split,
 )
 from mlops_cv.startup import exits_on_startup_error
 
@@ -44,6 +43,12 @@ TRACK_COL = 1  # target_id
 IGNORED_SHARE = 0.5
 # The subset splits labeling trials score on; test is read once, by YOLO, at the end.
 RULE_SPLITS = ("train", "val")
+# mAP at IoU 0.75, reported beside a labeling trial's mAP50-95.
+MAP75 = "mAP75"
+# The confidence at the validator's max-F1 point, where it reads P and R.
+CONF_AT_MAX_F1 = "conf_at_max_F1"
+# Where P and R read at a fixed confidence (a labeling config's floor) live under a prefix.
+AT_FLOOR = "at_floor"
 
 
 @dataclass(frozen=True)
@@ -60,6 +65,11 @@ class Image:
     ignored: np.ndarray  # the frame's ignored regions
     sequence: str
     frame: int  # 1-based, as VID numbers it
+
+
+def visdrone_rule_split(split: str) -> str:
+    """The split's copy under VisDrone's ignored-region rule, e.g. ``train-visdrone-rule``."""
+    return f"{split}-visdrone-rule"
 
 
 def read_sequence(
@@ -160,6 +170,53 @@ def drop_all_ignored(
 ) -> dict[str, np.ndarray]:
     """``{frame file name: rows}`` through the rule, for every image."""
     return {im.name: drop_ignored(detections[im.name], im) for im in images}
+
+
+def readings(
+    detections: Mapping[str, np.ndarray],
+    data_yaml: Path,
+    split: str,
+    prefix: str,
+    frames: Collection[str] | None = None,
+    floor: float | None = None,
+) -> dict[str, float]:
+    """``tune.readings`` plus mAP75 and the max-F1 confidence; with ``floor``, P and R there."""
+    from ultralytics.utils.metrics import smooth
+
+    from mlops_cv.evaluation.score_detections import score_with_ap_small
+    from mlops_cv.tracking.metric_keys import (
+        MAP_SMALL,
+        PRIMARY,
+        headline_metrics,
+        metric_key,
+        per_class_metrics,
+    )
+
+    # ``tune.readings``' keys, assembled here: the extras need the validator's metrics.
+    metrics, ap_s = score_with_ap_small(detections, data_yaml, split, frames)
+    box = metrics.box
+    # ultralytics' own max-F1 index (``ap_per_class``), mapped onto its confidence axis.
+    conf = float(box.px[smooth(box.f1_curve.mean(0), 0.1).argmax()]) if len(box.f1_curve) else 0.0
+    at_floor: dict[str, float] = {}
+    if floor is not None and len(box.p_curve):
+        i = np.abs(box.px - floor).argmin()
+        at = metric_key(prefix, AT_FLOOR)
+        at_floor = {
+            metric_key(at, "precision"): float(box.p_curve[:, i].mean()),
+            metric_key(at, "recall"): float(box.r_curve[:, i].mean()),
+        }
+    return (
+        headline_metrics(box, prefix=prefix)
+        | {metric_key(prefix, MAP75): float(box.map75), metric_key(prefix, MAP_SMALL): ap_s}
+        | {metric_key(prefix, CONF_AT_MAX_F1): conf}
+        | per_class_metrics(
+            metrics.maps,
+            metrics.ap_class_index,
+            metrics.names,
+            prefix=metric_key(prefix, PRIMARY),
+        )
+        | at_floor
+    )
 
 
 def merged(categories: np.ndarray) -> np.ndarray:

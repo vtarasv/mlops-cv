@@ -13,10 +13,11 @@ import os
 import subprocess
 import sys
 import time
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import yaml
 
 from mlops_cv.config import get_settings
@@ -31,6 +32,11 @@ TUNE_EXPERIMENT = "aerial-object-detection-tune"
 
 # Knobs with a named training flag (headed for Airflow); every other knob goes through ``--set``.
 FLAGS = ("model", "imgsz", "epochs", "batch", "seed")
+
+# val's own floor and box cap (``model.val`` defaults): detections scored here are predicted with
+# them. For a class-mapped model, the cap applies before the mapping drops classes, as in the model.
+CONF = 0.001
+MAX_DET = 300
 
 
 def load_stage(path: Path) -> dict[str, dict[str, Any]]:
@@ -77,6 +83,36 @@ def finished_trial(mlflow: Any, name: str) -> Any:
     if not runs:
         raise ValueError(f"no finished trial run named {name}")
     return runs[0]
+
+
+def readings(
+    detections: Mapping[str, np.ndarray],
+    data_yaml: Path,
+    split: str,
+    prefix: str,
+    frames: Collection[str] | None = None,
+) -> dict[str, float]:
+    """Merged detections scored on ``split`` (or its ``frames``) -> trial keys under ``prefix``."""
+    from mlops_cv.evaluation.score_detections import score_with_ap_small
+    from mlops_cv.tracking.metric_keys import (
+        MAP_SMALL,
+        PRIMARY,
+        headline_metrics,
+        metric_key,
+        per_class_metrics,
+    )
+
+    metrics, ap_s = score_with_ap_small(detections, data_yaml, split, frames)
+    return (
+        headline_metrics(metrics.box, prefix=prefix)
+        | {metric_key(prefix, MAP_SMALL): ap_s}
+        | per_class_metrics(
+            metrics.maps,
+            metrics.ap_class_index,
+            metrics.names,
+            prefix=metric_key(prefix, PRIMARY),
+        )
+    )
 
 
 def _record_latency(mlflow: Any, name: str, imgsz: int, since_ms: int) -> None:

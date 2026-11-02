@@ -16,7 +16,6 @@ from pathlib import Path
 
 import numpy as np
 
-from mlops_cv.data.subset import visdrone_rule_split
 from mlops_cv.startup import exits_on_startup_error
 from mlops_cv.tuning.autolabel_visdrone_vid import visdrone_vid
 
@@ -32,17 +31,15 @@ def both_rules(
     repo_yaml: Path,
 ) -> dict[str, float]:
     """Val readings under VisDrone's rule and, on the same detections, under the repo's."""
-    from mlops_cv.evaluation.score_detections import readings
-
     rule = visdrone_vid.drop_all_ignored(detections, images)
-    return readings(rule, rule_yaml, SPLIT, visdrone_rule_split(SPLIT)) | readings(
-        detections, repo_yaml, SPLIT, SPLIT
-    )
+    return visdrone_vid.readings(
+        rule, rule_yaml, SPLIT, visdrone_vid.visdrone_rule_split(SPLIT)
+    ) | visdrone_vid.readings(detections, repo_yaml, SPLIT, SPLIT)
 
 
 @exits_on_startup_error
 def main(argv: list[str] | None = None) -> int:
-    from mlops_cv.tuning.tune import TUNE_EXPERIMENT, finished_trial
+    from mlops_cv.tuning.tune import CONF, MAX_DET, TUNE_EXPERIMENT, finished_trial
 
     p = argparse.ArgumentParser(description="Score tuning trials' best.pt under VisDrone's rule.")
     p.add_argument("trials", nargs="+", help="trial run names, e.g. stage2-s1280")
@@ -57,7 +54,6 @@ def main(argv: list[str] | None = None) -> int:
     from ultralytics import YOLO
 
     from mlops_cv.data.subset import IMAGES_DIRNAME, dataset_yaml
-    from mlops_cv.evaluation.score_detections import CONF, MAX_DET
     from mlops_cv.orchestration.handoff import best_weights_uri
     from mlops_cv.tracking import client
     from mlops_cv.tracking.resolve import resolve_model
@@ -85,7 +81,7 @@ def main(argv: list[str] | None = None) -> int:
             )
         }
         readings = both_rules(detections, images, rule_yaml, repo_yaml)
-        name = f"{trial}-{visdrone_rule_split(SPLIT)}"
+        name = f"{trial}-{visdrone_vid.visdrone_rule_split(SPLIT)}"
         with mlflow.start_run(run_name=name):
             mlflow.set_tag("tune.stage", "visdrone-rule-read")
             run_params = {"trial": trial, "trial_run_id": run.info.run_id, "imgsz": imgsz}

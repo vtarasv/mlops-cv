@@ -32,6 +32,7 @@ defaults are the labeling trials' winner so far.
 | `box_filter.nms_iou` | 0.5 | class-agnostic NMS |
 | `box_filter.min_score`, `nested_ios`, `max_objects` | off | a score floor, the nested-box rule, a top-K cap |
 | `confidence_floor` | 0.597 | auto-labels below it are not kept |
+| `max_det` | 300 | the top boxes kept per frame: val's cap, so trials score like val |
 
 ## Output
 

@@ -16,8 +16,8 @@ from typing import Any
 import numpy as np
 
 from mlops_cv.data.convert_visdrone_vid import YOLO_NAMES
-from mlops_cv.evaluation.score_detections import CONF, MAX_DET, readings
 from mlops_cv.startup import exits_on_startup_error
+from mlops_cv.tuning.tune import CONF, MAX_DET, readings
 
 logger = logging.getLogger(__name__)
 

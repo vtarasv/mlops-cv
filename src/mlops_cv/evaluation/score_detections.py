@@ -17,11 +17,6 @@ if TYPE_CHECKING:
     from ultralytics.models.yolo.detect import DetectionValidator
     from ultralytics.utils.metrics import DetMetrics
 
-# val's own floor and box cap (``model.val`` defaults): detections scored here are predicted with
-# them. For a class-mapped model, the cap applies before the mapping drops classes, as in the model.
-CONF = 0.001
-MAX_DET = 300
-
 
 def _validator(data_yaml: Path, split: str, save_dir: Path) -> DetectionValidator:
     from ultralytics.data.utils import check_det_dataset
@@ -114,54 +109,3 @@ def score_with_ap_small(
     validator, labels = _validate(detections, data_yaml, split, frames)
     metrics = validator.metrics
     return metrics, ap_small_mod.ap_small(validator.jdict, labels, metrics.names)
-
-
-def readings(
-    detections: Mapping[str, np.ndarray],
-    data_yaml: Path,
-    split: str,
-    prefix: str,
-    frames: Collection[str] | None = None,
-    floor: float | None = None,
-) -> dict[str, float]:
-    """Merged detections scored on ``split`` (or its ``frames``) -> trial keys under ``prefix``.
-
-    With ``floor``, also P and R read off the validator's curves at that confidence.
-    """
-    from ultralytics.utils.metrics import smooth
-
-    from mlops_cv.tracking.metric_keys import (
-        AT_FLOOR,
-        CONF_AT_MAX_F1,
-        MAP75,
-        MAP_SMALL,
-        PRIMARY,
-        headline_metrics,
-        metric_key,
-        per_class_metrics,
-    )
-
-    metrics, ap_s = score_with_ap_small(detections, data_yaml, split, frames)
-    box = metrics.box
-    # ultralytics' own max-F1 index (``ap_per_class``), mapped onto its confidence axis.
-    conf = float(box.px[smooth(box.f1_curve.mean(0), 0.1).argmax()]) if len(box.f1_curve) else 0.0
-    at_floor: dict[str, float] = {}
-    if floor is not None and len(box.p_curve):
-        i = np.abs(box.px - floor).argmin()
-        at = metric_key(prefix, AT_FLOOR)
-        at_floor = {
-            metric_key(at, "precision"): float(box.p_curve[:, i].mean()),
-            metric_key(at, "recall"): float(box.r_curve[:, i].mean()),
-        }
-    return (
-        headline_metrics(box, prefix=prefix)
-        | {metric_key(prefix, MAP75): float(box.map75), metric_key(prefix, MAP_SMALL): ap_s}
-        | {metric_key(prefix, CONF_AT_MAX_F1): conf}
-        | per_class_metrics(
-            metrics.maps,
-            metrics.ap_class_index,
-            metrics.names,
-            prefix=metric_key(prefix, PRIMARY),
-        )
-        | at_floor
-    )

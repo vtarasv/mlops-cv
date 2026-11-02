@@ -25,7 +25,7 @@ from pydantic import BaseModel, ConfigDict
 
 from mlops_cv.autolabel.labeler import Labels, annotation_lines, read_rgb
 from mlops_cv.config.settings import BoxFilter
-from mlops_cv.data.subset import IMAGES_DIRNAME, visdrone_rule_split
+from mlops_cv.data.subset import IMAGES_DIRNAME
 from mlops_cv.startup import StartupError, exits_on_startup_error
 from mlops_cv.tuning import tune
 from mlops_cv.tuning.autolabel_visdrone_vid import track_scores, tracks, visdrone_vid
@@ -95,7 +95,6 @@ def scores(
     floor: float | None = None,
 ) -> dict[str, float]:
     """The validator's readings under ``prefix``, on every image and on the ``SUBSET_CAP`` ones."""
-    from mlops_cv.evaluation.score_detections import readings
     from mlops_cv.tracking.metric_keys import metric_key
 
     rows = {im.name: lab.rows for im, lab in zip(images, labels, strict=True)}
@@ -103,8 +102,10 @@ def scores(
     subset = set(uncapped(images, SUBSET_CAP))
     cap = f"gt/cap{SUBSET_CAP}"
     return (
-        readings(detections, data_yaml, "val", prefix, frames, floor)
-        | readings(detections, data_yaml, "val", f"{prefix}/uncapped{SUBSET_CAP}", subset, floor)
+        visdrone_vid.readings(detections, data_yaml, "val", prefix, frames, floor)
+        | visdrone_vid.readings(
+            detections, data_yaml, "val", f"{prefix}/uncapped{SUBSET_CAP}", subset, floor
+        )
         | {
             metric_key(prefix, "boxes_per_image"): float(np.mean([len(r) for r in rows.values()])),
             metric_key(prefix, "detected_per_image"): float(np.mean([x.detected for x in labels])),
@@ -206,7 +207,9 @@ def label_frames(
     raw = load_detections(store, images) if store and store.exists() else None
     if raw:
         logger.info(f"  detector boxes from {store}")
-    labeler = TrialLabeler(config.detector, config.box_filter, device, detect=raw is None)
+    labeler = TrialLabeler(
+        config.detector, config.box_filter, device, tune.MAX_DET, detect=raw is None
+    )
     out, detected = [], []
     for i, im in enumerate(images, start=1):
         rgb = read_rgb(im.path)
@@ -246,7 +249,9 @@ def label_sequences(
         tracked = list(tracks.box_tracks(config.tracker.model, images, detections[key], floor))
         return [lab for lab, _ in tracked], [n for _, n in tracked]
     raw = load_detections(store, images) if store and store.exists() else None
-    labeler = TrialLabeler(config.detector, config.box_filter, device, detect=raw is None)
+    labeler = TrialLabeler(
+        config.detector, config.box_filter, device, tune.MAX_DET, detect=raw is None
+    )
     out = list(tracks.video_tracks(labeler, config.tracker, images, raw, floor))
     del labeler
     gc.collect()
@@ -312,7 +317,7 @@ def main(argv: list[str] | None = None) -> int:
     settings = get_settings()
     logging.basicConfig(level=settings.log_level.upper(), format="%(message)s")
     trials = load_stage(args.stage)
-    rule = settings.data.subset_dir / IMAGES_DIRNAME / visdrone_rule_split(args.split)
+    rule = settings.data.subset_dir / IMAGES_DIRNAME / visdrone_vid.visdrone_rule_split(args.split)
     if not rule.is_dir():
         raise StartupError(
             f"no {rule}: run python -m mlops_cv.tuning.autolabel_visdrone_vid.visdrone_vid"

@@ -144,6 +144,7 @@ class AutolabelSettings(BaseModel):
     detector: AutolabelDetector = AutolabelDetector()
     box_filter: BoxFilter = BoxFilter()
     confidence_floor: float = 0.597  # auto-labels below it are not kept
+    max_det: int = 300  # the top boxes kept per frame: val's cap, so trials score like val
 
 
 class Settings(BaseSettings):

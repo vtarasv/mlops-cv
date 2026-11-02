@@ -17,7 +17,7 @@ from mlops_cv.data.convert_visdrone_vid import (
     YOLO_NAMES,
     convert_sequence_text,
 )
-from mlops_cv.evaluation.score_detections import CONF
+from mlops_cv.tuning.tune import CONF, MAX_DET
 
 STAGES = Path(__file__).parents[2] / "configs" / "tuning" / "autolabel-visdrone-vid"
 
@@ -30,6 +30,7 @@ def test_default_prompts_are_the_raw_names_merged() -> None:
     detector = AutolabelSettings().detector
     assert detector.prompts == {n: YOLO_NAMES[CLASS_MERGE[c]] for c, n in RAW_NAMES.items()}
     assert detector.threshold == CONF
+    assert AutolabelSettings().max_det == MAX_DET
 
 
 def test_defaults_are_the_labeler_stage() -> None:
@@ -73,16 +74,15 @@ def test_filter_nms_is_class_agnostic() -> None:
     assert labeler.filter_boxes(rows, BoxFilter(nms_iou=0.6), 100, 100).tolist() == [0]
 
 
-def test_top_rows_keep_the_best_boxes_above_the_floor(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_top_rows_keep_the_best_boxes_above_the_floor() -> None:
     torch = pytest.importorskip("torch")
-    monkeypatch.setattr(labeler, "MAX_DET", 2)
     cfg = labeler.AutolabelDetector(prompts={"car": "vehicle", "person": "person"}, threshold=0.1)
     boxes = torch.arange(4.0)[:, None] + torch.tensor([0.0, 0, 1, 1])
     conf = torch.tensor([0.05, 0.9, 0.5, 0.7])
-    rows, labels = labeler.top_rows(boxes, conf, torch.tensor([0, 1, 0, 0]), cfg)
+    rows, labels = labeler.top_rows(boxes, conf, torch.tensor([0, 1, 0, 0]), cfg, 2)
     assert rows[:, 0].tolist() == [1, 3] and labels == ["person", "car"]
     assert rows[:, 5].tolist() == [labeler.MERGED["person"], labeler.MERGED["vehicle"]]
-    empty, _ = labeler.top_rows(boxes, conf * 0, torch.tensor([0, 1, 0, 0]), cfg)
+    empty, _ = labeler.top_rows(boxes, conf * 0, torch.tensor([0, 1, 0, 0]), cfg, 2)
     assert empty.shape == (0, 6)
 
 

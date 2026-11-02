@@ -54,11 +54,6 @@ def raw_split_dir(split: str) -> str:
     return RAW_SPLIT_DIRS[split]
 
 
-def visdrone_rule_split(split: str) -> str:
-    """The split's copy under VisDrone's ignored-region rule, e.g. ``train-visdrone-rule``."""
-    return f"{split}-visdrone-rule"
-
-
 def frame_name(sequence: str, frame_index: int) -> str:
     """Flattened, sortable stem of one subset frame: ``<sequence>_<0000000-padded index>``."""
     return f"{sequence}_{frame_index:07d}"

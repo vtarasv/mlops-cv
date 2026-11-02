@@ -16,7 +16,6 @@ import numpy as np
 
 from mlops_cv.config.settings import AutolabelDetector, BoxFilter
 from mlops_cv.data.convert_visdrone_vid import CLASS_MERGE, RAW_NAMES, YOLO_NAMES
-from mlops_cv.evaluation.score_detections import MAX_DET
 
 MERGED = {name: c for c, name in YOLO_NAMES.items()}
 RAW_IDS = {name: c for c, name in RAW_NAMES.items()}
@@ -102,25 +101,25 @@ def torch_device(device: str) -> str:
     return f"cuda:{device}" if device.isdigit() else device
 
 
-def top(conf: Any, cfg: AutolabelDetector) -> Any:
-    """The positions of the top ``MAX_DET`` scores above the floor (torch)."""
-    best = conf.argsort(descending=True)[:MAX_DET]
+def top(conf: Any, cfg: AutolabelDetector, max_det: int) -> Any:
+    """The positions of the top ``max_det`` scores above the floor (torch)."""
+    best = conf.argsort(descending=True)[:max_det]
     return best[conf[best] > cfg.threshold]
 
 
 def top_rows(
-    boxes: Any, conf: Any, prompt: Any, cfg: AutolabelDetector
+    boxes: Any, conf: Any, prompt: Any, cfg: AutolabelDetector, max_det: int
 ) -> tuple[np.ndarray, list[str]]:
-    """The top ``MAX_DET`` above the floor: xyxy pixel boxes, scores and prompt indices (torch)."""
+    """The top ``max_det`` above the floor: xyxy pixel boxes, scores and prompt indices (torch)."""
     names = list(cfg.prompts)
     classes = np.array([MERGED[c] for c in cfg.prompts.values()])
-    keep = top(conf, cfg)
+    keep = top(conf, cfg, max_det)
     label = prompt[keep].cpu().numpy()
     rows = np.column_stack([boxes[keep].cpu().numpy(), conf[keep].cpu().numpy(), classes[label]])
     return rows.astype(np.float32).reshape(-1, 6), [names[i] for i in label]
 
 
-def sam3(cfg: AutolabelDetector, device: str) -> Detect:
+def sam3(cfg: AutolabelDetector, device: str, max_det: int) -> Detect:
     """SAM 3 end to end: one vision pass, then a decoder pass per prompt (200 boxes each)."""
     import torch
     from transformers import Sam3Model, Sam3Processor
@@ -142,7 +141,7 @@ def sam3(cfg: AutolabelDetector, device: str) -> Detect:
                 boxes.append(out.pred_boxes[0].float() * torch.tensor([w, h, w, h], device=device))
                 conf.append(out.pred_logits[0].sigmoid() * out.presence_logits[0].sigmoid())
                 label.append(torch.full_like(conf[-1], i, dtype=torch.long))
-        return top_rows(torch.cat(boxes), torch.cat(conf).float(), torch.cat(label), cfg)
+        return top_rows(torch.cat(boxes), torch.cat(conf).float(), torch.cat(label), cfg, max_det)
 
     return detect
 
@@ -151,9 +150,14 @@ class Labeler:
     """The detector and the box filter, loaded once; called on one decoded RGB image."""
 
     def __init__(
-        self, detector: AutolabelDetector, box_filter: BoxFilter, device: str, detect: bool = True
+        self,
+        detector: AutolabelDetector,
+        box_filter: BoxFilter,
+        device: str,
+        max_det: int,
+        detect: bool = True,
     ) -> None:
-        self.detector, self.box_filter = detector, box_filter
+        self.detector, self.box_filter, self.max_det = detector, box_filter, max_det
         self.device = torch_device(device)
         self._sync: Callable[[], None] = lambda: None
         if self.device.startswith("cuda"):
@@ -164,7 +168,7 @@ class Labeler:
             self.detect = self.load()
 
     def load(self) -> Detect:
-        return sam3(self.detector, self.device)
+        return sam3(self.detector, self.device, self.max_det)
 
     def timed(self, fn: Callable[..., Any], *args: Any) -> tuple[Any, float]:
         self._sync()

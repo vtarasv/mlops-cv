@@ -13,7 +13,6 @@ from pydantic import BaseModel, ConfigDict
 
 from mlops_cv.autolabel.labeler import Detect, Labeler, Labels, ios, sam3, top_rows
 from mlops_cv.config.settings import AutolabelDetector
-from mlops_cv.evaluation.score_detections import MAX_DET
 
 # Tiling's fixed settings: SAHI's slice overlap, the cut band at an interior slice edge (px), and
 # the class-aware NMS over all passes.
@@ -139,7 +138,7 @@ def prompt_spans(input_ids: Sequence[int], separators: set[int]) -> list[list[in
     return [s for s in spans if s]
 
 
-def grounding_dino(cfg: Detector, device: str) -> Detect:
+def grounding_dino(cfg: Detector, device: str, max_det: int) -> Detect:
     """Grounding DINO: each box goes to the prompt whose tokens score it highest.
 
     transformers' own post-processing decodes the tokens above a threshold into a phrase, which
@@ -166,12 +165,12 @@ def grounding_dino(cfg: Detector, device: str) -> Detect:
         conf, label = torch.stack([probs[:, s].max(-1).values for s in spans], 1).max(1)
         cx, cy, bw, bh = (out.pred_boxes[0] * torch.tensor([w, h, w, h], device=device)).T
         boxes = torch.stack([cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2], 1)
-        return top_rows(boxes, conf, label, cfg)
+        return top_rows(boxes, conf, label, cfg, max_det)
 
     return detect
 
 
-def owlv2(cfg: Detector, device: str) -> Detect:
+def owlv2(cfg: Detector, device: str, max_det: int) -> Detect:
     """OWLv2: one box per patch, labelled with its best-scoring prompt."""
     import torch
     from transformers import Owlv2ForObjectDetection, Owlv2Processor
@@ -189,12 +188,12 @@ def owlv2(cfg: Detector, device: str) -> Detect:
         conf, label = out.logits[0].sigmoid().max(-1)
         cx, cy, bw, bh = (out.pred_boxes[0] * side).T
         boxes = torch.stack([cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2], 1)
-        return top_rows(boxes, conf, label, cfg)
+        return top_rows(boxes, conf, label, cfg, max_det)
 
     return detect
 
 
-def yoloe(cfg: Detector, device: str) -> Detect:
+def yoloe(cfg: Detector, device: str, max_det: int) -> Detect:
     """YOLOE text-prompted, with val's floor, cap and one-to-many head."""
     from ultralytics import YOLOE
 
@@ -208,21 +207,21 @@ def yoloe(cfg: Detector, device: str) -> Detect:
             imgsz=cfg.imgsz or 640,
             device=device,
             conf=cfg.threshold,
-            max_det=MAX_DET,
+            max_det=max_det,
             end2end=False,
             verbose=False,
         )[0]
         data = result.boxes.data
-        return top_rows(data[:, :4], data[:, 4], data[:, 5].long(), cfg)
+        return top_rows(data[:, :4], data[:, 4], data[:, 5].long(), cfg, max_det)
 
     return detect
 
 
-def detector(cfg: Detector, device: str) -> Detect:
+def detector(cfg: Detector, device: str, max_det: int) -> Detect:
     """The detector's loader, picked by its model name."""
     loaders = {"yoloe": yoloe, "owlv2": owlv2, "sam3": sam3}
     load = next((f for key, f in loaders.items() if key in cfg.model), grounding_dino)
-    return load(cfg, device)
+    return load(cfg, device, max_det)
 
 
 class TrialLabeler(Labeler):
@@ -231,7 +230,7 @@ class TrialLabeler(Labeler):
     detector: Detector
 
     def load(self) -> Detect:
-        return detector(self.detector, self.device)
+        return detector(self.detector, self.device, self.max_det)
 
     def detections(self, image: np.ndarray) -> Labels:
         """The detector's boxes, before the box filter; tiled, every pass's before the merge."""

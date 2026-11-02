@@ -9,7 +9,6 @@ from mlops_cv.tracking.metric_keys import (
     DRIFT_EPISODE_METRIC,
     DRIFT_PREFIX,
     HEADLINE_ATTRS,
-    MAP75,
     MAP_SMALL,
     OPTIMIZE_PREFIX,
     PRIMARY,
@@ -42,7 +41,6 @@ def test_golden_spellings() -> None:
     assert metric_key("test", PRIMARY) == "test/mAP50-95"
     assert list(HEADLINE_ATTRS) == ["precision", "recall", "mAP50", "mAP50-95"]
     assert metric_key("val", MAP_SMALL) == "val/mAP50-95_small"
-    assert metric_key("train", MAP75) == "train/mAP75"
 
 
 def test_headline_metrics_keys_and_values() -> None:

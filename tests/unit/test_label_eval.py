@@ -158,7 +158,7 @@ def test_a_tiled_trial_merges_before_the_box_filter() -> None:
     pytest.importorskip("torchvision")
     detector = open_vocab.Detector(tiling={"side": 60})
     config = LabelingConfig(detector=detector, box_filter={"min_side": None, "max_area": None})
-    labeler = open_vocab.TrialLabeler(config.detector, config.box_filter, "cpu", detect=False)
+    labeler = open_vocab.TrialLabeler(config.detector, config.box_filter, "cpu", 300, detect=False)
     rows = np.array([[40, 10, 59, 20, 0.9, 1], [40, 10, 70, 20, 0.6, 1]], np.float32)
     windows = np.array([[0, 0, 60, 60], [0, 0, 100, 100]], np.float32)
     out = labeler.finish(np.zeros((100, 100, 3)), Labels(rows, ["a", "b"], {}, 2, windows=windows))
@@ -172,7 +172,7 @@ def test_prompt_spans_split_at_separators() -> None:
 
 def test_detector_loader_is_picked_by_model_name(monkeypatch: pytest.MonkeyPatch) -> None:
     for name in ("grounding_dino", "owlv2", "sam3", "yoloe"):
-        monkeypatch.setattr(open_vocab, name, lambda cfg, device, name=name: name)
+        monkeypatch.setattr(open_vocab, name, lambda cfg, device, max_det, name=name: name)
     pick = {
         "IDEA-Research/grounding-dino-base": "grounding_dino",
         "google/owlv2-base-patch16-ensemble": "owlv2",
@@ -180,7 +180,7 @@ def test_detector_loader_is_picked_by_model_name(monkeypatch: pytest.MonkeyPatch
         "yoloe-26l-seg.pt": "yoloe",
     }
     for model, loader in pick.items():
-        assert open_vocab.detector(open_vocab.Detector(model=model), "cpu") == loader
+        assert open_vocab.detector(open_vocab.Detector(model=model), "cpu", 300) == loader
 
 
 def _config(**sections: object) -> LabelingConfig:

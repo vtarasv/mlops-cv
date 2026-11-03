@@ -167,8 +167,9 @@ box filter, above 0.001.
 
 **What:** stage 1's top 3 (sam3-raw, sam3-nouns, gdino-b-raw), each with NMS IoU {off, 0.5, 0.6,
 0.7} × the nested-box rule {off, keep outer at IoS 0.8}; `min_side: 8` and `max_area: 0.05` stay
-fixed. Every trial rescores the detector's stored stage 1 pass on CPU, so the NMS 0.5 /
-nested-off rows repeat stage 1's.
+fixed. Keep inner is left out (8–11 pt down on both detectors the earlier effort tried). Every
+trial rescores the detector's stored stage 1 pass on CPU, so the NMS 0.5 / nested-off rows
+repeat stage 1's.
 
 **Why:** the box filter is tuned per detector. Each detector's winner so far is its stage 1 row,
 and a setting replaces it only by the 0.5 pt margin. The best detector + filter then wins, with
@@ -209,8 +210,9 @@ Columns as in stage 1; the detector p50 ms are stage 1's (1594, 1424 and 323).
 | gdino-b-raw-nms-off-outer | e02e2159 | 8.9 | 18.0 | 8.1 | 3.8 | 19.1 | 3.9 | 0.104 | 64 |
 
 **Result:**
-- Looser NMS scores higher on every detector, and NMS off is each one's top. The nested-box rule
-  costs 0.7–4.5 pt on SAM 3 and 12–16 pt on GDINO-B, of whose boxes it keeps a quarter to a third.
+- Without the nested-box rule, looser NMS scores higher on every detector: NMS off tops each
+  (sam3-raw's NMS 0.7 ties it). The rule reverses that order and costs 0.7–4.5 pt on SAM 3 and
+  12–16 pt on GDINO-B, where it keeps only a quarter to a third of the boxes.
 - **Best filter per detector:** sam3-raw keeps NMS 0.5 (NMS off is 0.41 pt up, under the margin);
   sam3-nouns and gdino-b-raw take NMS off (+0.59 and +0.58 pt).
 - **sam3-nouns with NMS off wins** (25.3): it tops the three detectors' best filters and is the

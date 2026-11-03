@@ -1,4 +1,4 @@
-# The box-filter stage's 12 settings rescored on SAM 3 end to end on the 10 raw names, untiled,
+# 12 box-filter settings rescored on SAM 3 end to end on the 10 raw names, untiled,
 # fp16, from its stored boxes (CPU only). NMS IoU {off, 0.5, 0.6, 0.7} x the nested-box rule
 # {off, keep outer, keep inner at IoS 0.8}. The winner so far is nms0.5-nested-off.
 defaults:

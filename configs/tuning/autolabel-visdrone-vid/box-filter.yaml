@@ -1,11 +1,10 @@
 # Experiment 1, stage 2: the box filter on stage 1's top 3 detectors, each with its stage 1
 # prompts, in fp32. NMS IoU {off, 0.5, 0.6, 0.7} x the nested-box rule {off, keep outer at IoS
 # 0.8}; min_side and max_area stay fixed. Every trial rescores the detector's stored stage 1 pass
-# on CPU. Each detector's winner so far is its stage 1 row, nms0.5-nested-off: sam3-raw 25.0,
-# sam3-nouns 24.7, gdino-b-raw 23.9 mAP50-95. Winner: sam3-nouns-nms-off-nested-off (25.3).
+# on CPU. Each detector's winner so far is its stage 1 row, nms0.5-nested-off.
+# Winner: sam3-nouns-nms-off-nested-off.
 defaults:
   detector:
-    model: facebook/sam3
     prompts:
       pedestrian: person
       people: person

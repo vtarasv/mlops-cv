@@ -122,7 +122,46 @@ VisDrone's rule lifts each size by 0.5–0.9 pt over the same predictions under 
 
 ## 1. Box detector
 
-_Not run yet._ GDINO-T, GDINO-B, OWLv2-B/16, YOLOE-26-L and SAM 3 on subset train.
+### Stage 1: detector × prompts
+
+**What:** GDINO-T, GDINO-B, OWLv2-B/16, YOLOE-26-L (at 640 and 1280) and SAM 3 on subset train,
+each with the 10 raw names and with plain nouns. All in fp32, with production's box filter (NMS
+0.5, no nested-box rule).
+
+**Why:** picks the detector and prompts that the later stages tune. The top mAP50-95 wins, unless
+a trial within the 0.5 pt margin is faster per frame (detector p50 ms); then the faster one wins.
+
+```bash
+uv run --env-file .env python -m mlops_cv.tuning.autolabel_visdrone_vid.label_eval \
+  configs/tuning/autolabel-visdrone-vid/detector.yaml --split train
+```
+
+The person, vehicle and 2-3-wheeler columns are each merged class's mAP50-95. Max-F1 conf is the
+confidence floor's candidate (it never selects), and kept / frame counts the boxes left after the
+box filter, above 0.001.
+
+| Trial | Run | mAP50-95 | mAP50 | mAP75 | person | vehicle | 2-3-wheeler | max-F1 conf | kept / frame | detector p50 ms |
+|---|---|---|---|---|---|---|---|---|---|---|
+| sam3-raw | 95f43253 | 25.0 | 59.5 | 17.0 | 16.9 | 41.2 | 16.8 | 0.594 | 146 | 1594 |
+| **sam3-nouns** | 836be2c3 | 24.7 | 58.5 | 16.9 | 16.5 | 41.2 | 16.3 | 0.558 | 160 | 1424 |
+| gdino-b-raw | cb644ea7 | 23.9 | 52.7 | 18.1 | 20.4 | 41.7 | 9.5 | 0.200 | 202 | 323 |
+| gdino-t-raw | d2418a8c | 22.5 | 50.4 | 17.3 | 15.3 | 41.1 | 11.2 | 0.189 | 204 | 230 |
+| gdino-t-nouns | 4444881a | 21.5 | 50.3 | 15.6 | 13.9 | 39.0 | 11.7 | 0.282 | 217 | 231 |
+| gdino-b-nouns | b2d0fcf6 | 19.4 | 48.7 | 12.2 | 13.5 | 34.4 | 10.4 | 0.261 | 216 | 322 |
+| yoloe-26l-1280-nouns | 63a05ac0 | 19.1 | 48.4 | 11.9 | 13.5 | 34.7 | 9.1 | 0.212 | 178 | 54 |
+| yoloe-26l-1280-raw | 41999bef | 18.7 | 47.0 | 11.7 | 12.9 | 34.7 | 8.5 | 0.054 | 170 | 53 |
+| owlv2-b16-nouns | cf4a2348 | 16.9 | 43.7 | 10.5 | 7.9 | 34.7 | 8.1 | 0.271 | 240 | 202 |
+| yoloe-26l-nouns | f8cba2cf | 16.4 | 40.3 | 11.0 | 12.4 | 31.1 | 5.7 | 0.123 | 171 | 18 |
+| owlv2-b16-raw | d59f2e37 | 15.9 | 40.1 | 10.4 | 6.7 | 34.6 | 6.4 | 0.281 | 242 | 208 |
+| yoloe-26l-raw | 45ef672a | 15.5 | 37.7 | 10.6 | 9.7 | 31.0 | 5.8 | 0.053 | 158 | 18 |
+
+**Result:**
+- SAM 3 leads on both prompt sets. sam3-nouns is 0.3 pt behind sam3-raw and 11% faster per
+  frame (8 prompts against 10), so **sam3-nouns wins**. gdino-b-raw is 0.8 pt behind it, at under
+  a quarter of its time.
+- The top 3 go to stage 2: sam3-raw, sam3-nouns and gdino-b-raw.
+- No train frame has more than 200 boxes of one raw category, so the `uncapped200` score covers
+  all 1,238 frames and equals mAP50-95 on every row.
 
 ## 2. Box tracker
 

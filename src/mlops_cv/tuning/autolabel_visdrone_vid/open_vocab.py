@@ -149,6 +149,12 @@ def grounding_dino(cfg: Detector, device: str, max_det: int) -> Detect:
 
     processor: Any = AutoProcessor.from_pretrained(cfg.model)
     model = AutoModelForZeroShotObjectDetection.from_pretrained(cfg.model).to(device).eval()
+    # Autocast, not half weights: transformers' GDINO keeps some tensors fp32, so pure fp16 fails.
+    half = torch.autocast(
+        torch.device(device).type,
+        getattr(torch, cfg.dtype or "float16"),
+        enabled=cfg.dtype is not None,
+    )
     text = ". ".join(p.strip().lower() for p in cfg.prompts) + "."
     tok = processor.tokenizer
     separators = {tok.cls_token_id, tok.sep_token_id, tok.convert_tokens_to_ids(".")}
@@ -156,14 +162,14 @@ def grounding_dino(cfg: Detector, device: str, max_det: int) -> Detect:
     def detect(image: np.ndarray) -> tuple[np.ndarray, list[str]]:
         h, w = image.shape[:2]
         inputs = processor(images=image, text=text, return_tensors="pt").to(device)
-        with torch.inference_mode():
+        with torch.inference_mode(), half:
             out = model(**inputs)
         spans = prompt_spans(inputs["input_ids"][0].tolist(), separators)
         if len(spans) != len(cfg.prompts):
             raise ValueError(f"{len(spans)} token spans for {len(cfg.prompts)} prompts in {text!r}")
-        probs = out.logits[0].sigmoid()
+        probs = out.logits[0].float().sigmoid()
         conf, label = torch.stack([probs[:, s].max(-1).values for s in spans], 1).max(1)
-        cx, cy, bw, bh = (out.pred_boxes[0] * torch.tensor([w, h, w, h], device=device)).T
+        cx, cy, bw, bh = (out.pred_boxes[0].float() * torch.tensor([w, h, w, h], device=device)).T
         boxes = torch.stack([cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2], 1)
         return top_rows(boxes, conf, label, cfg, max_det)
 

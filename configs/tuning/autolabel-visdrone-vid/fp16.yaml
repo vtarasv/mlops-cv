@@ -1,0 +1,38 @@
+# Experiment 1: stage 2's top 3 detectors in fp16, each with NMS 0.5 and NMS off (no nested-box
+# rule), against their fp32 rows in box-filter.yaml. One fp16 pass per detector; the second filter
+# rescores it on CPU.
+defaults:
+  detector:
+    prompts:
+      pedestrian: person
+      people: person
+      bicycle: two-three-wheeler
+      car: vehicle
+      van: vehicle
+      truck: vehicle
+      tricycle: two-three-wheeler
+      awning-tricycle: two-three-wheeler
+      bus: vehicle
+      motor: two-three-wheeler
+    dtype: float16
+  box_filter: {min_side: 8, max_area: 0.05, nms_iou: null}
+x-nouns: &nouns
+  person: person
+  car: vehicle
+  van: vehicle
+  truck: vehicle
+  bus: vehicle
+  bicycle: two-three-wheeler
+  motorcycle: two-three-wheeler
+  tricycle: two-three-wheeler
+x-detectors:
+  - &sam3-raw {model: facebook/sam3}
+  - &sam3-nouns {model: facebook/sam3, prompts: *nouns}
+  - &gdino-b-raw {model: IDEA-Research/grounding-dino-base}
+trials:
+  - {name: sam3-raw-fp16-nms0.5, detector: *sam3-raw, box_filter: {nms_iou: 0.5}}
+  - {name: sam3-raw-fp16-nms-off, detector: *sam3-raw}
+  - {name: sam3-nouns-fp16-nms0.5, detector: *sam3-nouns, box_filter: {nms_iou: 0.5}}
+  - {name: sam3-nouns-fp16-nms-off, detector: *sam3-nouns}
+  - {name: gdino-b-raw-fp16-nms0.5, detector: *gdino-b-raw, box_filter: {nms_iou: 0.5}}
+  - {name: gdino-b-raw-fp16-nms-off, detector: *gdino-b-raw}

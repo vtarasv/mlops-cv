@@ -210,7 +210,7 @@ Columns as in stage 1; the detector p50 ms are stage 1's (1594, 1424 and 323).
 
 **Result:**
 - Looser NMS scores higher on every detector, and NMS off is each one's top. The nested-box rule
-  costs 0.7–4.5 pt on SAM 3 and 12–16 pt on GDINO-B (it keeps a quarter of GDINO-B's boxes).
+  costs 0.7–4.5 pt on SAM 3 and 12–16 pt on GDINO-B, of whose boxes it keeps a quarter to a third.
 - **Best filter per detector:** sam3-raw keeps NMS 0.5 (NMS off is 0.41 pt up, under the margin);
   sam3-nouns and gdino-b-raw take NMS off (+0.59 and +0.58 pt).
 - **sam3-nouns with NMS off wins** (25.3): it tops the three detectors' best filters and is the

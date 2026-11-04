@@ -86,16 +86,17 @@ def cut_by_slice_edge(
     )
 
 
-def merge_contained(rows: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Larger box wins: a box ``CONTAINED_IOS`` inside a larger kept one of its class joins it.
+def merge_contained(rows: np.ndarray, cut: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Larger box wins: a ``cut`` box ``CONTAINED_IOS`` inside a larger kept one of its class joins.
 
-    The kept box takes the pair's top score. Returns the kept positions and their scores.
+    Only a box cut by its slice's edge is a piece; a whole object inside a group box stays. The
+    kept box takes the pair's top score. Returns the kept positions and their scores.
     """
     area = (rows[:, 2] - rows[:, 0]) * (rows[:, 3] - rows[:, 1])
     conf = rows[:, 4].copy()
     keep: list[int] = []
     for i in np.argsort(-area, kind="stable"):
-        if keep:
+        if keep and cut[i]:
             k = np.array(keep)
             hit = k[(ios(rows[i, :4], rows[k, :4]) >= CONTAINED_IOS) & (rows[k, 5] == rows[i, 5])]
             if len(hit):
@@ -116,14 +117,15 @@ def merge_passes(
     import torch
     from torchvision.ops import batched_nms
 
+    cut = cut_by_slice_edge(rows[:, :4], windows, width, height)
     idx = np.arange(len(rows))
     if merge == "edge":
-        idx = idx[~cut_by_slice_edge(rows[:, :4], windows, width, height)]
+        idx = idx[~cut]
     t = torch.from_numpy(rows[idx])
     idx = idx[batched_nms(t[:, :4], t[:, 4], t[:, 5].long(), TILE_NMS_IOU).numpy()]
     conf = rows[idx, 4]
     if merge == "contained":
-        kept, conf = merge_contained(rows[idx])
+        kept, conf = merge_contained(rows[idx], cut[idx])
         idx = idx[kept]
     return idx, conf
 

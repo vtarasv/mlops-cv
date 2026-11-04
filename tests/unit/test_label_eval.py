@@ -147,11 +147,20 @@ def test_merge_passes_with_the_edge_rule_then_class_aware_nms() -> None:
 def test_contained_merge_keeps_the_larger_box_with_the_pair_top_score() -> None:
     pytest.importorskip("torchvision")
     rows = np.array(
-        [[40, 10, 52, 20, 0.9, 1], [40, 10, 70, 20, 0.6, 1], [40, 10, 52, 20, 0.8, 0]], np.float32
+        [[50, 10, 59, 20, 0.9, 1], [40, 10, 70, 20, 0.6, 1], [50, 10, 59, 20, 0.8, 0]], np.float32
     )
-    windows = np.array([[0, 0, 60, 60]] * 3, np.float32)
+    windows = np.array([[0, 0, 60, 60], [0, 0, 100, 100], [0, 0, 60, 60]], np.float32)
     keep, conf = open_vocab.merge_passes(rows, windows, "contained", 100, 100)
     assert keep.tolist() == [1, 2] and conf.tolist() == pytest.approx([0.9, 0.8])
+
+
+def test_contained_merge_keeps_a_whole_box_inside_a_larger_one() -> None:
+    pytest.importorskip("torchvision")
+    # a car (uncut by its slice) inside a frame-sized vehicle box is no cut-off piece
+    rows = np.array([[40, 10, 52, 20, 0.9, 1], [0, 0, 100, 100, 0.1, 1]], np.float32)
+    windows = np.array([[0, 0, 60, 60], [0, 0, 100, 100]], np.float32)
+    keep, conf = open_vocab.merge_passes(rows, windows, "contained", 100, 100)
+    assert keep.tolist() == [1, 0] and conf.tolist() == pytest.approx([0.1, 0.9])
 
 
 def test_a_tiled_trial_merges_before_the_box_filter() -> None:

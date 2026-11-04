@@ -103,7 +103,7 @@ class AutolabelDetector(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    model: str = "facebook/sam3"
+    model: str = "IDEA-Research/grounding-dino-base"  # or a SAM 3, picked by the name
     # prompt text -> the merged class its boxes get; VisDrone's 10 raw names
     prompts: dict[str, str] = Field(
         default_factory=lambda: {n: YOLO_NAMES[CLASS_MERGE[c]] for c, n in RAW_NAMES.items()}
@@ -127,7 +127,7 @@ class BoxFilter(BaseModel):
     min_side: float | None = 8  # px
     max_area: float | None = 0.05  # share of the frame
     min_score: float | None = None
-    nms_iou: float | None = 0.5  # class-agnostic
+    nms_iou: float | None = None  # class-agnostic
     nested_ios: float | None = None  # of two boxes this share nested, drop one
     nested_keep: Literal["outer", "inner"] = "outer"  # ... the box the nested-box rule keeps
     max_objects: int | None = None  # the highest-scoring K
@@ -140,7 +140,7 @@ class AutolabelSettings(BaseModel):
 
     detector: AutolabelDetector = AutolabelDetector()
     box_filter: BoxFilter = BoxFilter()
-    confidence_floor: float = 0.597  # auto-labels below it are not kept
+    confidence_floor: float = 0.218  # auto-labels below it are not kept
     max_det: int = 300  # the top boxes kept per frame: val's cap, so trials score like val
 
 

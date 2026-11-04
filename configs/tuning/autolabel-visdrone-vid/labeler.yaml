@@ -1,10 +1,10 @@
-# The labeler's labeling config, AutolabelSettings' defaults: SAM 3 end to end on the 10 raw
-# names, untiled, fp16 -> box filter (NMS 0.5). The confidence floor (0.597) cuts the kept
-# auto-labels, not the scored ones.
+# The labeler's labeling config, AutolabelSettings' defaults: GDINO-B on the 10 raw names,
+# untiled, fp16 -> box filter (NMS off). The confidence floor (0.218, its max-F1 confidence on
+# train) cuts the kept auto-labels, not the scored ones.
 trials:
-  - name: sam3
+  - name: gdino-b
     detector:
-      model: facebook/sam3
+      model: IDEA-Research/grounding-dino-base
       prompts:
         pedestrian: person
         people: person
@@ -17,5 +17,5 @@ trials:
         bus: vehicle
         motor: two-three-wheeler
       dtype: float16
-    box_filter: {min_side: 8, max_area: 0.05, nms_iou: 0.5}
-    confidence_floor: 0.597
+    box_filter: {min_side: 8, max_area: 0.05, nms_iou: null}
+    confidence_floor: 0.218

@@ -66,7 +66,8 @@ uv run --env-file .env python -m mlops_cv.tuning.autolabel_visdrone_vid.label_ev
   configs/tuning/autolabel-visdrone-vid/detector.yaml --split train
 ```
 
-`--limit N` keeps the first N frames and `--sequence NAME` (repeatable) only those sequences.
+`--limit N` keeps the first N frames, `--every N` every N-th frame (a sample across sequences)
+and `--sequence NAME` (repeatable) only those sequences.
 Stage files are in `configs/tuning/autolabel-visdrone-vid/`:
 
 ```yaml
@@ -249,6 +250,78 @@ uv run --env-file .env python -m mlops_cv.tuning.autolabel_visdrone_vid.label_ev
 - **gdino-b-raw with NMS off is the winner so far:** 0.40 pt behind sam3-raw at NMS 0.5 and 2.4×
   faster. It is weaker on two-three-wheelers (10.5 against 16.8 AP in fp32), where tiling may
   help most, so stage 3 tiles both.
+
+### Stage 3: tiling
+
+**What:** each detector's winner so far (gdino-b-raw + NMS off, sam3-raw + NMS 0.5) in fp16,
+on slices plus the full frame at zoom 1.25, merged by the edge rule or the contained merge (a
+CPU rescore of the same passes). The untiled rows are the fp16 check's. Zoom 2 runs only if a
+zoom 1.25 row beats its untiled row by 0.5 pt (Taras).
+
+**Why:** tiling enlarges small objects, and GDINO-B is weak on two-three-wheelers. Each
+detector's best tiled row replaces its untiled row only by 0.5 pt; then the per-model tie rule
+in fp16 (SAM 3 wins only by 0.5 pt over GDINO-B).
+
+**Zoom** is the detector's input side over the slice side, the magnification of a slice's
+pixels. SAM 3 squashes every pass to a 1008 square: 806 px slices at 1.25, 504 at 2. GDINO-B's
+processor resizes the shortest edge to 800 (longest capped at 1333), so a square slice enters at
+800 × 800: 640 px slices at 1.25, 400 at 2. SAM 3's 806 px slices would be GDINO-B's zoom 0.99.
+
+```bash
+uv run --env-file .env python -m mlops_cv.tuning.autolabel_visdrone_vid.label_eval \
+  configs/tuning/autolabel-visdrone-vid/tiling.yaml --split train
+```
+
+| Trial | Run | mAP50-95 | mAP50 | mAP75 | person | vehicle | 2-3-wheeler | max-F1 conf | kept / frame | detector p50 ms |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **gdino-b-raw-fp16-nms-off** (untiled) | d2622ccb | 24.46 | 53.3 | 18.8 | 20.9 | 41.9 | 10.5 | 0.218 | 284 | 200 |
+| gdino-b-raw-nms-off-zoom1.25 | 1ef91425 | 24.94 | 56.8 | 18.3 | 19.7 | 42.0 | 13.1 | 0.302 | 1041 | 1314 |
+| gdino-b-raw-nms-off-zoom1.25-contained | 42bafc40 | 23.24 | 53.7 | 16.6 | 19.3 | 37.9 | 12.5 | 0.303 | 1024 | 1314 |
+| sam3-raw-fp16-nms0.5 (untiled) | 988c3622 | 24.86 | 59.2 | 16.8 | 16.8 | 41.1 | 16.7 | 0.593 | 145 | 481 |
+| sam3-raw-nms0.5-zoom1.25 | c9349b90 | 25.24 | 59.9 | 17.5 | 16.8 | 42.3 | 16.6 | 0.721 | 480 | 3388 |
+| sam3-raw-nms0.5-zoom1.25-contained | 9cca1650 | 24.69 | 59.0 | 16.9 | 16.6 | 41.2 | 16.3 | 0.723 | 482 | 3388 |
+
+**Result:**
+- **No tiled row clears the margin:** GDINO-B at zoom 1.25 is +0.48 (two-three-wheelers +2.6,
+  person −1.2) at 6.6× the detector time; SAM 3 is +0.38 at 7×. Zoom 2 was stopped unrun.
+- **The edge rule beats the contained merge** on both (by 1.7 and 0.55 pt). The contained merge
+  first ran with every nested same-class box treated as a cut-off piece, so GDINO-B's
+  frame-sized group boxes swallowed the objects (1.75); it now joins only slice-cut boxes.
+- **gdino-b-raw + NMS off, untiled, stays the winner** (24.46, max-F1 conf 0.218), 0.40 pt
+  behind SAM 3 and 2.4× faster. **Runner-up for stage 4's val check:** sam3-raw + NMS 0.5,
+  untiled (24.86, max-F1 conf 0.593).
+
+### Large GDINO probe
+
+**What:** MM-GDINO-L (`openmmlab-community/mm_grounding_dino_large_all`) and LLMDet-L
+(`iSEE-Laboratory/llmdet_large`), Swin-L and neither trained on VisDrone, raw names, NMS off,
+fp16, on every 12th train frame (104 frames, all six frame sizes). A full frame (1333 × 750 in)
+runs out of 8 GB in transformers' deformable attention (≈ 83k encoder tokens; an 800 × 800 slice
+peaks at 5.1 GB), so they run at zoom 1.25 on 640 px slices without the full-frame pass, beside
+GDINO-B the same way. The other rows rescore stored passes of the same frames.
+
+**Why:** a Large model would replace GDINO-B only by 0.5 pt; a lead of 2 pt over GDINO-B's zoom
+1.25 edge row on the probe would have justified a full-frame run through a fused kernel.
+
+```bash
+uv run --env-file .env python -m mlops_cv.tuning.autolabel_visdrone_vid.label_eval \
+  configs/tuning/autolabel-visdrone-vid/gdino-large-probe.yaml --split train --every 12
+```
+
+| Trial | Run | mAP50-95 | mAP50 | mAP75 | person | vehicle | 2-3-wheeler | max-F1 conf | kept / frame | detector p50 ms |
+|---|---|---|---|---|---|---|---|---|---|---|
+| gdino-b-raw-nms-off | a4029189 | 24.34 | 53.5 | 18.6 | 20.9 | 42.9 | 9.3 | 0.214 | 285 | 200 |
+| sam3-raw-nms0.5 | a4592037 | 24.66 | 58.1 | 16.9 | 16.7 | 41.8 | 15.5 | 0.609 | 146 | 481 |
+| gdino-b-raw-nms-off-zoom1.25 | 907febee | 24.87 | 57.0 | 18.0 | 19.3 | 42.8 | 12.5 | 0.309 | 1022 | 1316 |
+| gdino-b-raw-nms-off-zoom1.25-slices | d0520775 | 24.72 | 56.6 | 17.8 | 19.2 | 42.5 | 12.4 | 0.307 | 971 | 1113 |
+| mm-gdino-l-raw-nms-off-zoom1.25-slices | 50b42ecf | 22.76 | 54.4 | 15.7 | 16.6 | 40.2 | 11.4 | 0.335 | 1062 | 4035 |
+| llmdet-l-raw-nms-off-zoom1.25-slices | 8413d27b | 21.74 | 52.0 | 15.1 | 16.0 | 39.7 | 9.5 | 0.352 | 1025 | 4037 |
+
+**Result:**
+- **Both Large models trail GDINO-B on the same slices**, by 2.0 and 3.0 pt, at 3.6× its time:
+  the check is closed. The probe frames keep the full split's order (GDINO-B 24.34, SAM 3 24.66).
+- transformers 5.8 ties MM-GDINO's per-layer decoder heads to layer 0's, which squashed its boxes
+  (0.03 mAP50-95); the GDINO loader now loads them untied when the config doesn't share them.
 
 ## 2. Box tracker
 

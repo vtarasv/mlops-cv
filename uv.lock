@@ -1886,15 +1886,16 @@ airflow = [
     { name = "apache-airflow-providers-docker" },
 ]
 autolabel = [
+    { name = "lap" },
     { name = "torch", version = "2.12.1", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux'" },
     { name = "torch", version = "2.12.1+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'linux'" },
     { name = "torchvision", version = "0.27.1", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux'" },
     { name = "torchvision", version = "0.27.1+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'linux'" },
     { name = "transformers" },
+    { name = "ultralytics" },
 ]
 autolabel-tuning = [
     { name = "clip" },
-    { name = "lap" },
     { name = "timm" },
     { name = "trackeval" },
 ]
@@ -1980,15 +1981,16 @@ airflow = [
     { name = "apache-airflow-providers-docker", specifier = "==4.5.7" },
 ]
 autolabel = [
+    { name = "lap", specifier = "==0.5.13" },
     { name = "torch", marker = "sys_platform != 'linux'", specifier = "==2.12.1" },
     { name = "torch", marker = "sys_platform == 'linux'", specifier = "==2.12.1", index = "https://download.pytorch.org/whl/cu130" },
     { name = "torchvision", marker = "sys_platform != 'linux'", specifier = "==0.27.1" },
     { name = "torchvision", marker = "sys_platform == 'linux'", specifier = "==0.27.1", index = "https://download.pytorch.org/whl/cu130" },
     { name = "transformers", specifier = "==5.8.0" },
+    { name = "ultralytics", specifier = "==8.4.72" },
 ]
 autolabel-tuning = [
     { name = "clip", git = "https://github.com/ultralytics/CLIP.git?rev=7ffa84b3bfa40c42ecc1c77147a855e69cb2dd40" },
-    { name = "lap", specifier = "==0.5.13" },
     { name = "timm", specifier = "==1.0.30" },
     { name = "trackeval", specifier = "==1.3.0" },
 ]

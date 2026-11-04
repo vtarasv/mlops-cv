@@ -1,4 +1,5 @@
-"""The production auto-labeler's pure parts: settings, box filter, top rows, annotation lines."""
+"""The production auto-labeler's pure parts: settings, box filter, top rows, tracker, annotation
+lines."""
 
 from __future__ import annotations
 
@@ -7,10 +8,16 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
+from PIL import Image
 
 from mlops_cv.autolabel import labeler
 from mlops_cv.autolabel.labeler import Labels
-from mlops_cv.config.settings import AutolabelDetector, AutolabelSettings, BoxFilter
+from mlops_cv.config.settings import (
+    AutolabelDetector,
+    AutolabelSettings,
+    AutolabelTracker,
+    BoxFilter,
+)
 from mlops_cv.data.convert_visdrone_vid import (
     convert_sequence_text,
 )
@@ -40,6 +47,69 @@ def test_defaults_are_the_labeler_stage() -> None:
     )
     assert trial.box_filter == settings.box_filter
     assert trial.confidence_floor == settings.confidence_floor
+    assert trial.tracker is not None
+    assert trial.tracker.model_dump(include=set(AutolabelTracker.model_fields)) == (
+        settings.tracker.model_dump()
+    )
+
+
+def test_the_tracker_is_tracktrack_and_the_floor_sets_its_thresholds() -> None:
+    assert AutolabelSettings().tracker == AutolabelTracker(model="tracktrack", overrides={})
+    with pytest.raises(ValueError, match="confidence floor sets"):
+        AutolabelTracker(overrides={"track_high_thresh": 0.5})
+
+
+def test_tracker_args_are_ultralytics_yaml_under_overrides_and_the_floor() -> None:
+    pytest.importorskip("ultralytics")
+    args = labeler.tracker_args(AutolabelTracker(overrides={"match_thresh": 0.8}), 0.3)
+    assert (args["match_thresh"], args["track_high_thresh"], args["new_track_thresh"]) == (
+        0.8,
+        0.3,
+        0.3,
+    )
+    assert labeler.tracker_args(AutolabelTracker(), None)["new_track_thresh"] == 0.7
+    with pytest.raises(ValueError, match="track_buffr"):
+        labeler.tracker_args(AutolabelTracker(overrides={"track_buffr": 60}), 0.3)
+
+
+def test_a_default_tracked_trial_reproduces_the_production_labeler(tmp_path: Path) -> None:
+    pytest.importorskip("lap")
+    from mlops_cv.tuning.autolabel_visdrone_vid import label_eval, visdrone_vid
+
+    rng = np.random.default_rng(0)
+    start = rng.uniform(0, 60, (4, 2))
+    images, raw = [], []
+    for frame in range(1, 9):
+        path = tmp_path / f"{frame:07d}.jpg"
+        Image.new("RGB", (100, 100)).save(path)
+        none = np.zeros((0, 4))
+        images.append(
+            visdrone_vid.Image(
+                path.name, path, 100, 100, none, none[:, 0], none[:, 0], none, "s", frame
+            )
+        )
+        xy = start + 2 * frame  # four boxes drifting, scored either side of the floor
+        rows = np.column_stack([xy, xy + 20, rng.uniform(0.1, 0.9, 4), np.ones(4)])
+        raw.append(Labels(rows.astype(np.float32), ["car"] * 4, {"detector": 1.0}, 4))
+
+    settings = AutolabelSettings()
+    production = labeler.Labeler(settings.detector, settings.box_filter, "cpu", 300, detect=False)
+    passes = iter([(r.rows, r.labels) for r in raw])
+    production.detect = lambda image: next(passes)
+    frames = (labeler.read_rgb(im.path) for im in images)
+    lines = list(
+        labeler.label_clip(production, settings.tracker, settings.confidence_floor, frames)
+    )
+
+    (trial,) = label_eval.load_stage(STAGES / "labeler.yaml").values()
+    store = tmp_path / "pass.npz"
+    label_eval.save_detections(store, images, raw)
+    tracked, _ = label_eval.label_sequences(trial, images, "cpu", {}, store)
+    label_eval.write_annotations(tmp_path, images, tracked)
+
+    assert {line.split(",")[1] for line in lines} - {"-1"}  # tracks were written
+    assert min(float(line.split(",")[6]) for line in lines) >= settings.confidence_floor
+    assert lines == (tmp_path / "s.txt").read_text().splitlines()
 
 
 def test_nested_rule_keeps_the_outer_or_the_inner_box() -> None:

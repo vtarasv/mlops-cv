@@ -1,4 +1,5 @@
-"""The auto-labeler: SAM 3 or Grounding DINO on text prompts -> box filter, one RGB frame at a time.
+"""The auto-labeler: SAM 3 or Grounding DINO on text prompts -> box filter, one RGB frame at a time,
+then a box tracker over each clip.
 
 Each stage is timed on its own, the GPU synchronised at its edges. Its auto-labels are written as
 VisDrone-VID annotation lines, which ingestion reads like VisDrone's own.
@@ -7,7 +8,7 @@ VisDrone-VID annotation lines, which ingestion reads like VisDrone's own.
 from __future__ import annotations
 
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -15,7 +16,7 @@ from typing import Any
 
 import numpy as np
 
-from mlops_cv.config.settings import AutolabelDetector, BoxFilter
+from mlops_cv.config.settings import FLOOR_KEYS, AutolabelDetector, AutolabelTracker, BoxFilter
 from mlops_cv.data.convert_visdrone_vid import CLASS_MERGE, RAW_NAMES, YOLO_NAMES
 
 MERGED = {name: c for c, name in YOLO_NAMES.items()}
@@ -251,6 +252,57 @@ class Labeler:
 
     def __call__(self, image: np.ndarray) -> Labels:
         return self.finish(image, self.detections(image))
+
+
+def tracker_args(cfg: AutolabelTracker, floor: float | None) -> dict[str, Any]:
+    """``cfg.model``'s ultralytics YAML under ``cfg.overrides``; ``floor`` sets ``FLOOR_KEYS``."""
+    from ultralytics.utils import YAML
+    from ultralytics.utils.checks import check_yaml
+
+    args = YAML.load(str(check_yaml(f"{cfg.model}.yaml")))
+    if unknown := cfg.overrides.keys() - args.keys():
+        raise ValueError(f"{cfg.model} has no {sorted(unknown)} in its YAML")
+    args |= cfg.overrides
+    if floor is not None:
+        args |= dict.fromkeys(FLOOR_KEYS, floor)
+    return args
+
+
+def track_clip(
+    model: str, args: dict[str, Any], clip: Iterable[tuple[np.ndarray, Labels]]
+) -> Iterator[tuple[Labels, int]]:
+    """One clip's (RGB frame, kept boxes) under a fresh tracker -> tracked boxes, live tracks."""
+    from ultralytics.engine.results import Boxes
+    from ultralytics.trackers.basetrack import BaseTrack
+    from ultralytics.trackers.track import TRACKER_MAP
+    from ultralytics.utils import IterableSimpleNamespace
+
+    tracker: Any = TRACKER_MAP[model](args=IterableSimpleNamespace(**args))
+    BaseTrack.reset_id()  # TrackTrack has no reset_id of its own; the counter is shared
+    for rgb, det in clip:
+        bgr = np.ascontiguousarray(rgb[..., ::-1])  # for camera-motion compensation
+        start = time.perf_counter()
+        rows = tracker.update(Boxes(det.rows, rgb.shape[:2]), bgr).reshape(-1, 8)
+        ms = (time.perf_counter() - start) * 1000
+        idx = rows[:, 7].astype(int)
+        labels = Labels(
+            det.rows[idx],
+            [det.labels[i] for i in idx],
+            det.ms | {"tracker": ms},
+            det.detected,
+            rows[:, 4].astype(int),
+        )
+        yield labels, len(tracker.tracked_stracks) + len(tracker.lost_stracks)
+
+
+def label_clip(
+    labeler: Labeler, tracker: AutolabelTracker, floor: float, frames: Iterable[np.ndarray]
+) -> Iterator[str]:
+    """One clip's RGB frames, from frame 1 on -> its VisDrone-VID annotation lines, tracked."""
+    clip = ((rgb, labeler(rgb)) for rgb in frames)
+    tracked = track_clip(tracker.model, tracker_args(tracker, floor), clip)
+    for frame, (labels, _) in enumerate(tracked, start=1):
+        yield from annotation_lines(frame, above(labels, floor))
 
 
 def raw_category(prompt: str, cls: int) -> int:

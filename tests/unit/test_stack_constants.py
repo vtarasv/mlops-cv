@@ -8,6 +8,7 @@ from urllib.parse import urlsplit
 import pytest
 
 from mlops_cv.config.settings import (
+    AutolabelSettings,
     MlflowSettings,
     MonitoringSettings,
     ServingSettings,
@@ -56,7 +57,6 @@ def test_service_and_monitor_listen_where_the_serving_stack_says() -> None:
 
 
 def test_the_fiftyone_app_mounts_where_labeling_trials_land() -> None:
-    from mlops_cv.tuning.autolabel_visdrone_vid.label_eval import RUNS_DIR
-
+    runs_dir = AutolabelSettings().runs_dir
     makefile = (COMPOSE.parent / "Makefile").read_text(encoding="utf-8")
-    assert f"export HOST_AUTOLABEL_RUNS := $(CURDIR)/{RUNS_DIR.as_posix()}\n" in makefile
+    assert f"export HOST_AUTOLABEL_RUNS := $(CURDIR)/{runs_dir.as_posix()}\n" in makefile

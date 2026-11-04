@@ -26,7 +26,7 @@ trials track through the same code. Nothing in continuous training calls it yet.
 
 `python -m mlops_cv.autolabel <sequence dir>...` labels each VisDrone-VID `sequences/<seq>/`
 folder (frames `0000001.jpg` on, no gaps) and writes `<seq>.txt` to `--out`, by default
-`runs/autolabel/labeler/annotations/`. GDINO-B takes about a minute for a 200-frame sequence on
+`<runs_dir>/labeler/annotations/` (`runs/autolabel/labeler/annotations/`). GDINO-B takes about a minute for a 200-frame sequence on
 the 8 GB GPU.
 
 1. Pick sequences of a raw split, for example val's:
@@ -45,7 +45,7 @@ the 8 GB GPU.
    ```
 
 3. Start the annotation editor (FiftyOne, `docker-compose/docker-compose.fiftyone.yml`). It mounts
-   the raw split and `runs/autolabel/` read-only at their host paths:
+   the raw split and `runs_dir` read-only at their host paths:
 
    ```bash
    make fiftyone-up   # the App on http://localhost:5151
@@ -89,6 +89,7 @@ defaults are the labeling trials' winner so far.
 | `tracker.model` | `tracktrack` | an ultralytics tracker YAML (`botsort`, `bytetrack`, …); no ReID, and `dets_del` stays off (it needs the YOLO predictor) |
 | `tracker.overrides` | `{}` | keys of that YAML over its defaults; a key it lacks fails when the tracker is built, the floor's two fail at load |
 | `confidence_floor` | 0.218 | auto-labels below it are not kept: GDINO-B's max-F1 confidence on train; also the tracker's `track_high_thresh` = `new_track_thresh` |
+| `runs_dir` | `runs/autolabel` | the command's output and the labeling trials' downloads and stored passes; the FiftyOne App mounts it (the Makefile's `HOST_AUTOLABEL_RUNS`, pinned by a golden test) |
 | `max_det` | 300 | the top boxes kept per frame: val's cap, so trials score like val |
 
 ## Output

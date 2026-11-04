@@ -164,6 +164,7 @@ class AutolabelSettings(BaseModel):
     # auto-labels below it are not kept; the tracker's ``FLOOR_KEYS``
     confidence_floor: float = 0.218
     max_det: int = 300  # the top boxes kept per frame: val's cap, so trials score like val
+    runs_dir: Path = Path("runs/autolabel")  # the FiftyOne App mounts it: HOST_AUTOLABEL_RUNS
 
 
 class Settings(BaseSettings):

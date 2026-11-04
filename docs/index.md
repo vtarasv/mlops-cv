@@ -14,8 +14,8 @@ page here as it lands.
 - [Training](training.md) — YOLO26 transfer learning per deployment target, MLflow logging.
 - [Tuning: YOLO26 on VisDrone-VID](tuning/yolo26-visdrone-vid.md) — each experiment's purpose,
   command and results, and the recipe they chose.
-- [Auto-labeler](autolabel.md) — Grounding DINO B → box filter: boxes for VisDrone-VID footage, its settings
-  and its VisDrone-VID annotation files.
+- [Auto-labeler](autolabel.md) — Grounding DINO B → box filter: boxes for VisDrone-VID footage,
+  its settings and its VisDrone-VID annotation files.
 - [Tuning: auto-labeling VisDrone-VID](tuning/autolabel-visdrone-vid.md) — the labeling trials
   that choose the auto-labeler's config, scored on the subset under VisDrone's ignored-region
   rule.

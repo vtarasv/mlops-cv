@@ -168,11 +168,7 @@ def autocast(dtype: str | None, device: str) -> AbstractContextManager[Any]:
 
 
 def grounding_dino(cfg: AutolabelDetector, device: str, max_det: int) -> Detect:
-    """Grounding DINO: each box goes to the prompt whose tokens score it highest.
-
-    transformers' own post-processing decodes the tokens above a threshold into a phrase, which
-    can run two prompts together; the per-prompt maximum can't.
-    """
+    """Grounding DINO, each box to its top prompt: transformers' phrase decode can join two."""
     import torch
     from transformers import AutoConfig, AutoModelForZeroShotObjectDetection, AutoProcessor
 

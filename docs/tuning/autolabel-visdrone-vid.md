@@ -126,8 +126,8 @@ VisDrone's rule lifts each size by 0.5–0.9 pt over the same predictions under 
 ### Stage 1: detector × prompts
 
 **What:** GDINO-T, GDINO-B, OWLv2-B/16, YOLOE-26-L (at 640 and 1280) and SAM 3 on subset train,
-each with the 10 raw names and with plain nouns. All in fp32, with production's box filter (NMS
-0.5, no nested-box rule).
+each with the 10 raw names and with plain nouns. All in fp32, with the box filter production had
+then (NMS 0.5, no nested-box rule).
 
 **Why:** picks the detector and prompts that the later stages tune. The top mAP50-95 wins, unless
 another detector within the 0.5 pt margin is faster per frame (detector p50 ms); then the faster
@@ -347,8 +347,8 @@ uv run --env-file .env python -m mlops_cv.tuning.autolabel_visdrone_vid.label_ev
 | yolo26m (ground truth) | | 33.5 | 66.3 | 29.3 | | | | | | | |
 
 **Result:**
-- **GDINO-B holds on val and widens its lead:** 27.6 against SAM 3's 23.9 (+3.7 pt), so the
-  order on train (SAM 3 0.40 pt ahead) reverses in GDINO-B's favour; SAM 3 loses on every class.
+- **GDINO-B holds on val:** 27.6 against SAM 3's 23.9, 3.7 pt ahead where train had SAM 3
+  0.40 pt ahead, so the stop rule doesn't fire. SAM 3 trails on every class.
 - GDINO-B's auto-labels sit 1.4 pt below YOLO26 n trained on ground truth (mAP50 0.4 pt below),
   and 3.5 pt below YOLO26 s.
 - The floor holds too: val's own max-F1 confidence is 0.258 for GDINO-B (train 0.218) and 0.600
@@ -358,7 +358,7 @@ uv run --env-file .env python -m mlops_cv.tuning.autolabel_visdrone_vid.label_ev
 
 **Experiment 1:** GDINO-B (`IDEA-Research/grounding-dino-base`) on the 10 raw names, fp16
 through autocast, untiled, box filter with NMS off (`min_side` 8, `max_area` 0.05), floor 0.218:
-24.46 mAP50-95 on train, 27.6 on val, 200 ms per frame.
+24.46 mAP50-95 on train, 27.6 on val, detector p50 200 ms per frame.
 
 ## 2. Box tracker
 

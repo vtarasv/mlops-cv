@@ -1,9 +1,9 @@
 """The VisDrone-rule read: a tuning trial's ``best.pt`` scored under VisDrone's ignored-region rule.
 
-It measures, never selects. Each trial predicts val once at its imgsz with val's floor and cap,
-and the same predictions are scored twice: under VisDrone's rule (``val-visdrone-rule/`` keys,
-the labeling trials' scale) and under the repo's (``val/``). Each trial is one
-``<trial>-val-visdrone-rule`` run in the labeling trials' experiment, tagged
+It measures, never selects. Each trial predicts the split (val, or test once) at its imgsz with
+val's floor and cap, and the same predictions are scored twice: under VisDrone's rule
+(``<split>-visdrone-rule/`` keys, the labeling trials' scale) and under the repo's (``<split>/``).
+Each trial is one ``<trial>-<split>-visdrone-rule`` run in the labeling trials' experiment, tagged
 ``tune.stage=visdrone-rule-read``.
 """
 
@@ -22,20 +22,19 @@ from mlops_cv.tuning.autolabel_visdrone_vid import visdrone_vid
 
 logger = logging.getLogger(__name__)
 
-SPLIT = "val"
-
 
 def both_rules(
     detections: Mapping[str, np.ndarray],
     images: list[visdrone_vid.Image],
     rule_yaml: Path,
     repo_yaml: Path,
+    split: str = "val",
 ) -> dict[str, float]:
-    """Val readings under VisDrone's rule and, on the same detections, under the repo's."""
+    """``split``'s readings under VisDrone's rule and, on the same detections, under the repo's."""
     rule = visdrone_vid.drop_all_ignored(detections, images)
     return visdrone_vid.readings(
-        rule, rule_yaml, SPLIT, visdrone_vid.visdrone_rule_split(SPLIT)
-    ) | visdrone_vid.readings(detections, repo_yaml, SPLIT, SPLIT)
+        rule, rule_yaml, split, visdrone_vid.visdrone_rule_split(split)
+    ) | visdrone_vid.readings(detections, repo_yaml, split, split)
 
 
 @exits_on_startup_error
@@ -46,6 +45,7 @@ def main(argv: list[str] | None = None) -> int:
 
     p = argparse.ArgumentParser(description="Score tuning trials' best.pt under VisDrone's rule.")
     p.add_argument("trials", nargs="+", help="trial run names, e.g. stage2-s1280")
+    p.add_argument("--split", choices=("val", "test"), default="val", help="test is read once")
     args = p.parse_args(argv)
 
     os.environ["MLFLOW__EXPERIMENT"] = EXPERIMENT  # the trials stay in YOLO tuning's
@@ -64,8 +64,9 @@ def main(argv: list[str] | None = None) -> int:
 
     mlflow = client.connect(settings)
     subset_dir = settings.data.subset_dir
-    images = visdrone_vid.read_split(settings.data.raw_dir, subset_dir, SPLIT)
-    rule_yaml, repo_yaml = visdrone_vid.rule_yaml(settings, SPLIT), dataset_yaml(settings)
+    split = args.split
+    images = visdrone_vid.read_split(settings.data.raw_dir, subset_dir, split)
+    rule_yaml, repo_yaml = visdrone_vid.rule_yaml(settings, split), dataset_yaml(settings)
 
     for trial in args.trials:
         run = finished_trial(mlflow, yolo26_visdrone_vid.EXPERIMENT, trial)
@@ -74,7 +75,7 @@ def main(argv: list[str] | None = None) -> int:
         detections = {
             Path(r.path).name: result_rows(r)
             for r in YOLO(str(weights)).predict(
-                str(subset_dir / IMAGES_DIRNAME / SPLIT),  # a directory streams frame by frame
+                str(subset_dir / IMAGES_DIRNAME / split),  # a directory streams frame by frame
                 imgsz=imgsz,
                 device=settings.training.device,
                 conf=CONF,
@@ -83,8 +84,8 @@ def main(argv: list[str] | None = None) -> int:
                 verbose=False,
             )
         }
-        readings = both_rules(detections, images, rule_yaml, repo_yaml)
-        name = f"{trial}-{visdrone_vid.visdrone_rule_split(SPLIT)}"
+        readings = both_rules(detections, images, rule_yaml, repo_yaml, split)
+        name = f"{trial}-{visdrone_vid.visdrone_rule_split(split)}"
         with mlflow.start_run(run_name=name):
             mlflow.set_tag("tune.stage", "visdrone-rule-read")
             run_params = {"trial": trial, "trial_run_id": run.info.run_id, "imgsz": imgsz}

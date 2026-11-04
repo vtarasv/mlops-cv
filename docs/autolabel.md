@@ -20,7 +20,9 @@ The labeling config comes from the labeling trials in
 (0.4 pt behind SAM 3, inside the margin, at 2.4× its speed) and leads SAM 3 on val by 3.7 pt
 mAP50-95. TrackTrack beat BoT-SORT on the train clips (48.8 vs 47.1 HOTA) and held on val (48.0 vs
 46.7). The code is `mlops_cv.autolabel` (`Labeler`, `label_clip`, `annotation_lines`); the labeling
-trials track through the same code. Nothing in continuous training calls it yet.
+trials track through the same code. YOLO26 s trained on its train labels is 5.0 pt behind ground
+truth on test (22.2 vs 27.2 mAP50-95, VisDrone's rule). Nothing in continuous training calls it
+yet.
 
 ## Settings
 

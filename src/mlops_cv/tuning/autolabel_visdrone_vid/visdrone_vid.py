@@ -42,7 +42,8 @@ TRACK_COL = 1  # target_id
 # The toolkit drops a box when at least this share of its w*h lies inside the ignored regions.
 IGNORED_SHARE = 0.5
 # The subset splits labeling trials score on; test is read once, by YOLO, at the end.
-RULE_SPLITS = ("train", "val")
+LABEL_SPLITS = ("train", "val")
+RULE_SPLITS = (*LABEL_SPLITS, "test")
 # The labeler's auto-labels on the subset's train frames, through the rule (``autolabels.py``).
 AUTOLABEL_SPLIT = "train-autolabels"
 # mAP at IoU 0.75, reported beside a labeling trial's mAP50-95.

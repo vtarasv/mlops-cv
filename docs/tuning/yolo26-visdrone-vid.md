@@ -82,7 +82,8 @@ trials:
   - {name: n1280-zoom, model: yolo26n, imgsz: 1280, batch: 4, scale: [0.75, 1.5]}
 ```
 
-`model`, `imgsz`, `epochs`, `batch` and `seed` become training CLI flags; every other key goes to
+`model`, `imgsz`, `epochs`, `batch` and `seed` become training CLI flags; `dataset` names the
+trial's dataset YAML, handed to training as `DATA__DATASET_YAML`; every other key goes to
 `model.train()` as is. Trials run one after another, because two at once don't fit in 8 GB. When
 they finish, the runner measures each trial's latency with nothing else on the GPU. A run is named
 `<stage file>-<trial>`, such as `stage2-n1280`. Each trial run records:
@@ -606,6 +607,9 @@ changes no mAP, only point metrics.
   | test, one-to-one | 25.0 | 26.6 | 28.3 |
   | test, one-to-many | 26.2 | 27.8 | 29.5 |
 
+- **On auto-labels:** the final s trained on the auto-labeler's train labels (`autolabels.yaml`)
+  is 5.0 pt behind on test under VisDrone's rule (22.2 vs 27.2), see
+  [auto-labeling tuning](autolabel-visdrone-vid.md#4-yolo-trained-on-auto-labels).
 - **Against public VisDrone checkpoints:** the recipe beats dronefreak's DET-trained YOLO26 s and m
   by 1.2 and 1.4 pt on the test videos they didn't train on.
 - **Cost:** about 21 GPU-hours for stages 2–9, 8 for sliced training and 5 for the stride runs.

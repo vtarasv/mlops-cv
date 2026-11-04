@@ -360,7 +360,7 @@ def run_trial(
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="Run one labeling stage, one run per labeling trial.")
     p.add_argument("stage", type=Path, help="configs/tuning/autolabel-visdrone-vid/<stage>.yaml")
-    p.add_argument("--split", choices=visdrone_vid.RULE_SPLITS, default="train")
+    p.add_argument("--split", choices=visdrone_vid.LABEL_SPLITS, default="train")
     p.add_argument("--limit", type=int, help="label and score only the first N frames")
     p.add_argument("--sequence", action="append", dest="sequences", help="only these sequences")
     p.add_argument("--every", type=int, help="keep every N-th frame, a sample across sequences")

@@ -296,6 +296,12 @@ def _image(
     )
 
 
+def test_labeling_trials_never_read_test() -> None:
+    assert "test" in visdrone_vid.RULE_SPLITS
+    with pytest.raises(SystemExit):
+        label_eval.main([str(STAGES / "labeler.yaml"), "--split", "test"])
+
+
 def test_cap_subset_and_recall_ceiling() -> None:
     images = [_image("a", [4] * 250 + [1] * 10), _image("b", [4] * 50)]
     assert label_eval.uncapped(images, 200) == ["b"]

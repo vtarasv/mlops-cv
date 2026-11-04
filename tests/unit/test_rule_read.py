@@ -25,7 +25,7 @@ def data_yaml(tmp_path: Path) -> Path:
     cv2.imwrite(str(tmp_path / "images/val/a.jpg"), np.zeros((100, 200, 3), np.uint8))
     (tmp_path / "labels/val/a.txt").write_text("0 0.75 0.5 0.2 0.4\n")  # x1 y1 x2 y2 130 30 170 70
     path = tmp_path / "data.yaml"
-    splits = dict.fromkeys(("train", "val"), "images/val")
+    splits = dict.fromkeys(("train", "val", "test"), "images/val")
     path.write_text(yaml.safe_dump({"path": str(tmp_path), **splits, "names": {0: "person"}}))
     return path
 
@@ -50,6 +50,11 @@ def test_a_false_positive_in_an_ignored_region_counts_only_under_the_repo_rule(
     out = both_rules({"a.jpg": rows}, [image], data_yaml, data_yaml)
     assert out["val-visdrone-rule/precision"] == 1.0
     assert out["val/precision"] < 1.0
+    test = both_rules({"a.jpg": rows}, [image], data_yaml, data_yaml, "test")
+    assert (test["test-visdrone-rule/precision"], test["test/precision"]) == (
+        out["val-visdrone-rule/precision"],
+        out["val/precision"],
+    )
 
 
 def test_readings_carry_the_max_f1_confidence(data_yaml: Path) -> None:

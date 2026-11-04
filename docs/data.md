@@ -112,6 +112,12 @@ read the same setting, and the directory's basename becomes the MLflow dataset n
   VisDrone-VID-merged.yaml                              # stamped by each consumer, see below
 ```
 
+Tuning adds splits beside these, each linking a split's images to its own labels:
+`{train,val,test}-visdrone-rule` (ground truth under VisDrone's ignored-region rule) and
+`train-autolabels` (the [auto-labeler](autolabel.md)'s labels on train's frames, through the same
+rule). See [auto-labeling tuning](tuning/autolabel-visdrone-vid.md); nothing in production reads
+them.
+
 Ingest writes no dataset YAML. Each ultralytics consumer (training, evaluation, optimize; the edge
 gate writes a test-only `-test.yaml`) stamps the committed template next to the data with `path:`
 set to its own absolute `DATA__SUBSET_DIR`, so the YAML always names the reading machine's copy.

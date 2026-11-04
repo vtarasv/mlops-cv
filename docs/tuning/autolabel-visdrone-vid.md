@@ -25,8 +25,9 @@ beside YOLO26 s trained on ground truth.
 
   **These scores don't compare with [YOLO26 tuning](yolo26-visdrone-vid.md) or
   [evaluation](../evaluation.md).** The ground truth lives in extra subset splits,
-  `images/train-visdrone-rule` and `images/val-visdrone-rule` (labels alongside). They link the
-  subset's frames, and their labels drop 782 of train's 57,030 boxes and 82 of val's 5,902.
+  `images/{train,val,test}-visdrone-rule` (labels alongside). They link the subset's frames, and
+  their labels drop 782 of train's 57,030 boxes, 82 of val's 5,902 and 296 of test's 15,763.
+  Labeling trials score on train and val only; test's copy is read once, by YOLO.
 - **Scores.**
   - Labels rank on **mAP50-95**, through ultralytics' validator (`score_detections`), with mAP50
     and mAP75 beside it. The detector keeps its top 300 boxes above 0.001, so every box is
@@ -68,7 +69,7 @@ flowchart LR
 `DATA__SUBSET_DIR`; see [data](../data.md).
 
 ```bash
-uv run python -m mlops_cv.tuning.autolabel_visdrone_vid.visdrone_vid   # builds train- and val-visdrone-rule
+uv run python -m mlops_cv.tuning.autolabel_visdrone_vid.visdrone_vid   # builds {train,val,test}-visdrone-rule
 uv run --env-file .env python -m mlops_cv.tuning.autolabel_visdrone_vid.label_eval \
   configs/tuning/autolabel-visdrone-vid/detector.yaml --split train
 ```
@@ -548,6 +549,68 @@ EdgeTAM tracks the clips one after another in one process.
 against TrackTrack's 48.0, at ≈ 463 ms per frame against ≈ 223, so the box chain (GDINO-B +
 TrackTrack) is the labeler.
 
+## 4. YOLO trained on auto-labels
+
+**What:** the final YOLO tuning recipe's s (`stage2-s1280`: yolo26s, imgsz 1280, 30 epochs, batch
+4, seed 0) retrained with only its train labels swapped for the labeler's. `autolabels.py` tracks
+GDINO-B's stored train-clip pass with TrackTrack as `label_clip` does, keeps the subset's 1,238
+train frames and the auto-labels at the floor 0.218, and drops 6,477 of them by VisDrone's rule.
+It writes `images/train-autolabels` (labels alongside) through ingestion's converter. Val and test
+stay ground truth. Both arms predict val, then test once, as the reference rows do.
+
+**Why:** the effort's question: how close YOLO trained on auto-labels comes to YOLO trained on
+ground truth.
+
+```bash
+uv run python -m mlops_cv.tuning.autolabel_visdrone_vid.autolabels   # writes images/train-autolabels
+make tune STAGE=yolo26-visdrone-vid/autolabels                        # trial autolabels-s1280
+uv run python -m mlops_cv.tuning.autolabel_visdrone_vid.rule_read autolabels-s1280 stage2-s1280
+uv run python -m mlops_cv.tuning.autolabel_visdrone_vid.rule_read --split test autolabels-s1280 stage2-s1280
+```
+
+The stage's `dataset` knob points training at
+`configs/tuning/yolo26-visdrone-vid/datasets/VisDrone-VID-merged-autolabels.yaml`. Train labels on
+the 1,238 frames, against the `train` split the ground-truth s trained on (11 frames have no
+auto-labels):
+
+| Class | auto-labels | ground truth | ratio |
+|---|---|---|---|
+| person | 15,262 | 17,101 | 0.89× |
+| vehicle | 28,017 | 30,371 | 0.92× |
+| two-three-wheeler | 3,325 | 9,558 | 0.35× |
+| total | 46,604 | 57,030 | 0.82× |
+
+Under VisDrone's rule (the ground-truth val row reproduces the reference row):
+
+| Trained on | Split | Run | mAP50-95 | mAP50 | mAP75 | person | vehicle | two-three-wheeler | mAP50-95_small |
+|---|---|---|---|---|---|---|---|---|---|
+| auto-labels | val | 1e1c2822 | 27.2 | 56.3 | 23.5 | 25.3 | 40.9 | 15.4 | 11.2 |
+| ground truth | val | 736ab5dc | **31.1** | 61.5 | 27.2 | 27.9 | 42.4 | 23.0 | 13.7 |
+| auto-labels | test | 14b319c1 | 22.2 | 48.7 | 17.3 | 18.6 | 41.6 | 6.4 | 13.5 |
+| ground truth | test | 3466bd5f | **27.2** | 57.0 | 22.7 | 19.6 | 46.7 | 15.3 | 17.0 |
+
+**Result:**
+- **Auto-labels reach 87.5 % of ground truth's mAP50-95 on val and 81.6 % on test:** 3.9 pt
+  behind on val, 5.0 pt on test.
+- **Two-three-wheelers carry the most of it,** in line with their 0.35× labels: 7.6 pt behind on
+  val and 8.9 on test, where they keep 42 % of ground truth's AP.
+- **Label count isn't the whole story for vehicles:** at 0.92× the labels they lose 1.4 pt on val
+  but 5.0 on test. Person, at 0.89×, loses 2.6 and 1.0.
+- Under the repo's rule the same predictions read 26.5 vs 30.5 on val and 21.3 vs 26.4 on test.
+- The auto-label run trained in 0.55 GPU-hours. Test was read once for both arms; nothing is tuned
+  after it.
+
+**YOLO on auto-labels:** YOLO26 s trained on the labeler's train labels reads 27.2 val and 22.2
+test mAP50-95 under VisDrone's rule, against 31.1 and 27.2 trained on ground truth: 3.9 pt
+(12.5 %) and 5.0 pt (18.4 %) behind, most of it on two-three-wheelers.
+
 ## Summary
 
-_Pending._
+- **The labeler:** GDINO-B on VisDrone's 10 raw names, fp16, untiled, NMS off, floor 0.218, then
+  TrackTrack at its defaults over each clip (`AutolabelSettings`' defaults).
+- **What lost:** SAM 3 (0.4 pt ahead on train, 3.7 behind on val, 2.4× slower), tiling, the
+  Large GDINO models, BoT-SORT and Hybrid-SORT, TrackTrack's other settings, and EdgeTAM (9.9
+  HOTA behind at 2.1× the cost).
+- **Training on it:** YOLO26 s trained on auto-labels is 3.9 pt (12.5 %) behind ground truth on
+  val and 5.0 pt (18.4 %) on test under VisDrone's rule (27.2 vs 31.1, 22.2 vs 27.2), most of the
+  gap on two-three-wheelers, which get 0.35× ground truth's labels.

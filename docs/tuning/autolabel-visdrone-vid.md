@@ -482,18 +482,18 @@ uv run --env-file .env python -m mlops_cv.tuning.autolabel_visdrone_vid.label_ev
 ```
 
 Label mAP scores the tracked boxes on the 146 subset frames inside the val clips (`subset/val/`).
-Tracker ms is timed with the clips in parallel (7 processes on val, 16 on train), so compare it
-only within one split; a lone process is ≈ 15 ms (stage 1). The train rows are stages 1 and 2's.
+The train rows are stage 1's. Val's tracker ms is timed with its 7 clips in parallel, train's in
+one process, so compare it only within one split.
 
-| Trial | Split | Run | HOTA | DetA | AssA | IDF1 | ID switches | label mAP50-95 | mAP50 | mAP75 | P / R at floor | tracker ms |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| **tracktrack** | val | 20e47eba | **48.0** | 38.6 | 61.3 | 58.4 | 742 | 25.0 | 49.8 | 21.6 | 0.675 / 0.561 | 37 |
-| botsort | val | dcbe4c85 | 46.7 | 36.9 | 60.7 | 56.3 | 415 | 23.2 | 44.2 | 21.1 | 0.770 / 0.486 | 33 |
-| tracktrack | train | c4dc728f | 48.8 | 39.7 | 61.2 | 60.4 | 5,269 | 21.0 | 44.2 | 17.0 | 0.694 / 0.515 | 47 |
-| botsort | train | dce52119 | 47.1 | 36.2 | 62.3 | 56.7 | 2,924 | 18.3 | 36.0 | 16.0 | 0.772 / 0.408 | 12.9 (lone) |
+| Trial | Split | Run | HOTA | DetA | AssA | IDF1 | ID switches | label mAP50-95 | mAP50 | mAP75 | person | vehicle | 2-3-wheeler | P / R at floor | tracker ms |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| **tracktrack** | val | 20e47eba | **48.0** | 38.6 | 61.3 | 58.4 | 742 | 25.0 | 49.8 | 21.6 | 25.2 | 39.5 | 10.3 | 0.675 / 0.561 | 37 |
+| botsort | val | dcbe4c85 | 46.7 | 36.9 | 60.7 | 56.3 | 415 | 23.2 | 44.2 | 21.1 | 22.9 | 38.1 | 8.6 | 0.770 / 0.486 | 33 |
+| tracktrack | train | da793ee4 | 48.8 | 39.7 | 61.2 | 60.4 | 5,269 | 21.0 | 44.2 | 17.0 | 18.3 | 37.9 | 6.8 | 0.694 / 0.515 | 14.8 |
+| botsort | train | dce52119 | 47.1 | 36.2 | 62.3 | 56.7 | 2,924 | 18.3 | 36.0 | 16.0 | 15.4 | 35.3 | 4.2 | 0.772 / 0.408 | 12.9 |
 
 **Result:**
-- **TrackTrack holds on val:** 48.0 HOTA against BoT-SORT's 46.7, 1.2 ahead (train 1.7), so
+- **TrackTrack holds on val:** 47.95 HOTA against BoT-SORT's 46.74, 1.21 ahead (train 1.7), so
   the stop rule doesn't fire. It leads on DetA, AssA and IDF1 there; BoT-SORT again keeps fewer ID
   switches and the higher precision at the floor, TrackTrack the higher recall.
 - Label mAP on the subset frames inside the clips: TrackTrack 25.0 against BoT-SORT's 23.2.

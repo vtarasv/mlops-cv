@@ -370,8 +370,9 @@ def box_tracks(
         args |= dict.fromkeys(FLOOR_KEYS, floor)
     pairs = zip(images, detections, strict=True)
     clips = [list(clip) for _, clip in groupby(pairs, key=lambda pair: pair[0].sequence)]
-    # ponytail: fork copies any detector threads of the parent; forkserver if a fresh pass hangs
-    context = multiprocessing.get_context("fork")
+    # not fork: a fresh detector pass leaves torch and CUDA threads in the parent
+    context = multiprocessing.get_context("forkserver")
+    context.set_forkserver_preload(["ultralytics.trackers.track"])  # imported once, not per worker
     with ProcessPoolExecutor(workers, mp_context=context) as pool:
         tracked = pool.map(partial(track_clip, name, args), clips)
         return [frame for clip in tracked for frame in clip]

@@ -217,9 +217,9 @@ def _config(**sections: object) -> LabelingConfig:
 
 def test_the_store_is_keyed_by_frame_set_and_detector_but_not_the_merge() -> None:
     def store(c: LabelingConfig, frames: str = "train") -> Path:
-        return label_eval.detections_store(frames, c)
+        return label_eval.detections_store(Path("runs"), frames, c)
 
-    assert store(_config()).parent == label_eval.RUNS_DIR / "detections"
+    assert store(_config()).parent == Path("runs") / "detections"
     assert store(_config()).name.startswith("train-")
     assert store(_config(), "train-clips") != store(_config())
     assert store(_config(detector={"model": "m", "imgsz": 1280})) != store(_config())

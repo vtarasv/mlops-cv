@@ -13,8 +13,6 @@ from mlops_cv.startup import StartupError, exits_on_startup_error
 
 logger = logging.getLogger(__name__)
 
-OUT = Path("runs/autolabel/labeler/annotations")  # under the FiftyOne App's runs/autolabel mount
-
 
 def frame_paths(sequence: Path) -> list[Path]:
     """The sequence's frames in order; ``label_clip`` numbers them by position from 1."""
@@ -30,7 +28,9 @@ def frame_paths(sequence: Path) -> list[Path]:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="Auto-label VisDrone-VID sequences.")
     p.add_argument("sequences", nargs="+", type=Path, help="sequences/<seq> folders of frames")
-    p.add_argument("--out", type=Path, default=OUT, help=f"annotation dir (default: {OUT})")
+    p.add_argument(
+        "--out", type=Path, help="annotation dir (default: <runs_dir>/labeler/annotations)"
+    )
     args = p.parse_args(argv)
     clips = {seq: frame_paths(seq) for seq in args.sequences}
 
@@ -40,11 +40,12 @@ def main(argv: list[str] | None = None) -> int:
     settings = get_settings()
     logging.basicConfig(level=settings.log_level.upper(), format="%(message)s")
     cfg = settings.autolabel
+    out_dir = (args.out or cfg.runs_dir / "labeler" / "annotations").resolve()
     labeler = Labeler(cfg.detector, cfg.box_filter, settings.training.device, cfg.max_det)
-    args.out.mkdir(parents=True, exist_ok=True)
+    out_dir.mkdir(parents=True, exist_ok=True)
     for seq, frames in clips.items():
         lines = label_clip(labeler, cfg.tracker, cfg.confidence_floor, map(read_rgb, frames))
-        out = args.out / f"{seq.name}.txt"
+        out = out_dir / f"{seq.name}.txt"
         tmp = out.with_suffix(".part")  # a crash leaves no partial file under the final name
         tmp.write_text("".join(f"{line}\n" for line in lines))
         tmp.replace(out)

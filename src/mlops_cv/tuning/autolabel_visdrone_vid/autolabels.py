@@ -49,7 +49,7 @@ def main(argv: list[str] | None = None) -> int:
     (config,) = label_eval.load_stage(LABELER_STAGE).values()
     assert config.confidence_floor is not None
     clips = visdrone_vid.read_split(data.raw_dir, data.subset_dir, SPLIT, clips=True)
-    store = label_eval.detections_store(f"{SPLIT}-clips", config)
+    store = label_eval.detections_store(settings.autolabel.runs_dir, f"{SPLIT}-clips", config)
     tracked, _ = label_eval.label_sequences(config, clips, settings.training.device, {}, store)
     wanted = visdrone_vid.subset_frames(data.subset_dir, SPLIT)
     frames = [

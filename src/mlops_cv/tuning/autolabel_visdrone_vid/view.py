@@ -1,6 +1,7 @@
 """Fetch a labeling trial's annotation files for the annotation editor; prints the loader's args.
 
-They land in ``runs/autolabel/<run name>/annotations/``, which the FiftyOne App mounts as is.
+They land in ``<AutolabelSettings.runs_dir>/<run name>/annotations/``, which the FiftyOne App
+mounts as is.
 ``docker/fiftyone/load_trial.py`` then loads them in the App
 (docs/tuning/autolabel-visdrone-vid.md).
 """
@@ -14,7 +15,7 @@ from pathlib import Path
 from mlops_cv.data.subset import raw_split_dir
 from mlops_cv.startup import StartupError, exits_on_startup_error
 from mlops_cv.tuning.autolabel_visdrone_vid import EXPERIMENT
-from mlops_cv.tuning.autolabel_visdrone_vid.label_eval import ANNOTATIONS, RUNS_DIR, SPLIT_TAG
+from mlops_cv.tuning.autolabel_visdrone_vid.label_eval import ANNOTATIONS, SPLIT_TAG
 
 
 @exits_on_startup_error
@@ -34,7 +35,7 @@ def main(argv: list[str] | None = None) -> int:
         raise StartupError(
             f"run {args.run_id} is no labeling trial: pass a run id from {EXPERIMENT}"
         )
-    out = RUNS_DIR.resolve() / run.info.run_name
+    out = settings.autolabel.runs_dir.resolve() / run.info.run_name
     shutil.rmtree(out, ignore_errors=True)
     out.mkdir(parents=True)
     downloaded = mlflow.artifacts.download_artifacts(

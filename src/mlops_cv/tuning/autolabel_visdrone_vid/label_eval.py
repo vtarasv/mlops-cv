@@ -37,7 +37,6 @@ from mlops_cv.tuning.autolabel_visdrone_vid.tracks import BOX_TRACKERS, Tracker
 logger = logging.getLogger(__name__)
 
 # Stored detector passes and downloaded trials; the FiftyOne App mounts it at the same path.
-RUNS_DIR = Path("runs/autolabel")
 ANNOTATIONS = "annotations"  # the trial's artifact dir: one VisDrone-VID file per sequence
 STAGE_TAG, SPLIT_TAG = "autolabel.stage", "autolabel.split"
 # SAM 3's per-prompt cap. Every row is also scored on the images where no raw category has
@@ -193,12 +192,12 @@ def write_annotations(out: Path, images: list[visdrone_vid.Image], labels: list[
         (out / f"{sequence}.txt").write_text("".join(f"{line}\n" for line in text))
 
 
-def detections_store(frames: str, config: LabelingConfig) -> Path:
+def detections_store(runs_dir: Path, frames: str, config: LabelingConfig) -> Path:
     """Where a whole frame set's detector boxes, before the merge and box filter, are stored."""
     # A new field keeps old keys; the merge runs on stored tiled passes, so it isn't keyed.
     detector = config.detector.model_dump_json(exclude_none=True, exclude={"tiling": {"merge"}})
     key = hashlib.sha256(detector.encode()).hexdigest()[:16]
-    return RUNS_DIR / "detections" / f"{frames}-{key}.npz"
+    return runs_dir / "detections" / f"{frames}-{key}.npz"
 
 
 def save_detections(path: Path, images: list[visdrone_vid.Image], raw: list[Labels]) -> None:
@@ -315,7 +314,7 @@ def run_trial(
 
     settings = get_settings()
     frames = f"{split}-clips" if config.tracker else split
-    store = detections_store(frames, config)
+    store = detections_store(settings.autolabel.runs_dir, frames, config)
     store = store if full or store.exists() else None
     device = settings.training.device
     if config.tracker is None:

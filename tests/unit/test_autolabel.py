@@ -237,3 +237,26 @@ def test_autocast_runs_matmuls_at_the_dtype_and_is_off_without_one() -> None:
         assert (x @ x).dtype == torch.bfloat16
     with labeler.autocast(None, "cpu"):
         assert (x @ x).dtype == torch.float32
+
+
+def test_the_command_writes_one_annotation_file_per_sequence(monkeypatch, tmp_path: Path) -> None:
+    from mlops_cv.autolabel import __main__ as cli
+
+    seq = tmp_path / "sequences" / "uav0000001_00000_v"
+    seq.mkdir(parents=True)
+    for i in (1, 2):
+        Image.new("RGB", (8, 8)).save(seq / f"{i:07d}.jpg")
+    monkeypatch.setattr(labeler, "Labeler", lambda *a, **k: None)
+    monkeypatch.setattr(
+        labeler,
+        "label_clip",
+        lambda _l, _t, _f, frames: (f"{i},1" for i, _ in enumerate(frames, 1)),
+    )
+    out = tmp_path / "out"
+
+    assert cli.main([str(seq), "--out", str(out)]) == 0
+    assert (out / "uav0000001_00000_v.txt").read_text() == "1,1\n2,1\n"
+    assert not list(out.glob("*.part"))
+
+    (seq / "0000002.jpg").rename(seq / "0000003.jpg")
+    assert cli.main([str(seq), "--out", str(out)]) == 2  # a frame gap

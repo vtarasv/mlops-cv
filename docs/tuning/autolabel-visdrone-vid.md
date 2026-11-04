@@ -487,7 +487,7 @@ one process, so compare it only within one split.
 
 | Trial | Split | Run | HOTA | DetA | AssA | IDF1 | ID switches | label mAP50-95 | mAP50 | mAP75 | person | vehicle | 2-3-wheeler | P / R at floor | tracker ms |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| **tracktrack** | val | 20e47eba | **48.0** | 38.6 | 61.3 | 58.4 | 742 | 25.0 | 49.8 | 21.6 | 25.2 | 39.5 | 10.3 | 0.675 / 0.561 | 37 |
+| **tracktrack** | val | 20e47eba | **48.0** | 38.6 | 61.3 | 58.4 | 742 | 25.0 | 49.8 | 21.6 | 25.1 | 39.5 | 10.3 | 0.675 / 0.561 | 37 |
 | botsort | val | dcbe4c85 | 46.7 | 36.9 | 60.7 | 56.3 | 415 | 23.2 | 44.2 | 21.1 | 22.9 | 38.1 | 8.6 | 0.770 / 0.486 | 33 |
 | tracktrack | train | da793ee4 | 48.8 | 39.7 | 61.2 | 60.4 | 5,269 | 21.0 | 44.2 | 17.0 | 18.3 | 37.9 | 6.8 | 0.694 / 0.515 | 14.8 |
 | botsort | train | dce52119 | 47.1 | 36.2 | 62.3 | 56.7 | 2,924 | 18.3 | 36.0 | 16.0 | 15.4 | 35.3 | 4.2 | 0.772 / 0.408 | 12.9 |
@@ -507,7 +507,46 @@ clips, 48.0 on the val clips, ≈ 15 ms per frame in a lone process.
 
 ## 3. Video tracker confirmation
 
-_Not run yet._ One EdgeTAM run on the val clips against experiment 2's winner.
+**What:** one EdgeTAM run (`yonigozlan/EdgeTAM-hf`, bf16) at K=5, the earlier effort's best key
+interval, on the val clips. Its key frames read GDINO-B's stored val-clip pass through Experiment
+2's box filter; kept boxes at or above the floor 0.218 start or refresh a track, and each mask
+leaves only as its tight box. The key-frame rules keep their defaults (`new_iou` 0.3,
+`empty_frames` 25, `unmatched_keys` 2, `duplicate_iou` 0.8, no object cap). TrackTrack at its
+defaults reruns beside it on the same pass, so both rows come from one run.
+
+**Why:** a confirmation, not a grid. EdgeTAM wins only by 0.5 HOTA over TrackTrack, or by being
+faster at a HOTA within 0.5.
+
+```bash
+uv run --env-file .env python -m mlops_cv.tuning.autolabel_visdrone_vid.label_eval \
+  configs/tuning/autolabel-visdrone-vid/video-trackers.yaml --split val
+```
+
+The TrackTrack row reproduces Experiment 2's val row (20e47eba) on every score. ms per frame is
+the box chain in one process: the detector on every frame for TrackTrack, on every 5th for
+EdgeTAM (its stored ms over the key frames, amortised over all frames). TrackTrack's own ms is the
+lone-process 14.8 from Experiment 2 stage 1; this run's 32 ms is timed with 7 clips in parallel.
+EdgeTAM tracks the clips one after another in one process.
+
+| Trial | Run | HOTA | DetA | AssA | IDF1 | ID switches | label mAP50-95 | mAP50 | mAP75 | person | vehicle | 2-3-wheeler | P / R at floor | ms per frame (detector + tracker) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| **tracktrack** | a56dd222 | **48.0** | 38.6 | 61.3 | 58.4 | 742 | 25.0 | 49.8 | 21.6 | 25.1 | 39.5 | 10.3 | 0.675 / 0.561 | ≈ 223 (208 + 15) |
+| edgetam-k5 | f6023837 | 38.0 | 29.6 | 51.4 | 42.9 | 1,619 | 17.3 | 39.9 | 12.8 | 17.3 | 30.1 | 4.6 | 0.463 / 0.529 | 463 (42 + 421) |
+
+**Result:**
+- **TrackTrack stands:** EdgeTAM is 9.9 HOTA behind, on detection (DetA −9.0) and association
+  (AssA −10.0, IDF1 −15.5, twice the ID switches), and costs 2.1× the box chain per frame.
+- **Detecting on every 5th frame doesn't pay for the tracker:** it saves 167 ms of GDINO-B, and
+  EdgeTAM spends 421. On the densest clip (`uav0000137_00458_v`, up to 178 live tracks) it
+  takes 1.2 s per frame.
+- **Label mAP:** EdgeTAM's boxes lose 7.6 pt on the subset frames, and the precision at the
+  floor falls from 0.675 to 0.463.
+- The earlier effort's 8 HOTA lead of the box tracker over EdgeTAM K=5 (SAM 3 at floor 0.597)
+  holds with GDINO-B at 0.218.
+
+**Experiment 3:** EdgeTAM at K=5 on GDINO-B's key frames scores 38.0 HOTA on the val clips
+against TrackTrack's 48.0, at ≈ 463 ms per frame against ≈ 223, so the box chain (GDINO-B +
+TrackTrack) is the labeler.
 
 ## Summary
 

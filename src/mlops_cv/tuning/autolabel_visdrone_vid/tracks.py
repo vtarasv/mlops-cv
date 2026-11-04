@@ -357,11 +357,11 @@ def box_tracks(
     context = multiprocessing.get_context("forkserver")
     context.set_forkserver_preload(["ultralytics.trackers.track"])  # imported once, not per worker
     with ProcessPoolExecutor(workers, mp_context=context) as pool:
-        tracked = pool.map(partial(track_files, tracker.model, args), clips)
+        tracked = pool.map(partial(track_clip_from_disk, tracker.model, args), clips)
         return [frame for clip in tracked for frame in clip]
 
 
-def track_files(
+def track_clip_from_disk(
     model: str, args: dict[str, Any], clip: list[tuple[visdrone_vid.Image, Labels]]
 ) -> list[tuple[Labels, int]]:
     """``track_clip`` with each frame read in the worker, so no frame crosses processes."""

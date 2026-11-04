@@ -1,5 +1,4 @@
-"""The production auto-labeler's pure parts: settings, box filter, top rows, tracker, annotation
-lines."""
+"""The production auto-labeler's parts: settings, box filter, top rows, tracker, annotations."""
 
 from __future__ import annotations
 

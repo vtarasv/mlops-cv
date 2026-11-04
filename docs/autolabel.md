@@ -37,8 +37,8 @@ defaults are the labeling trials' winner so far.
 | `box_filter.max_area` | 0.05 | share of the frame |
 | `box_filter.nms_iou` | `null` | class-agnostic NMS, off |
 | `box_filter.min_score`, `nested_ios`, `max_objects` | off | a score floor, the nested-box rule, a top-K cap |
-| `tracker.model` | `tracktrack` | an ultralytics tracker YAML (`botsort`, `bytetrack`, …), at its defaults |
-| `tracker.overrides` | `{}` | keys of that YAML over its defaults; a key it lacks fails, the floor's two can't be set |
+| `tracker.model` | `tracktrack` | an ultralytics tracker YAML (`botsort`, `bytetrack`, …); no ReID, and `dets_del` stays off (it needs the YOLO predictor) |
+| `tracker.overrides` | `{}` | keys of that YAML over its defaults; a key it lacks fails when the tracker is built, the floor's two fail at load |
 | `confidence_floor` | 0.218 | auto-labels below it are not kept: GDINO-B's max-F1 confidence on train; also the tracker's `track_high_thresh` = `new_track_thresh` |
 | `max_det` | 300 | the top boxes kept per frame: val's cap, so trials score like val |
 

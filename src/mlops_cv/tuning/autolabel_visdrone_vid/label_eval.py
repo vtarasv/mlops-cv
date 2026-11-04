@@ -43,8 +43,6 @@ STAGE_TAG, SPLIT_TAG = "autolabel.stage", "autolabel.split"
 # SAM 3's per-prompt cap. Every row is also scored on the images where no raw category has
 # more ground truth than this, so a capped row compares on the images its cap can't bind.
 SUBSET_CAP = 200
-# A tracker trial's tracked boxes on the subset frames inside its clips score under this prefix.
-SUBSET = "subset"
 # Images left out of the latency readings.
 WARMUP = 3
 
@@ -152,7 +150,7 @@ def ground_truth_labels(images: list[visdrone_vid.Image]) -> list[Labels]:
         xyxy = np.column_stack([im.boxes[:, :2], im.boxes[:, :2] + im.boxes[:, 2:]])
         rows = np.column_stack([xyxy, np.ones(len(xyxy)), visdrone_vid.merged(im.categories)])
         labels = [RAW_NAMES[int(c)] for c in im.categories]
-        out.append(Labels(rows.reshape(-1, 6).astype(np.float32), labels, {}, len(rows)))
+        out.append(Labels(rows.astype(np.float32), labels, {}, len(rows)))
     return out
 
 
@@ -341,7 +339,7 @@ def run_trial(
         )
         if on_subset:  # a --limit can stop short of the clips' first subset frame
             data_yaml = visdrone_vid.rule_yaml(settings, split)
-            prefix, floor = f"{SUBSET}/{split}", config.confidence_floor
+            prefix, floor = f"subset/{split}", config.confidence_floor
             metrics |= visdrone_vid.readings(on_subset, data_yaml, "val", prefix, on_subset, floor)
     with tempfile.TemporaryDirectory() as tmp:
         write_annotations(Path(tmp), images, labels)

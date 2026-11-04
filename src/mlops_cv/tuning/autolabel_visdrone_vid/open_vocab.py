@@ -31,6 +31,8 @@ class Tiling(BaseModel):
     # ``edge`` drops boxes cut by an interior slice edge; ``contained`` merges a cut-off piece
     # into the larger box around it. Both then run class-aware NMS.
     merge: Literal["edge", "contained"] = "edge"
+    # ``False`` drops the full-frame pass (a Swin-L GDINO OOMs on it); ``None`` keeps old store keys
+    full_frame: bool | None = None
 
 
 class Detector(AutolabelDetector):
@@ -54,14 +56,16 @@ def slice_grid(width: int, height: int, side: int) -> list[tuple[int, int, int, 
     ]
 
 
-def tiled(detect: Detect, image: np.ndarray, side: int) -> tuple[np.ndarray, list[str], np.ndarray]:
+def tiled(
+    detect: Detect, image: np.ndarray, side: int, full_frame: bool = True
+) -> tuple[np.ndarray, list[str], np.ndarray]:
     """The detector on each slice, then on the full frame: rows in frame px, labels, windows.
 
     A frame that fits one slice is a single pass.
     """
     h, w = image.shape[:2]
     windows = slice_grid(w, h, side)
-    if len(windows) > 1:
+    if len(windows) > 1 and full_frame:
         windows.append((0, 0, w, h))
     rows, labels, wins = [], [], []
     for x0, y0, x1, y1 in windows:
@@ -86,8 +90,8 @@ def cut_by_slice_edge(
     )
 
 
-def merge_contained(rows: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Larger box wins: a box ``CONTAINED_IOS`` inside a larger kept one of its class joins it.
+def merge_contained(rows: np.ndarray, cut: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Larger box wins: a ``cut`` box ``CONTAINED_IOS`` inside a larger kept one of its class joins.
 
     The kept box takes the pair's top score. Returns the kept positions and their scores.
     """
@@ -95,7 +99,7 @@ def merge_contained(rows: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     conf = rows[:, 4].copy()
     keep: list[int] = []
     for i in np.argsort(-area, kind="stable"):
-        if keep:
+        if keep and cut[i]:
             k = np.array(keep)
             hit = k[(ios(rows[i, :4], rows[k, :4]) >= CONTAINED_IOS) & (rows[k, 5] == rows[i, 5])]
             if len(hit):
@@ -116,14 +120,15 @@ def merge_passes(
     import torch
     from torchvision.ops import batched_nms
 
+    cut = cut_by_slice_edge(rows[:, :4], windows, width, height)
     idx = np.arange(len(rows))
     if merge == "edge":
-        idx = idx[~cut_by_slice_edge(rows[:, :4], windows, width, height)]
+        idx = idx[~cut]
     t = torch.from_numpy(rows[idx])
     idx = idx[batched_nms(t[:, :4], t[:, 4], t[:, 5].long(), TILE_NMS_IOU).numpy()]
     conf = rows[idx, 4]
     if merge == "contained":
-        kept, conf = merge_contained(rows[idx])
+        kept, conf = merge_contained(rows[idx], cut[idx])
         idx = idx[kept]
     return idx, conf
 
@@ -155,10 +160,15 @@ def grounding_dino(cfg: Detector, device: str, max_det: int) -> Detect:
     can run two prompts together; the per-prompt maximum can't.
     """
     import torch
-    from transformers import AutoModelForZeroShotObjectDetection, AutoProcessor
+    from transformers import AutoConfig, AutoModelForZeroShotObjectDetection, AutoProcessor
 
     processor: Any = AutoProcessor.from_pretrained(cfg.model)
-    model = AutoModelForZeroShotObjectDetection.from_pretrained(cfg.model).to(device).eval()
+    # transformers 5.8 otherwise ties MM-GDINO's per-layer decoder heads to layer 0's
+    share = getattr(AutoConfig.from_pretrained(cfg.model), "decoder_bbox_embed_share", True)
+    model = AutoModelForZeroShotObjectDetection.from_pretrained(
+        cfg.model, tie_word_embeddings=share
+    )
+    model = model.to(device).eval()
     precision = autocast(cfg.dtype, device)
     text = ". ".join(p.strip().lower() for p in cfg.prompts) + "."
     tok = processor.tokenizer
@@ -248,7 +258,8 @@ class TrialLabeler(Labeler):
         tiling = self.detector.tiling
         if tiling is None:
             return super().detections(image)
-        (rows, labels, windows), ms = self.timed(tiled, self.detect, image, tiling.side)
+        full = tiling.full_frame is not False
+        (rows, labels, windows), ms = self.timed(tiled, self.detect, image, tiling.side, full)
         return Labels(rows, labels, {"detector": ms}, len(rows), windows=windows)
 
     def finish(self, image: np.ndarray, detections: Labels) -> Labels:

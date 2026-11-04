@@ -6,6 +6,7 @@ from __future__ import annotations
 import dataclasses
 import typing
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -111,7 +112,7 @@ def test_slice_grid_matches_sahi() -> None:
     assert open_vocab.slice_grid(500, 300, 640) == [(0, 0, 500, 300)]
 
 
-def test_tiled_shifts_each_pass_and_adds_the_full_frame() -> None:
+def test_tiled_shifts_each_pass_and_adds_the_full_frame_unless_left_out() -> None:
     def detect(image: np.ndarray) -> tuple[np.ndarray, list[str]]:
         return np.array([[1, 2, 3, 4, 0.5, 1]], np.float32), ["car"]
 
@@ -120,6 +121,8 @@ def test_tiled_shifts_each_pass_and_adds_the_full_frame() -> None:
     assert windows.tolist() == [[0, 0, 10, 10], [6, 0, 16, 10], [0, 0, 16, 10]]
     assert rows[:, :2].tolist() == [[1, 2], [7, 2], [1, 2]] and labels == ["car"] * 3
     assert open_vocab.tiled(detect, image, 20)[2].tolist() == [[0, 0, 16, 10]]
+    slices = open_vocab.tiled(detect, image, 10, full_frame=False)[2]
+    assert slices.tolist() == [[0, 0, 10, 10], [6, 0, 16, 10]]
 
 
 def test_edge_rule_drops_boxes_cut_by_interior_slice_edges_only() -> None:
@@ -147,11 +150,20 @@ def test_merge_passes_with_the_edge_rule_then_class_aware_nms() -> None:
 def test_contained_merge_keeps_the_larger_box_with_the_pair_top_score() -> None:
     pytest.importorskip("torchvision")
     rows = np.array(
-        [[40, 10, 52, 20, 0.9, 1], [40, 10, 70, 20, 0.6, 1], [40, 10, 52, 20, 0.8, 0]], np.float32
+        [[50, 10, 59, 20, 0.9, 1], [40, 10, 70, 20, 0.6, 1], [50, 10, 59, 20, 0.8, 0]], np.float32
     )
-    windows = np.array([[0, 0, 60, 60]] * 3, np.float32)
+    windows = np.array([[0, 0, 60, 60], [0, 0, 100, 100], [0, 0, 60, 60]], np.float32)
     keep, conf = open_vocab.merge_passes(rows, windows, "contained", 100, 100)
     assert keep.tolist() == [1, 2] and conf.tolist() == pytest.approx([0.9, 0.8])
+
+
+def test_contained_merge_keeps_a_whole_box_inside_a_larger_one() -> None:
+    pytest.importorskip("torchvision")
+    # a car (uncut by its slice) inside a frame-sized vehicle box is no cut-off piece
+    rows = np.array([[40, 10, 52, 20, 0.9, 1], [0, 0, 100, 100, 0.1, 1]], np.float32)
+    windows = np.array([[0, 0, 60, 60], [0, 0, 100, 100]], np.float32)
+    keep, conf = open_vocab.merge_passes(rows, windows, "contained", 100, 100)
+    assert keep.tolist() == [1, 0] and conf.tolist() == pytest.approx([0.1, 0.9])
 
 
 def test_a_tiled_trial_merges_before_the_box_filter() -> None:
@@ -163,6 +175,32 @@ def test_a_tiled_trial_merges_before_the_box_filter() -> None:
     windows = np.array([[0, 0, 60, 60], [0, 0, 100, 100]], np.float32)
     out = labeler.finish(np.zeros((100, 100, 3)), Labels(rows, ["a", "b"], {}, 2, windows=windows))
     assert out.labels == ["b"] and set(out.ms) == {"merge", "filter"}
+
+
+def test_grounding_dino_unties_per_layer_decoder_heads(monkeypatch: pytest.MonkeyPatch) -> None:
+    transformers = pytest.importorskip("transformers")
+    tokenizer = SimpleNamespace(cls_token_id=1, sep_token_id=2, convert_tokens_to_ids=lambda t: 3)
+    tied = {}
+
+    class Model:
+        def to(self, device: str) -> Model:
+            return self
+
+        def eval(self) -> Model:
+            return self
+
+    def model(name: str, tie_word_embeddings: bool) -> Model:
+        tied[name] = tie_word_embeddings
+        return Model()
+
+    processor = SimpleNamespace(tokenizer=tokenizer)
+    monkeypatch.setattr(transformers.AutoProcessor, "from_pretrained", lambda _: processor)
+    monkeypatch.setattr(transformers.AutoModelForZeroShotObjectDetection, "from_pretrained", model)
+    for name, share in [("base", True), ("mm-large", False)]:
+        config = SimpleNamespace(decoder_bbox_embed_share=share)
+        monkeypatch.setattr(transformers.AutoConfig, "from_pretrained", lambda _, c=config: c)
+        open_vocab.grounding_dino(open_vocab.Detector(model=name), "cpu", 300)
+    assert tied == {"base": True, "mm-large": False}
 
 
 def test_prompt_spans_split_at_separators() -> None:
@@ -202,6 +240,8 @@ def test_the_store_is_keyed_by_frame_set_and_detector_but_not_the_merge() -> Non
         for side, merge in [(806, "edge"), (806, "contained"), (504, "edge")]
     )
     assert store(edge) == store(contained) != store(other)
+    slices = _config(detector={"model": "m", "tiling": {"side": 806, "full_frame": False}})
+    assert store(slices) != store(edge)
 
 
 def _stage(tmp_path: Path, stage: dict) -> Path:
@@ -270,6 +310,17 @@ def test_cap_subset_and_recall_ceiling() -> None:
     images = [_image("a", [4] * 250 + [1] * 10), _image("b", [4] * 50)]
     assert label_eval.uncapped(images, 200) == ["b"]
     assert label_eval.recall_ceiling(images, 200) == pytest.approx(1 - 50 / 310)
+
+
+def test_select_frames_filters_sequences_then_samples_then_limits() -> None:
+    images = [_image(f"{q}{i}", [], sequence=q) for q in "ab" for i in range(4)]
+
+    def names(sequences: list[str] | None, every: int | None, limit: int | None) -> list[str]:
+        return [im.name for im in label_eval.select_frames(images, sequences, every, limit)]
+
+    assert names(None, None, None) == [im.name for im in images]
+    assert names(None, 3, None) == ["a0", "a3", "b2"]
+    assert names(["b"], 2, 1) == ["b0"]
 
 
 def _labels(ms: float, rows: np.ndarray | None = None) -> Labels:

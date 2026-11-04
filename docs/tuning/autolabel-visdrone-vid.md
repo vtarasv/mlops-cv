@@ -48,6 +48,9 @@ beside YOLO26 s trained on ground truth.
 - **Stored detector passes.** A run over a whole frame set stores the detector's raw boxes in
   `runs/autolabel/detections/<frames>-<hash of the detector settings>.npz`. A later trial with the
   same detector reads them and reruns only the merge and the box filter.
+- **Box trackers** (ultralytics') track each clip in its own process, 16 at a time.
+  `tracker.overrides` sets keys of the tracker's ultralytics YAML; a key the YAML lacks, or one the
+  confidence floor sets, fails the trial.
 - **Video trackers** (EdgeTAM, SAM 2.1 video) run the detector every K-th frame and carry objects
   between those frames. Each mask leaves the tracker only as its tight box.
 - **Latency** is batch 1 per frame, decoded image to boxes, with the first 3 frames left out.
@@ -420,6 +423,47 @@ clips in parallel.
   (the 24.5 equals Experiment 1's on the subset frames). Tracking costs 0.6 more for TrackTrack,
   1.1 for Hybrid-SORT and 3.3 for BoT-SORT, which keeps the fewest boxes (recall 0.408 at the
   floor).
+
+### Stage 2: TrackTrack's settings
+
+**What:** TrackTrack on stage 1's stored pass, one setting at a time from its defaults
+(`track_low_thresh` 0.25, `match_thresh` 0.7, `track_buffer` 30, `gmc_method` sparseOptFlow), with
+the floor as `track_high_thresh` = `new_track_thresh` and no ReID.
+
+**Why:** a value replaces the default only by 0.5 HOTA over the defaults row. Below the floor,
+`track_low_thresh` turns on the low-score stage that stage 1 ran without. `match_thresh` is the
+starting cost gate of TrackTrack's iterative assignment (lowered by `reduce_step` 0.05), not an
+IoU gate.
+
+```bash
+uv run --env-file .env python -m mlops_cv.tuning.autolabel_visdrone_vid.label_eval \
+  configs/tuning/autolabel-visdrone-vid/tracker-settings.yaml --split train
+```
+
+The defaults row reproduces stage 1's `tracktrack` (da793ee4) on every score, with the clips
+tracked in parallel. Tracker ms is timed with 16 clips in parallel, mostly on the CPU's
+efficiency cores: about 3× a lone process (14.8 ms in stage 1), so compare it only within this
+table.
+
+| Trial | Run | HOTA | DetA | AssA | IDF1 | ID switches | label mAP50-95 | mAP50 | mAP75 | P / R at floor | tracker ms |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| **defaults** | c4dc728f | **48.8** | 39.7 | 61.2 | 60.4 | 5,269 | 21.0 | 44.2 | 17.0 | 0.694 / 0.515 | 47 |
+| `track_low_thresh` 0.05 | 54f0f8d6 | 47.5 | 38.0 | 60.8 | 57.7 | 6,271 | 21.7 | 46.1 | 17.3 | 0.684 / 0.504 | 56 |
+| `track_low_thresh` 0.1 | 76fb4356 | 48.1 | 38.7 | 61.1 | 58.7 | 6,005 | 21.8 | 46.1 | 17.4 | 0.686 / 0.507 | 53 |
+| `track_low_thresh` 0.2 | a1080845 | 48.9 | 39.9 | 61.3 | 60.5 | 5,194 | 21.3 | 44.8 | 17.0 | 0.693 / 0.514 | 49 |
+| `match_thresh` 0.8 | 930285be | 49.0 | 39.9 | 61.6 | 60.9 | 5,026 | 21.1 | 44.1 | 17.0 | 0.689 / 0.521 | 47 |
+| `match_thresh` 0.9 | f320b6fa | 49.0 | 39.8 | 61.6 | 61.1 | 5,131 | 21.2 | 44.4 | 17.0 | 0.683 / 0.525 | 48 |
+| `track_buffer` 60 | 0f9676d6 | 48.7 | 39.7 | 61.2 | 60.4 | 5,364 | 21.0 | 44.2 | 17.0 | 0.693 / 0.515 | 49 |
+| `gmc_method` orb | 7d5694af | 48.7 | 39.7 | 61.1 | 60.3 | 5,300 | 21.0 | 44.0 | 17.1 | 0.695 / 0.514 | 450 |
+
+**Result:**
+- **TrackTrack's defaults stand.** No value clears the margin: the best, `match_thresh` 0.8, is
+  +0.25 HOTA, so there is no combination to run.
+- **The low-score stage costs HOTA:** at 0.05 and 0.1 it loses 1.3 and 0.7, with up to 1,000
+  more ID switches and lower P and R at the floor. The boxes it keeps under the floor raise label
+  mAP by 0.7–0.8, which never selects.
+- `track_buffer` 60 changes almost nothing, and ORB motion compensation costs about 10× the
+  tracker time for no gain.
 
 ## 3. Video tracker confirmation
 

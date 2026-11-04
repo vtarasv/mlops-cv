@@ -6,6 +6,7 @@ Every model loads through transformers, except YOLOE (ultralytics).
 from __future__ import annotations
 
 from collections.abc import Sequence
+from contextlib import AbstractContextManager, nullcontext
 from typing import Any, Literal
 
 import numpy as np
@@ -138,6 +139,15 @@ def prompt_spans(input_ids: Sequence[int], separators: set[int]) -> list[list[in
     return [s for s in spans if s]
 
 
+def autocast(dtype: str | None, device: str) -> AbstractContextManager[Any]:
+    """``dtype`` through autocast, not half weights: transformers' GDINO keeps some tensors fp32."""
+    import torch
+
+    return (
+        torch.autocast(torch.device(device).type, getattr(torch, dtype)) if dtype else nullcontext()
+    )
+
+
 def grounding_dino(cfg: Detector, device: str, max_det: int) -> Detect:
     """Grounding DINO: each box goes to the prompt whose tokens score it highest.
 
@@ -149,6 +159,7 @@ def grounding_dino(cfg: Detector, device: str, max_det: int) -> Detect:
 
     processor: Any = AutoProcessor.from_pretrained(cfg.model)
     model = AutoModelForZeroShotObjectDetection.from_pretrained(cfg.model).to(device).eval()
+    precision = autocast(cfg.dtype, device)
     text = ". ".join(p.strip().lower() for p in cfg.prompts) + "."
     tok = processor.tokenizer
     separators = {tok.cls_token_id, tok.sep_token_id, tok.convert_tokens_to_ids(".")}
@@ -156,14 +167,14 @@ def grounding_dino(cfg: Detector, device: str, max_det: int) -> Detect:
     def detect(image: np.ndarray) -> tuple[np.ndarray, list[str]]:
         h, w = image.shape[:2]
         inputs = processor(images=image, text=text, return_tensors="pt").to(device)
-        with torch.inference_mode():
+        with torch.inference_mode(), precision:
             out = model(**inputs)
         spans = prompt_spans(inputs["input_ids"][0].tolist(), separators)
         if len(spans) != len(cfg.prompts):
             raise ValueError(f"{len(spans)} token spans for {len(cfg.prompts)} prompts in {text!r}")
-        probs = out.logits[0].sigmoid()
+        probs = out.logits[0].float().sigmoid()
         conf, label = torch.stack([probs[:, s].max(-1).values for s in spans], 1).max(1)
-        cx, cy, bw, bh = (out.pred_boxes[0] * torch.tensor([w, h, w, h], device=device)).T
+        cx, cy, bw, bh = (out.pred_boxes[0].float() * torch.tensor([w, h, w, h], device=device)).T
         boxes = torch.stack([cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2], 1)
         return top_rows(boxes, conf, label, cfg, max_det)
 

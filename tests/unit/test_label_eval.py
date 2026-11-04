@@ -530,3 +530,14 @@ def test_trackeval_scores_perfect_tracks_and_counts_id_switches() -> None:
     out = track_scores.readings(images, switched)
     assert out["track/IDSW"] == 2 and out["track/DetA"] == pytest.approx(1.0)
     assert out["track/HOTA"] < 1
+
+
+def test_autocast_runs_matmuls_at_the_dtype_and_is_off_without_one() -> None:
+    torch = pytest.importorskip("torch")
+    from mlops_cv.tuning.autolabel_visdrone_vid.open_vocab import autocast
+
+    x = torch.ones(2, 2)
+    with autocast("bfloat16", "cpu"):
+        assert (x @ x).dtype == torch.bfloat16
+    with autocast(None, "cpu"):
+        assert (x @ x).dtype == torch.float32

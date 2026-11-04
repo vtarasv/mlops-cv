@@ -98,14 +98,16 @@ autolabel = [
     "transformers==5.8.0",
     "torch==2.12.1",
     "torchvision==0.27.1",
+    # the box tracker
+    "ultralytics==8.4.72",
+    # ultralytics' box trackers; it pip-installs it unpinned at runtime otherwise
+    "lap==0.5.13",
 ]
 
-# The auto-labeling experiments' trial detectors, trackers and track scoring
+# The auto-labeling experiments' trial detectors, video trackers and track scoring
 autolabel-tuning = [
     # EdgeTAM's RepViT backbone loads through TimmWrapper
     "timm==1.0.30",
-    # ultralytics' box trackers; it pip-installs it unpinned at runtime otherwise
-    "lap==0.5.13",
     "trackeval==1.3.0",
     # YOLOE-26's text encoder; ultralytics pip-installs it unpinned at runtime otherwise
     "clip @ git+https://github.com/ultralytics/CLIP.git@7ffa84b3bfa40c42ecc1c77147a855e69cb2dd40",

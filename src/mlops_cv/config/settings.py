@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -133,6 +133,26 @@ class BoxFilter(BaseModel):
     max_objects: int | None = None  # the highest-scoring K
 
 
+# The box-tracker keys the confidence floor sets.
+FLOOR_KEYS = frozenset({"track_high_thresh", "new_track_thresh"})
+
+
+class AutolabelTracker(BaseModel):
+    """An ultralytics box tracker over the box filter's output, fresh per clip."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    model: str = "tracktrack"  # an ultralytics tracker YAML's stem
+    overrides: dict[str, Any] = {}  # its YAML keys over ultralytics' defaults; none changed
+
+    @field_validator("overrides")
+    @classmethod
+    def _floor_keys_are_the_floors(cls, overrides: dict[str, Any]) -> dict[str, Any]:
+        if taken := overrides.keys() & FLOOR_KEYS:
+            raise ValueError(f"the confidence floor sets {sorted(taken)}")
+        return overrides
+
+
 class AutolabelSettings(BaseModel):
     """The labeling config (docs/tuning/autolabel-visdrone-vid.md): the winner so far."""
 
@@ -140,7 +160,9 @@ class AutolabelSettings(BaseModel):
 
     detector: AutolabelDetector = AutolabelDetector()
     box_filter: BoxFilter = BoxFilter()
-    confidence_floor: float = 0.218  # auto-labels below it are not kept
+    tracker: AutolabelTracker = AutolabelTracker()
+    # auto-labels below it are not kept; the tracker's ``FLOOR_KEYS``
+    confidence_floor: float = 0.218
     max_det: int = 300  # the top boxes kept per frame: val's cap, so trials score like val
 
 

@@ -48,10 +48,10 @@ beside YOLO26 s trained on ground truth.
 - **Stored detector passes.** A run over a whole frame set stores the detector's raw boxes in
   `runs/autolabel/detections/<frames>-<hash of the detector settings>.npz`. A later trial with the
   same detector reads them and reruns only the merge and the box filter.
-- **Box trackers** (ultralytics') track each clip in its own fresh (forkserver) process, 16 at a
-  time.
+- **Box trackers** (ultralytics') run through the production labeler's tracking code
+  (`mlops_cv.autolabel`), each clip in its own fresh (forkserver) process, 16 at a time.
   `tracker.overrides` sets keys of the tracker's ultralytics YAML; a key the YAML lacks, or one the
-  confidence floor sets, fails the trial.
+  confidence floor sets, fails the trial. `labeler.yaml` is production's config, tracker included.
 - **Video trackers** (EdgeTAM, SAM 2.1 video) run the detector every K-th frame and carry objects
   between those frames. Each mask leaves the tracker only as its tight box.
 - **Latency** is batch 1 per frame, decoded image to boxes, with the first 3 frames left out.
@@ -498,6 +498,8 @@ one process, so compare it only within one split.
   switches and the higher precision at the floor, TrackTrack the higher recall.
 - Label mAP on the subset frames inside the clips: TrackTrack 25.0 against BoT-SORT's 23.2.
 - **TrackTrack's val row is Experiment 3's comparison row**, on the same stored pass.
+- **Defaults:** `AutolabelSettings.tracker` now carries TrackTrack at its defaults, and the
+  production labeler tracks each clip (`labeler.yaml`).
 
 **Experiment 2:** TrackTrack (ultralytics 8.4.72) at its defaults, with the floor 0.218 as
 `track_high_thresh` = `new_track_thresh` and no ReID, on GDINO-B's boxes: 48.8 HOTA on the train

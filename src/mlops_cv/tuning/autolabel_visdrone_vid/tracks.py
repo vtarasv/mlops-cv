@@ -1,4 +1,5 @@
-"""Tracking for labeling trials: ultralytics' box trackers, and video trackers on key frames.
+"""Tracking for labeling trials: production's box tracker, clips in parallel, and video trackers
+on key frames.
 
 A video trial runs the detector (or reads its stored boxes) and the box filter on key frames
 only. Kept boxes at or above the confidence floor match the live tracks by box IoU against each
@@ -12,7 +13,6 @@ from __future__ import annotations
 import gc
 import logging
 import multiprocessing
-import time
 from collections.abc import Iterator
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
@@ -22,9 +22,10 @@ from operator import attrgetter
 from typing import Any
 
 import numpy as np
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import model_validator
 
-from mlops_cv.autolabel.labeler import Labeler, Labels, above, read_rgb
+from mlops_cv.autolabel.labeler import Labeler, Labels, above, read_rgb, track_clip, tracker_args
+from mlops_cv.config.settings import AutolabelTracker
 from mlops_cv.tuning.autolabel_visdrone_vid import visdrone_vid
 
 logger = logging.getLogger(__name__)
@@ -33,8 +34,6 @@ logger = logging.getLogger(__name__)
 BOX_TRACKERS = ("botsort", "bytetrack", "tracktrack")
 # Box-tracker processes, one clip at a time each.
 WORKERS = 16
-# The box-tracker keys the confidence floor sets.
-FLOOR_KEYS = frozenset({"track_high_thresh", "new_track_thresh"})
 # Non-seed frames a video tracker keeps: memory stays flat at unchanged latency.
 KEEP_FRAMES = 16
 # Masks per post-processing pass: bounds the full-resolution masks' memory.
@@ -48,19 +47,16 @@ PER_OBJECT = (
 )
 
 
-class Tracker(BaseModel):
-    """The key-frame rules apply to the video trackers, not to ``BOX_TRACKERS``."""
+class Tracker(AutolabelTracker):
+    """Production's tracker, or a video one; the key-frame rules apply to the video trackers."""
 
-    model_config = ConfigDict(extra="forbid")
-
-    model: str  # one of ``BOX_TRACKERS``, or a transformers video repo (EdgeTAM, SAM 2.1)
+    # ``model``: one of ``BOX_TRACKERS``, or a transformers video repo (EdgeTAM, SAM 2.1)
     key_interval: int = 10  # K: frame 0 and every K-th frame after it are key frames
     new_iou: float = 0.3  # tau: a kept box below it against every live track is a new object
     empty_frames: int = 25  # a track ends after this many consecutive empty-mask frames
     unmatched_keys: int = 2  # ... or after this many consecutive key frames without a match
     duplicate_iou: float = 0.8  # of two tracks whose boxes overlap above it, the younger ends
     max_objects: int | None = None  # live-track cap; new objects beyond it aren't added
-    overrides: dict[str, Any] = {}  # a box tracker's ultralytics YAML keys over its defaults
 
     @model_validator(mode="after")
     def _overrides_need_a_box_tracker(self) -> Tracker:
@@ -347,61 +343,26 @@ def video_tracks(
 
 
 def box_tracks(
-    name: str,
+    tracker: AutolabelTracker,
     images: list[visdrone_vid.Image],
     detections: list[Labels],
     floor: float | None = None,
-    overrides: dict[str, Any] | None = None,
     workers: int = WORKERS,
 ) -> list[tuple[Labels, int]]:
-    """ultralytics' ``name`` tracker per frame, clips in parallel; ``floor`` sets ``FLOOR_KEYS``."""
-    from ultralytics.utils import YAML
-    from ultralytics.utils.checks import check_yaml
-
-    args = YAML.load(str(check_yaml(f"{name}.yaml")))
-    overrides = overrides or {}
-    allowed = args.keys() - FLOOR_KEYS if floor is not None else args.keys()
-    if unknown := overrides.keys() - allowed:
-        raise ValueError(
-            f"{name} can't override {sorted(unknown)}: not in its YAML, or the floor's"
-        )
-    args |= overrides
-    if floor is not None:
-        args |= dict.fromkeys(FLOOR_KEYS, floor)
+    """The production box tracker per frame, clips in parallel; ``floor`` sets its thresholds."""
+    args = tracker_args(tracker, floor)
     pairs = zip(images, detections, strict=True)
     clips = [list(clip) for _, clip in groupby(pairs, key=lambda pair: pair[0].sequence)]
     # not fork: a fresh detector pass leaves torch and CUDA threads in the parent
     context = multiprocessing.get_context("forkserver")
     context.set_forkserver_preload(["ultralytics.trackers.track"])  # imported once, not per worker
     with ProcessPoolExecutor(workers, mp_context=context) as pool:
-        tracked = pool.map(partial(track_clip, name, args), clips)
+        tracked = pool.map(partial(track_clip_from_disk, tracker.model, args), clips)
         return [frame for clip in tracked for frame in clip]
 
 
-def track_clip(
-    name: str, args: dict[str, Any], clip: list[tuple[visdrone_vid.Image, Labels]]
+def track_clip_from_disk(
+    model: str, args: dict[str, Any], clip: list[tuple[visdrone_vid.Image, Labels]]
 ) -> list[tuple[Labels, int]]:
-    """One clip under a fresh tracker: per frame, the detections it tracked and the live tracks."""
-    from ultralytics.engine.results import Boxes
-    from ultralytics.trackers.basetrack import BaseTrack
-    from ultralytics.trackers.track import TRACKER_MAP
-    from ultralytics.utils import IterableSimpleNamespace
-
-    tracker: Any = TRACKER_MAP[name](args=IterableSimpleNamespace(**args))
-    BaseTrack.reset_id()  # TrackTrack has no reset_id of its own; the counter is shared
-    out = []
-    for im, det in clip:
-        bgr = np.ascontiguousarray(read_rgb(im.path)[..., ::-1])  # for camera-motion compensation
-        start = time.perf_counter()
-        rows = tracker.update(Boxes(det.rows, (im.height, im.width)), bgr).reshape(-1, 8)
-        ms = (time.perf_counter() - start) * 1000
-        idx = rows[:, 7].astype(int)
-        labels = Labels(
-            det.rows[idx],
-            [det.labels[i] for i in idx],
-            det.ms | {"tracker": ms},
-            det.detected,
-            rows[:, 4].astype(int),
-        )
-        out.append((labels, len(tracker.tracked_stracks) + len(tracker.lost_stracks)))
-    return out
+    """``track_clip`` with each frame read in the worker, so no frame crosses processes."""
+    return list(track_clip(model, args, ((read_rgb(im.path), det) for im, det in clip)))

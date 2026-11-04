@@ -1,6 +1,7 @@
 # The labeler's labeling config, AutolabelSettings' defaults: GDINO-B on the 10 raw names,
-# untiled, fp16 -> box filter (NMS off). The confidence floor (0.218, its max-F1 confidence on
-# train) cuts the kept auto-labels, not the scored ones.
+# untiled, fp16 -> box filter (NMS off) -> TrackTrack at its defaults over the full clips. The
+# confidence floor (0.218, its max-F1 confidence on train) is TrackTrack's track_high_thresh =
+# new_track_thresh and cuts the kept auto-labels, not the scored ones.
 trials:
   - name: gdino-b
     detector:
@@ -19,3 +20,4 @@ trials:
       dtype: float16
     box_filter: {min_side: 8, max_area: 0.05, nms_iou: null}
     confidence_floor: 0.218
+    tracker: {model: tracktrack}

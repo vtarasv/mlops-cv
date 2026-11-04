@@ -256,7 +256,8 @@ uv run --env-file .env python -m mlops_cv.tuning.autolabel_visdrone_vid.label_ev
 **What:** each detector's winner so far (gdino-b-raw + NMS off, sam3-raw + NMS 0.5) in fp16,
 on slices plus the full frame at zoom 1.25, merged by the edge rule or the contained merge (a
 CPU rescore of the same passes). The untiled rows are the fp16 check's. Zoom 2 runs only if a
-zoom 1.25 row beats its untiled row by 0.5 pt (Taras).
+zoom 1.25 row beats its untiled row by 0.5 pt (Taras; this replaced "if SAM 3 at 1.25 beats
+GDINO-B's best tiled row").
 
 **Why:** tiling enlarges small objects, and GDINO-B is weak on two-three-wheelers. Each
 detector's best tiled row replaces its untiled row only by 0.5 pt; then the per-model tie rule
@@ -301,7 +302,7 @@ peaks at 5.1 GB), so they run at zoom 1.25 on 640 px slices without the full-fra
 GDINO-B the same way. The other rows rescore stored passes of the same frames.
 
 **Why:** a Large model would replace GDINO-B only by 0.5 pt; a lead of 2 pt over GDINO-B's zoom
-1.25 edge row on the probe would have justified a full-frame run through a fused kernel.
+1.25 edge row on the probe would have gone to Taras for a full-frame run.
 
 ```bash
 uv run --env-file .env python -m mlops_cv.tuning.autolabel_visdrone_vid.label_eval \
@@ -318,8 +319,8 @@ uv run --env-file .env python -m mlops_cv.tuning.autolabel_visdrone_vid.label_ev
 | llmdet-l-raw-nms-off-zoom1.25-slices | 8413d27b | 21.74 | 52.0 | 15.1 | 16.0 | 39.7 | 9.5 | 0.352 | 1025 | 4037 |
 
 **Result:**
-- **Both Large models trail GDINO-B on the same slices**, by 2.0 and 3.0 pt, at 3.6× its time:
-  the check is closed. The probe frames keep the full split's order (GDINO-B 24.34, SAM 3 24.66).
+- **Both Large models trail GDINO-B's zoom 1.25 edge row**, by 2.1 and 3.1 pt (2.0 and 3.0 on
+  the same slices), at 3.6× its time: the check is closed. The probe frames keep the full split's order (GDINO-B 24.34, SAM 3 24.66).
 - transformers 5.8 ties MM-GDINO's per-layer decoder heads to layer 0's, which squashed its boxes
   (0.03 mAP50-95); the GDINO loader now loads them untied when the config doesn't share them.
 

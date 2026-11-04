@@ -31,8 +31,7 @@ class Tiling(BaseModel):
     # ``edge`` drops boxes cut by an interior slice edge; ``contained`` merges a cut-off piece
     # into the larger box around it. Both then run class-aware NMS.
     merge: Literal["edge", "contained"] = "edge"
-    # ``False`` leaves out the full-frame pass, which a Swin-L GDINO can't fit in 8 GB; ``None``
-    # (not ``True``) keeps it, so older stores keep their keys
+    # ``False`` drops the full-frame pass (a Swin-L GDINO OOMs on it); ``None`` keeps old store keys
     full_frame: bool | None = None
 
 
@@ -94,8 +93,7 @@ def cut_by_slice_edge(
 def merge_contained(rows: np.ndarray, cut: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Larger box wins: a ``cut`` box ``CONTAINED_IOS`` inside a larger kept one of its class joins.
 
-    Only a box cut by its slice's edge is a piece; a whole object inside a group box stays. The
-    kept box takes the pair's top score. Returns the kept positions and their scores.
+    The kept box takes the pair's top score. Returns the kept positions and their scores.
     """
     area = (rows[:, 2] - rows[:, 0]) * (rows[:, 3] - rows[:, 1])
     conf = rows[:, 4].copy()
@@ -165,10 +163,11 @@ def grounding_dino(cfg: Detector, device: str, max_det: int) -> Detect:
     from transformers import AutoConfig, AutoModelForZeroShotObjectDetection, AutoProcessor
 
     processor: Any = AutoProcessor.from_pretrained(cfg.model)
-    # transformers 5.8 ties every decoder layer's heads to layer 0's unless told not to, which
-    # overwrites MM-GDINO's per-layer heads and squashes its boxes
-    tie = getattr(AutoConfig.from_pretrained(cfg.model), "decoder_bbox_embed_share", True)
-    model = AutoModelForZeroShotObjectDetection.from_pretrained(cfg.model, tie_word_embeddings=tie)
+    # transformers 5.8 otherwise ties MM-GDINO's per-layer decoder heads to layer 0's
+    share = getattr(AutoConfig.from_pretrained(cfg.model), "decoder_bbox_embed_share", True)
+    model = AutoModelForZeroShotObjectDetection.from_pretrained(
+        cfg.model, tie_word_embeddings=share
+    )
     model = model.to(device).eval()
     precision = autocast(cfg.dtype, device)
     text = ". ".join(p.strip().lower() for p in cfg.prompts) + "."

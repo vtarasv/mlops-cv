@@ -363,12 +363,12 @@ trial and never pick a winner.
 **Why:** the second head costs nothing to try. SAHI is the standard trick for small objects.
 
 ```bash
-uv run python -m mlops_cv.tuning.yolo26_visdrone_vid.sahi_eval stage2-n1280 stage5-s1280-zoom0.75-1.5 stage2-m1280
-uv run python -m mlops_cv.tuning.yolo26_visdrone_vid.sahi_eval --slice 640 stage2-n1280 stage5-s1280-zoom0.75-1.5 stage2-m1280
+uv run --with sahi==0.12.8 python -m mlops_cv.tuning.yolo26_visdrone_vid.sahi_eval stage2-n1280 stage5-s1280-zoom0.75-1.5 stage2-m1280
+uv run --with sahi==0.12.8 python -m mlops_cv.tuning.yolo26_visdrone_vid.sahi_eval --slice 640 stage2-n1280 stage5-s1280-zoom0.75-1.5 stage2-m1280
 ```
 
 The first command runs `<trial>-o2m` and `<trial>-sahi`; `--slice 640` runs `<trial>-sahi640`. s
-ran on its zoom trial, its winner at the time. `sahi` comes with the `tuning` uv group.
+ran on its zoom trial, its winner at the time. `sahi` stays off the lock.
 
 **Full frame** is SAHI's control: the same weights and one-to-one head on the whole frame with no
 tiles, scored through the same path as SAHI (`model.predict`, then the validator's scoring). It
@@ -407,12 +407,12 @@ Val stays full frames.
 **Why:** the SAHI paper's gains came from training on tiles and then predicting on tiles.
 
 ```bash
-uv run python -m mlops_cv.tuning.yolo26_visdrone_vid.slices --imgsz 1280   # writes images/train-sliced1280 into the subset
+uv run --with sahi==0.12.8 python -m mlops_cv.tuning.yolo26_visdrone_vid.slices --imgsz 1280   # writes images/train-sliced1280 into the subset
 export DATA__DATASET_YAML=configs/tuning/yolo26-visdrone-vid/datasets/VisDrone-VID-merged-sliced1280.yaml
 uv run python -m mlops_cv.tuning.yolo26_visdrone_vid.tune configs/tuning/yolo26-visdrone-vid/sliced.yaml
 uv run python -m mlops_cv.tuning.yolo26_visdrone_vid.tune configs/tuning/yolo26-visdrone-vid/sliced-e8.yaml
 unset DATA__DATASET_YAML
-uv run python -m mlops_cv.tuning.yolo26_visdrone_vid.sahi_eval sliced-n1280 sliced-s1280-zoom0.75-1.5 sliced-m1280 \
+uv run --with sahi==0.12.8 python -m mlops_cv.tuning.yolo26_visdrone_vid.sahi_eval sliced-n1280 sliced-s1280-zoom0.75-1.5 sliced-m1280 \
   sliced-e8-n1280 sliced-e8-s1280-zoom0.75-1.5 sliced-e8-m1280
 ```
 

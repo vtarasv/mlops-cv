@@ -10,6 +10,9 @@ Each arm is one ``<trial>-<arm>`` run in the tune experiment. ``--slice N`` runs
 arm with N-px slices (each still predicted at imgsz) as ``<trial>-sahi<N>``.
 """
 
+# pyright: reportMissingImports=false
+# its package is off the lock: the tuning doc runs it with `uv run --with`
+
 from __future__ import annotations
 
 import argparse

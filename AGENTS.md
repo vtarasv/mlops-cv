@@ -59,7 +59,9 @@ Every change ships its unit tests and updates the matching `docs/*.md`.
 - Pin every package to an exact version and every image to a specific tag. `uv.lock` pins the
   rest; CI syncs `--locked`.
 - Look up the current latest stable version before adding or bumping a package, Action or image.
-- Declare every directly imported package in `pyproject.toml`, in the group that uses it.
+- Declare every directly imported package in `pyproject.toml`, in the group that uses it. A
+  package only a tuning trial needs stays off the lock: pin it in that trial's command in
+  `docs/tuning/` (`uv run --with <pkg>==<ver>`).
 - Lazy-import heavy deps (torch, ultralytics, tensorrt, …) inside functions, so every module
   imports in CI's CPU-only sync.
 - Beam caps numpy, pyarrow, pillow and cryptography lock-wide. Expect downgrades on `uv lock`, and

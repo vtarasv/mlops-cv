@@ -440,27 +440,6 @@ def test_box_iou_keeps_its_shape_when_empty() -> None:
     assert tracks.box_iou(a, np.zeros((0, 4))).shape == (1, 0)
 
 
-@pytest.mark.parametrize("tracker", tracks.BOX_TRACKERS)
-def test_box_trackers_take_the_floor_as_their_track_thresholds(
-    tmp_path: Path, tracker: str
-) -> None:
-    pytest.importorskip("lap")
-    images = []
-    for i in range(5):  # TrackTrack reports a track after 3 updates
-        path = tmp_path / f"{i}.jpg"
-        Image.new("RGB", (100, 100)).save(path)
-        images.append(dataclasses.replace(_image(path.name, []), path=path))
-    rows = np.array([[10, 10, 30, 30, 0.5, 1]], np.float32)
-    detections = [Labels(rows, ["car"], {"detector": 1.0}, 1)] * 5
-
-    def tracked(floor: float | None) -> int:
-        out = tracks.box_tracks(tracker, images, detections, floor)
-        return sum(len(lab.rows) for lab, _ in out)
-
-    assert tracked(0.4) > 0
-    assert tracked(0.6) == 0  # 0.5 is under the floor: it starts no track
-
-
 def _frames(tmp_path: Path, clips: int, n: int) -> list[visdrone_vid.Image]:
     images = []
     for q in range(clips):
@@ -470,6 +449,23 @@ def _frames(tmp_path: Path, clips: int, n: int) -> list[visdrone_vid.Image]:
             image = _image(path.name, [], sequence=str(q), frame=i)
             images.append(dataclasses.replace(image, path=path))
     return images
+
+
+@pytest.mark.parametrize("tracker", tracks.BOX_TRACKERS)
+def test_box_trackers_take_the_floor_as_their_track_thresholds(
+    tmp_path: Path, tracker: str
+) -> None:
+    pytest.importorskip("lap")
+    images = _frames(tmp_path, 1, 5)  # TrackTrack reports a track after 3 updates
+    rows = np.array([[10, 10, 30, 30, 0.5, 1]], np.float32)
+    detections = [Labels(rows, ["car"], {"detector": 1.0}, 1)] * 5
+
+    def tracked(floor: float | None) -> int:
+        out = tracks.box_tracks(tracker, images, detections, floor)
+        return sum(len(lab.rows) for lab, _ in out)
+
+    assert tracked(0.4) > 0
+    assert tracked(0.6) == 0  # 0.5 is under the floor: it starts no track
 
 
 @pytest.mark.parametrize("tracker", tracks.BOX_TRACKERS)

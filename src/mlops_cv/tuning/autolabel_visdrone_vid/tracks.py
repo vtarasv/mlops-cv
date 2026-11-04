@@ -354,16 +354,14 @@ def box_tracks(
     overrides: dict[str, Any] | None = None,
     workers: int = WORKERS,
 ) -> list[tuple[Labels, int]]:
-    """ultralytics' ``name`` tracker per frame of a cached pass, ``overrides`` over its YAML.
-
-    ``floor`` sets ``FLOOR_KEYS``, which default to YOLO's score scale; the clips run in parallel.
-    """
+    """ultralytics' ``name`` tracker per frame, clips in parallel; ``floor`` sets ``FLOOR_KEYS``."""
     from ultralytics.utils import YAML
     from ultralytics.utils.checks import check_yaml
 
     args = YAML.load(str(check_yaml(f"{name}.yaml")))
     overrides = overrides or {}
-    if unknown := overrides.keys() - (args.keys() - (FLOOR_KEYS if floor is not None else set())):
+    allowed = args.keys() - FLOOR_KEYS if floor is not None else args.keys()
+    if unknown := overrides.keys() - allowed:
         raise ValueError(
             f"{name} can't override {sorted(unknown)}: not in its YAML, or the floor's"
         )
@@ -372,7 +370,8 @@ def box_tracks(
         args |= dict.fromkeys(FLOOR_KEYS, floor)
     pairs = zip(images, detections, strict=True)
     clips = [list(clip) for _, clip in groupby(pairs, key=lambda pair: pair[0].sequence)]
-    context = multiprocessing.get_context("fork")  # the children inherit the imports
+    # ponytail: fork copies any detector threads of the parent; forkserver if a fresh pass hangs
+    context = multiprocessing.get_context("fork")
     with ProcessPoolExecutor(workers, mp_context=context) as pool:
         tracked = pool.map(partial(track_clip, name, args), clips)
         return [frame for clip in tracked for frame in clip]

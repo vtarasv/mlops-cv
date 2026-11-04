@@ -154,6 +154,11 @@ def autocast(dtype: str | None, device: str) -> AbstractContextManager[Any]:
     )
 
 
+def tied_heads(config: Any) -> bool:
+    """Whether the decoder layers share one box head; MM-GDINO's (Large) are per layer."""
+    return getattr(config, "decoder_bbox_embed_share", True)
+
+
 def grounding_dino(cfg: Detector, device: str, max_det: int) -> Detect:
     """Grounding DINO: each box goes to the prompt whose tokens score it highest.
 
@@ -161,10 +166,14 @@ def grounding_dino(cfg: Detector, device: str, max_det: int) -> Detect:
     can run two prompts together; the per-prompt maximum can't.
     """
     import torch
-    from transformers import AutoModelForZeroShotObjectDetection, AutoProcessor
+    from transformers import AutoConfig, AutoModelForZeroShotObjectDetection, AutoProcessor
 
     processor: Any = AutoProcessor.from_pretrained(cfg.model)
-    model = AutoModelForZeroShotObjectDetection.from_pretrained(cfg.model).to(device).eval()
+    # transformers 5.8 ties every decoder layer's heads to layer 0's unless told not to, which
+    # overwrites MM-GDINO's per-layer heads and squashes its boxes
+    tie = tied_heads(AutoConfig.from_pretrained(cfg.model))
+    model = AutoModelForZeroShotObjectDetection.from_pretrained(cfg.model, tie_word_embeddings=tie)
+    model = model.to(device).eval()
     precision = autocast(cfg.dtype, device)
     text = ". ".join(p.strip().lower() for p in cfg.prompts) + "."
     tok = processor.tokenizer

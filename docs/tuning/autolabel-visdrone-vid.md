@@ -324,6 +324,42 @@ uv run --env-file .env python -m mlops_cv.tuning.autolabel_visdrone_vid.label_ev
 - transformers 5.8 ties MM-GDINO's per-layer decoder heads to layer 0's, which squashed its boxes
   (0.03 mAP50-95); the GDINO loader now loads them untied when the config doesn't share them.
 
+### Stage 4: the confidence floor and the val check
+
+**What:** the winner (gdino-b-raw + NMS off) and the runner-up (sam3-raw + NMS 0.5), untiled, in
+fp16, on val, beside the [YOLO reference rows](#yolo-reference-rows). Each confidence floor is the
+trial's max-F1 confidence on train (fp16 check), and P and R are read at it.
+
+**Why:** val checks that the winner holds on new footage. If SAM 3 beat GDINO-B there by more
+than the 0.5 pt margin, the tie rule would flip, and Taras would decide.
+
+```bash
+uv run --env-file .env python -m mlops_cv.tuning.autolabel_visdrone_vid.label_eval \
+  configs/tuning/autolabel-visdrone-vid/val-check.yaml --split val
+```
+
+| Trial | Run | val mAP50-95 | mAP50 | mAP75 | person | vehicle | 2-3-wheeler | floor | P / R at floor | kept / frame | detector p50 ms |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| **gdino-b-raw-nms-off** | ebac9e4e | **27.6** | 56.6 | 23.2 | 27.5 | 42.1 | 13.3 | 0.218 | 0.602 / 0.587 | 288 | 205 |
+| sam3-raw-nms0.5 | 18dcf036 | 23.9 | 55.2 | 17.5 | 21.6 | 38.4 | 11.8 | 0.593 | 0.613 / 0.611 | 158 | 485 |
+| yolo26n (ground truth) | | 29.0 | 57.0 | 25.9 | | | | | | | |
+| yolo26s (ground truth) | | 31.1 | 61.5 | 27.2 | | | | | | | |
+| yolo26m (ground truth) | | 33.5 | 66.3 | 29.3 | | | | | | | |
+
+**Result:**
+- **GDINO-B holds on val and widens its lead:** 27.6 against SAM 3's 23.9 (+3.7 pt), so the
+  order on train (SAM 3 0.40 pt ahead) reverses in GDINO-B's favour; SAM 3 loses on every class.
+- GDINO-B's auto-labels sit 1.4 pt below YOLO26 n trained on ground truth (mAP50 0.4 pt below),
+  and 3.5 pt below YOLO26 s.
+- The floor holds too: val's own max-F1 confidence is 0.258 for GDINO-B (train 0.218) and 0.600
+  for SAM 3 (0.593).
+- **Defaults:** `AutolabelSettings` now carry GDINO-B, the 10 raw names, fp16, NMS off and the
+  floor 0.218 (`labeler.yaml`).
+
+**Experiment 1:** GDINO-B (`IDEA-Research/grounding-dino-base`) on the 10 raw names, fp16
+through autocast, untiled, box filter with NMS off (`min_side` 8, `max_area` 0.05), floor 0.218:
+24.46 mAP50-95 on train, 27.6 on val, 200 ms per frame.
+
 ## 2. Box tracker
 
 _Not run yet._ BoT-SORT, TrackTrack and Hybrid-SORT on the train clips, ByteTrack as a baseline.

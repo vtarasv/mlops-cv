@@ -31,6 +31,8 @@ class Tiling(BaseModel):
     # ``edge`` drops boxes cut by an interior slice edge; ``contained`` merges a cut-off piece
     # into the larger box around it. Both then run class-aware NMS.
     merge: Literal["edge", "contained"] = "edge"
+    # ``False`` leaves out the full-frame pass, which a Swin-L GDINO can't fit in 8 GB
+    full_frame: bool | None = None
 
 
 class Detector(AutolabelDetector):
@@ -54,14 +56,16 @@ def slice_grid(width: int, height: int, side: int) -> list[tuple[int, int, int, 
     ]
 
 
-def tiled(detect: Detect, image: np.ndarray, side: int) -> tuple[np.ndarray, list[str], np.ndarray]:
+def tiled(
+    detect: Detect, image: np.ndarray, side: int, full_frame: bool = True
+) -> tuple[np.ndarray, list[str], np.ndarray]:
     """The detector on each slice, then on the full frame: rows in frame px, labels, windows.
 
     A frame that fits one slice is a single pass.
     """
     h, w = image.shape[:2]
     windows = slice_grid(w, h, side)
-    if len(windows) > 1:
+    if len(windows) > 1 and full_frame:
         windows.append((0, 0, w, h))
     rows, labels, wins = [], [], []
     for x0, y0, x1, y1 in windows:
@@ -250,7 +254,8 @@ class TrialLabeler(Labeler):
         tiling = self.detector.tiling
         if tiling is None:
             return super().detections(image)
-        (rows, labels, windows), ms = self.timed(tiled, self.detect, image, tiling.side)
+        full = tiling.full_frame is not False
+        (rows, labels, windows), ms = self.timed(tiled, self.detect, image, tiling.side, full)
         return Labels(rows, labels, {"detector": ms}, len(rows), windows=windows)
 
     def finish(self, image: np.ndarray, detections: Labels) -> Labels:

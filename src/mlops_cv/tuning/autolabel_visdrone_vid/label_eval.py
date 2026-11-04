@@ -114,6 +114,18 @@ def scores(
     )
 
 
+def select_frames(
+    images: list[visdrone_vid.Image],
+    sequences: Collection[str] | None,
+    every: int | None,
+    limit: int | None,
+) -> list[visdrone_vid.Image]:
+    """Only ``sequences``' frames, then every ``every``-th, then the first ``limit``."""
+    if sequences:
+        images = [im for im in images if im.sequence in sequences]
+    return images[::every][:limit]
+
+
 def latency(labels: list[Labels]) -> dict[str, float]:
     """p50 and mean wall-clock per stage and in total, warm-up images left out."""
     from mlops_cv.tracking.metric_keys import LATENCY_PREFIX, metric_key
@@ -308,6 +320,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--split", choices=visdrone_vid.RULE_SPLITS, default="train")
     p.add_argument("--limit", type=int, help="label and score only the first N frames")
     p.add_argument("--sequence", action="append", dest="sequences", help="only these sequences")
+    p.add_argument("--every", type=int, help="keep every N-th frame, a sample across sequences")
     args = p.parse_args(argv)
 
     os.environ["MLFLOW__EXPERIMENT"] = EXPERIMENT
@@ -321,16 +334,14 @@ def main(argv: list[str] | None = None) -> int:
         raise StartupError(
             f"no {rule}: run python -m mlops_cv.tuning.autolabel_visdrone_vid.visdrone_vid"
         )
-    full = args.limit is None and not args.sequences
+    full = args.limit is None and not args.sequences and args.every is None
     frame_sets: dict[bool, list[visdrone_vid.Image]] = {}
 
     def frames(clips: bool) -> list[visdrone_vid.Image]:
         if clips not in frame_sets:
             data = settings.data
             images = visdrone_vid.read_split(data.raw_dir, data.subset_dir, args.split, clips)
-            if args.sequences:
-                images = [im for im in images if im.sequence in args.sequences]
-            frame_sets[clips] = images[: args.limit]
+            frame_sets[clips] = select_frames(images, args.sequences, args.every, args.limit)
         return frame_sets[clips]
 
     from mlops_cv.tracking import client

@@ -1,0 +1,36 @@
+# Experiment 1, Large GDINO probe: two Swin-L Grounding DINOs (neither trained on VisDrone) on
+# every 12th train frame (--every 12: 104 frames, all six frame sizes), raw names, NMS off, fp16.
+# A full frame (1333 x 750 in) runs out of 8 GB in their deformable attention, so they run
+# tiled at zoom 1.25 (640 px slices) without the full-frame pass, beside GDINO-B the same way.
+# The first three rows rescore stored passes of the same frames on CPU.
+defaults:
+  detector:
+    model: IDEA-Research/grounding-dino-base
+    prompts:
+      pedestrian: person
+      people: person
+      bicycle: two-three-wheeler
+      car: vehicle
+      van: vehicle
+      truck: vehicle
+      tricycle: two-three-wheeler
+      awning-tricycle: two-three-wheeler
+      bus: vehicle
+      motor: two-three-wheeler
+    dtype: float16
+  box_filter: {min_side: 8, max_area: 0.05, nms_iou: null}
+trials:
+  - name: gdino-b-raw-nms-off
+  - name: sam3-raw-nms0.5
+    detector: {model: facebook/sam3}
+    box_filter: {nms_iou: 0.5}
+  - name: gdino-b-raw-nms-off-zoom1.25
+    detector: {tiling: {side: 640}}
+  - name: gdino-b-raw-nms-off-zoom1.25-slices
+    detector: {tiling: {side: 640, full_frame: false}}
+  - name: mm-gdino-l-raw-nms-off-zoom1.25-slices
+    detector:
+      model: openmmlab-community/mm_grounding_dino_large_all
+      tiling: {side: 640, full_frame: false}
+  - name: llmdet-l-raw-nms-off-zoom1.25-slices
+    detector: {model: iSEE-Laboratory/llmdet_large, tiling: {side: 640, full_frame: false}}

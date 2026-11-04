@@ -120,6 +120,8 @@ def test_tiled_shifts_each_pass_and_adds_the_full_frame() -> None:
     assert windows.tolist() == [[0, 0, 10, 10], [6, 0, 16, 10], [0, 0, 16, 10]]
     assert rows[:, :2].tolist() == [[1, 2], [7, 2], [1, 2]] and labels == ["car"] * 3
     assert open_vocab.tiled(detect, image, 20)[2].tolist() == [[0, 0, 16, 10]]
+    slices = open_vocab.tiled(detect, image, 10, full_frame=False)[2]
+    assert slices.tolist() == [[0, 0, 10, 10], [6, 0, 16, 10]]
 
 
 def test_edge_rule_drops_boxes_cut_by_interior_slice_edges_only() -> None:
@@ -211,6 +213,8 @@ def test_the_store_is_keyed_by_frame_set_and_detector_but_not_the_merge() -> Non
         for side, merge in [(806, "edge"), (806, "contained"), (504, "edge")]
     )
     assert store(edge) == store(contained) != store(other)
+    slices = _config(detector={"model": "m", "tiling": {"side": 806, "full_frame": False}})
+    assert store(slices) != store(edge)
 
 
 def _stage(tmp_path: Path, stage: dict) -> Path:
@@ -279,6 +283,17 @@ def test_cap_subset_and_recall_ceiling() -> None:
     images = [_image("a", [4] * 250 + [1] * 10), _image("b", [4] * 50)]
     assert label_eval.uncapped(images, 200) == ["b"]
     assert label_eval.recall_ceiling(images, 200) == pytest.approx(1 - 50 / 310)
+
+
+def test_select_frames_filters_sequences_then_samples_then_limits() -> None:
+    images = [_image(f"{q}{i}", [], sequence=q) for q in "ab" for i in range(4)]
+
+    def names(sequences: list[str] | None, every: int | None, limit: int | None) -> list[str]:
+        return [im.name for im in label_eval.select_frames(images, sequences, every, limit)]
+
+    assert names(None, None, None) == [im.name for im in images]
+    assert names(None, 3, None) == ["a0", "a3", "b2"]
+    assert names(["b"], 2, 1) == ["b0"]
 
 
 def _labels(ms: float, rows: np.ndarray | None = None) -> Labels:

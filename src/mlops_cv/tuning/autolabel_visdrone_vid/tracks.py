@@ -11,23 +11,30 @@ from __future__ import annotations
 
 import gc
 import logging
+import multiprocessing
 import time
 from collections.abc import Iterator
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
+from functools import partial
 from itertools import groupby
 from operator import attrgetter
 from typing import Any
 
 import numpy as np
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 from mlops_cv.autolabel.labeler import Labeler, Labels, above, read_rgb
 from mlops_cv.tuning.autolabel_visdrone_vid import visdrone_vid
 
 logger = logging.getLogger(__name__)
 
-# ultralytics' box trackers, run with their default settings; any other tracker is a video model.
+# ultralytics' box trackers; any other tracker is a video model.
 BOX_TRACKERS = ("botsort", "bytetrack", "tracktrack")
+# Box-tracker processes, one clip at a time each.
+WORKERS = 16
+# The box-tracker keys the confidence floor sets.
+FLOOR_KEYS = frozenset({"track_high_thresh", "new_track_thresh"})
 # Non-seed frames a video tracker keeps: memory stays flat at unchanged latency.
 KEEP_FRAMES = 16
 # Masks per post-processing pass: bounds the full-resolution masks' memory.
@@ -53,6 +60,13 @@ class Tracker(BaseModel):
     unmatched_keys: int = 2  # ... or after this many consecutive key frames without a match
     duplicate_iou: float = 0.8  # of two tracks whose boxes overlap above it, the younger ends
     max_objects: int | None = None  # live-track cap; new objects beyond it aren't added
+    overrides: dict[str, Any] = {}  # a box tracker's ultralytics YAML keys over its defaults
+
+    @model_validator(mode="after")
+    def _overrides_need_a_box_tracker(self) -> Tracker:
+        if self.overrides and self.model not in BOX_TRACKERS:
+            raise ValueError("overrides apply only to a box tracker")
+        return self
 
 
 @dataclass
@@ -337,37 +351,57 @@ def box_tracks(
     images: list[visdrone_vid.Image],
     detections: list[Labels],
     floor: float | None = None,
-) -> Iterator[tuple[Labels, int]]:
-    """ultralytics' ``name`` tracker at its defaults over a cached detection pass, per frame.
+    overrides: dict[str, Any] | None = None,
+    workers: int = WORKERS,
+) -> list[tuple[Labels, int]]:
+    """ultralytics' ``name`` tracker per frame of a cached pass, ``overrides`` over its YAML.
 
-    ``floor`` replaces its ``track_high_thresh`` and ``new_track_thresh``, which default to YOLO's
-    score scale. The tracker reports the detections it assigned a track to; their rows are kept.
+    ``floor`` sets ``FLOOR_KEYS``, which default to YOLO's score scale; the clips run in parallel.
     """
+    from ultralytics.utils import YAML
+    from ultralytics.utils.checks import check_yaml
+
+    args = YAML.load(str(check_yaml(f"{name}.yaml")))
+    overrides = overrides or {}
+    if unknown := overrides.keys() - (args.keys() - (FLOOR_KEYS if floor is not None else set())):
+        raise ValueError(
+            f"{name} can't override {sorted(unknown)}: not in its YAML, or the floor's"
+        )
+    args |= overrides
+    if floor is not None:
+        args |= dict.fromkeys(FLOOR_KEYS, floor)
+    pairs = zip(images, detections, strict=True)
+    clips = [list(clip) for _, clip in groupby(pairs, key=lambda pair: pair[0].sequence)]
+    context = multiprocessing.get_context("fork")  # the children inherit the imports
+    with ProcessPoolExecutor(workers, mp_context=context) as pool:
+        tracked = pool.map(partial(track_clip, name, args), clips)
+        return [frame for clip in tracked for frame in clip]
+
+
+def track_clip(
+    name: str, args: dict[str, Any], clip: list[tuple[visdrone_vid.Image, Labels]]
+) -> list[tuple[Labels, int]]:
+    """One clip under a fresh tracker: per frame, the detections it tracked and the live tracks."""
     from ultralytics.engine.results import Boxes
     from ultralytics.trackers.basetrack import BaseTrack
     from ultralytics.trackers.track import TRACKER_MAP
-    from ultralytics.utils import YAML, IterableSimpleNamespace
-    from ultralytics.utils.checks import check_yaml
+    from ultralytics.utils import IterableSimpleNamespace
 
-    args = IterableSimpleNamespace(**YAML.load(str(check_yaml(f"{name}.yaml"))))
-    if floor is not None:
-        args.track_high_thresh = args.new_track_thresh = floor
-    tracker: Any = None
-    sequence = None
-    for im, det in zip(images, detections, strict=True):
-        if im.sequence != sequence:
-            sequence, tracker = im.sequence, TRACKER_MAP[name](args=args)
-            BaseTrack.reset_id()  # TrackTrack has no reset_id of its own; the counter is shared
+    tracker: Any = TRACKER_MAP[name](args=IterableSimpleNamespace(**args))
+    BaseTrack.reset_id()  # TrackTrack has no reset_id of its own; the counter is shared
+    out = []
+    for im, det in clip:
         bgr = np.ascontiguousarray(read_rgb(im.path)[..., ::-1])  # for camera-motion compensation
         start = time.perf_counter()
-        out = tracker.update(Boxes(det.rows, (im.height, im.width)), bgr).reshape(-1, 8)
+        rows = tracker.update(Boxes(det.rows, (im.height, im.width)), bgr).reshape(-1, 8)
         ms = (time.perf_counter() - start) * 1000
-        idx = out[:, 7].astype(int)
+        idx = rows[:, 7].astype(int)
         labels = Labels(
             det.rows[idx],
             [det.labels[i] for i in idx],
             det.ms | {"tracker": ms},
             det.detected,
-            out[:, 4].astype(int),
+            rows[:, 4].astype(int),
         )
-        yield labels, len(tracker.tracked_stracks) + len(tracker.lost_stracks)
+        out.append((labels, len(tracker.tracked_stracks) + len(tracker.lost_stracks)))
+    return out

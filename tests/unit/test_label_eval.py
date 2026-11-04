@@ -461,6 +461,63 @@ def test_box_trackers_take_the_floor_as_their_track_thresholds(
     assert tracked(0.6) == 0  # 0.5 is under the floor: it starts no track
 
 
+def _frames(tmp_path: Path, clips: int, n: int) -> list[visdrone_vid.Image]:
+    images = []
+    for q in range(clips):
+        for i in range(n):
+            path = tmp_path / f"{q}-{i}.jpg"
+            Image.new("RGB", (100, 100)).save(path)
+            image = _image(path.name, [], sequence=str(q), frame=i)
+            images.append(dataclasses.replace(image, path=path))
+    return images
+
+
+@pytest.mark.parametrize("tracker", tracks.BOX_TRACKERS)
+def test_box_trackers_take_ultralytics_keys_and_reject_unknown_ones(
+    tmp_path: Path, tracker: str
+) -> None:
+    pytest.importorskip("lap")
+    images = _frames(tmp_path, 1, 5)
+    detections = [Labels(np.array([[10, 10, 30, 30, 0.5, 1]], np.float32), ["car"], {}, 1)] * 5
+
+    def tracked(overrides: dict, floor: float | None = None) -> int:
+        out = tracks.box_tracks(tracker, images, detections, floor, overrides, workers=1)
+        return sum(len(lab.rows) for lab, _ in out)
+
+    assert tracked(dict.fromkeys(tracks.FLOOR_KEYS, 0.4)) > 0
+    assert tracked(dict.fromkeys(tracks.FLOOR_KEYS, 0.6)) == 0
+    with pytest.raises(ValueError, match="track_buffr"):
+        tracked({"track_buffr": 60})
+    with pytest.raises(ValueError, match="new_track_thresh"):
+        tracked({"new_track_thresh": 0.4}, floor=0.4)  # the floor sets it
+
+
+def test_overrides_need_a_box_tracker() -> None:
+    with pytest.raises(ValidationError, match="box tracker"):
+        Tracker(model="yonigozlan/EdgeTAM-hf", overrides={"track_buffer": 60})
+
+
+@pytest.mark.parametrize("tracker", tracks.BOX_TRACKERS)
+def test_parallel_clips_track_like_one_serial_process(tmp_path: Path, tracker: str) -> None:
+    pytest.importorskip("lap")
+    images = _frames(tmp_path, 3, 6)
+    rng = np.random.default_rng(0)
+    start = rng.uniform(0, 60, (4, 2))
+    detections = []
+    for im in images:
+        xy = start + 2 * im.frame  # four boxes drifting, at scores either side of the floor
+        rows = np.column_stack([xy, xy + 20, rng.uniform(0.3, 0.9, 4), np.ones(4)])
+        detections.append(Labels(rows.astype(np.float32), ["car"] * 4, {}, 4))
+
+    def run(workers: int) -> list[tuple[list, list, int]]:
+        out = tracks.box_tracks(tracker, images, detections, 0.4, workers=workers)
+        return [(lab.rows.tolist(), np.asarray(lab.track_ids).tolist(), n) for lab, n in out]
+
+    serial = run(1)
+    assert any(ids for _, ids, _ in serial)
+    assert run(3) == serial
+
+
 def test_box_trackers_share_one_pass_across_trackers_and_floors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

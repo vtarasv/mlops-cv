@@ -289,7 +289,10 @@ def label_sequences(
                 if config.ground_truth
                 else label_frames(config, images, device, store)
             )
-        tracked = list(tracks.box_tracks(config.tracker.model, images, detections[key], floor))
+        tracker = config.tracker
+        tracked = tracks.box_tracks(
+            tracker.model, images, detections[key], floor, tracker.overrides
+        )
         return [lab for lab, _ in tracked], [n for _, n in tracked]
     raw = load_detections(store, images) if store and store.exists() else None
     labeler = TrialLabeler(

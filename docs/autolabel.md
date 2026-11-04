@@ -89,7 +89,7 @@ defaults are the labeling trials' winner so far.
 | `tracker.model` | `tracktrack` | an ultralytics tracker YAML (`botsort`, `bytetrack`, …); no ReID, and `dets_del` stays off (it needs the YOLO predictor) |
 | `tracker.overrides` | `{}` | keys of that YAML over its defaults; a key it lacks fails when the tracker is built, the floor's two fail at load |
 | `confidence_floor` | 0.218 | auto-labels below it are not kept: GDINO-B's max-F1 confidence on train; also the tracker's `track_high_thresh` = `new_track_thresh` |
-| `runs_dir` | `runs/autolabel` | the command's output and the labeling trials' downloads and stored passes; the FiftyOne App mounts it (the Makefile's `HOST_AUTOLABEL_RUNS`, pinned by a golden test) |
+| `runs_dir` | `runs/autolabel` | the command's output and the labeling trials' downloads and stored passes; the FiftyOne App mounts it (`make fiftyone-up` reads it from the env or `.env`) |
 | `max_det` | 300 | the top boxes kept per frame: val's cap, so trials score like val |
 
 ## Output

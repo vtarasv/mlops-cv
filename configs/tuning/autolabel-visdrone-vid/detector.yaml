@@ -1,7 +1,7 @@
 # Experiment 1, stage 1: detector x prompts. Each detector runs with the 10 raw names and with
 # plain nouns, in fp32, through production's box filter (no nested-box rule); it keeps its top 300
 # boxes above 0.001. YOLOE also runs at 1280, since its native 640 halves VisDrone frames.
-# Winner: sam3-nouns; sam3-raw, sam3-nouns and gdino-b-raw go on to the box-filter stage.
+# Winner: sam3-raw; sam3-raw, sam3-nouns and gdino-b-raw go on to the box-filter stage.
 defaults:
   detector:
     model: IDEA-Research/grounding-dino-tiny

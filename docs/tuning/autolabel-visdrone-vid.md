@@ -129,7 +129,8 @@ each with the 10 raw names and with plain nouns. All in fp32, with production's 
 0.5, no nested-box rule).
 
 **Why:** picks the detector and prompts that the later stages tune. The top mAP50-95 wins, unless
-a trial within the 0.5 pt margin is faster per frame (detector p50 ms); then the faster one wins.
+another detector within the 0.5 pt margin is faster per frame (detector p50 ms); then the faster
+one wins. Prompts are a setting of their detector, not a faster detector.
 
 ```bash
 uv run --env-file .env python -m mlops_cv.tuning.autolabel_visdrone_vid.label_eval \
@@ -142,8 +143,8 @@ box filter, above 0.001.
 
 | Trial | Run | mAP50-95 | mAP50 | mAP75 | person | vehicle | 2-3-wheeler | max-F1 conf | kept / frame | detector p50 ms |
 |---|---|---|---|---|---|---|---|---|---|---|
-| sam3-raw | 95f43253 | 25.0 | 59.5 | 17.0 | 16.9 | 41.2 | 16.8 | 0.594 | 146 | 1594 |
-| **sam3-nouns** | 836be2c3 | 24.7 | 58.5 | 16.9 | 16.5 | 41.2 | 16.3 | 0.558 | 160 | 1424 |
+| **sam3-raw** | 95f43253 | 25.0 | 59.5 | 17.0 | 16.9 | 41.2 | 16.8 | 0.594 | 146 | 1594 |
+| sam3-nouns | 836be2c3 | 24.7 | 58.5 | 16.9 | 16.5 | 41.2 | 16.3 | 0.558 | 160 | 1424 |
 | gdino-b-raw | cb644ea7 | 23.9 | 52.7 | 18.1 | 20.4 | 41.7 | 9.5 | 0.200 | 202 | 323 |
 | gdino-t-raw | d2418a8c | 22.5 | 50.4 | 17.3 | 15.3 | 41.1 | 11.2 | 0.189 | 204 | 230 |
 | gdino-t-nouns | 4444881a | 21.5 | 50.3 | 15.6 | 13.9 | 39.0 | 11.7 | 0.282 | 217 | 231 |
@@ -156,9 +157,9 @@ box filter, above 0.001.
 | yoloe-26l-raw | 45ef672a | 15.5 | 37.7 | 10.6 | 9.7 | 31.0 | 5.8 | 0.053 | 158 | 18 |
 
 **Result:**
-- SAM 3 leads on both prompt sets. sam3-nouns is 0.3 pt behind sam3-raw and 11% faster per
-  frame (8 prompts against 10), so **sam3-nouns wins**. gdino-b-raw is 0.8 pt behind it, at under
-  a quarter of its time.
+- **sam3-raw wins.** SAM 3 leads on both prompt sets; nouns are 0.3 pt behind and 11% faster
+  (8 prompts against 10), a setting of the same detector. gdino-b-raw is 1.1 pt behind, at a fifth
+  of its time.
 - The top 3 go to stage 2: sam3-raw, sam3-nouns and gdino-b-raw.
 - No train frame has more than 200 boxes of one raw category, so the `uncapped200` score covers
   all 1,238 frames and equals mAP50-95 on every row.
@@ -187,12 +188,12 @@ Columns as in stage 1; the detector p50 ms are stage 1's (1594, 1424 and 323).
 | sam3-raw-nms-off-nested-off | 34f11df0 | 25.4 | 60.2 | 17.3 | 17.1 | 41.5 | 17.6 | 0.626 | 271 |
 | sam3-raw-nms0.7-nested-off | 5a0d4c3e | 25.4 | 60.6 | 17.1 | 17.3 | 41.3 | 17.5 | 0.596 | 179 |
 | sam3-raw-nms0.6-nested-off | aeaa0353 | 25.2 | 60.1 | 17.0 | 17.1 | 41.2 | 17.2 | 0.595 | 162 |
-| sam3-raw-nms0.5-nested-off | 76028050 | 25.0 | 59.5 | 17.0 | 16.9 | 41.2 | 16.8 | 0.594 | 146 |
+| **sam3-raw-nms0.5-nested-off** | 76028050 | 25.0 | 59.5 | 17.0 | 16.9 | 41.2 | 16.8 | 0.594 | 146 |
 | sam3-raw-nms0.5-outer | 7675e2b0 | 24.1 | 57.0 | 16.7 | 15.0 | 40.9 | 16.5 | 0.580 | 114 |
 | sam3-raw-nms0.6-outer | a0037ff4 | 24.0 | 56.7 | 16.6 | 14.7 | 40.9 | 16.5 | 0.578 | 115 |
 | sam3-raw-nms0.7-outer | 1c0c5a9a | 23.9 | 56.2 | 16.6 | 14.2 | 40.9 | 16.5 | 0.574 | 115 |
 | sam3-raw-nms-off-outer | bb435b1c | 20.9 | 49.3 | 14.6 | 11.7 | 38.1 | 13.0 | 0.336 | 114 |
-| **sam3-nouns-nms-off-nested-off** | 5968a1a9 | 25.3 | 60.0 | 17.3 | 16.8 | 41.6 | 17.5 | 0.580 | 277 |
+| sam3-nouns-nms-off-nested-off | 5968a1a9 | 25.3 | 60.0 | 17.3 | 16.8 | 41.6 | 17.5 | 0.580 | 277 |
 | sam3-nouns-nms0.7-nested-off | a504c522 | 25.1 | 59.8 | 17.1 | 16.8 | 41.5 | 17.1 | 0.559 | 197 |
 | sam3-nouns-nms0.6-nested-off | c45591fe | 25.0 | 59.3 | 17.0 | 16.7 | 41.4 | 16.8 | 0.559 | 179 |
 | sam3-nouns-nms0.5-nested-off | 24bb3e60 | 24.7 | 58.5 | 16.9 | 16.5 | 41.2 | 16.3 | 0.558 | 160 |
@@ -215,10 +216,39 @@ Columns as in stage 1; the detector p50 ms are stage 1's (1594, 1424 and 323).
   12–16 pt on GDINO-B, where it keeps only a quarter to a third of the boxes.
 - **Best filter per detector:** sam3-raw keeps NMS 0.5 (NMS off is 0.41 pt up, under the margin);
   sam3-nouns and gdino-b-raw take NMS off (+0.59 and +0.58 pt).
-- **sam3-nouns with NMS off wins** (25.3): it tops the three detectors' best filters and is the
-  faster SAM 3. sam3-raw at NMS 0.5 is 0.30 pt behind, gdino-b-raw with NMS off 0.81 pt.
+- **sam3-raw with NMS 0.5 stays SAM 3's winner so far** (25.0): no SAM 3 setting beats it by
+  0.5 pt (sam3-nouns with NMS off is +0.30). gdino-b-raw with NMS off is 0.50 pt behind, just
+  outside the margin in fp32.
 - NMS off keeps almost every box (277 per frame against 160) and lowers P and R at the max-F1
   point slightly (0.646 / 0.632 against 0.655 / 0.637): the gain is in the low-confidence tail.
+
+### fp16
+
+**What:** stage 2's three detectors in fp16, each with NMS 0.5 and NMS off (no nested-box rule).
+SAM 3 loads half weights; GDINO runs under autocast, since transformers' GDINO fails in pure fp16.
+
+**Why:** production runs fp16, and the speed rule weighs latency, so the detectors compare at that
+precision.
+
+```bash
+uv run --env-file .env python -m mlops_cv.tuning.autolabel_visdrone_vid.label_eval \
+  configs/tuning/autolabel-visdrone-vid/fp16.yaml --split train
+```
+
+| Trial | Run | fp32 mAP50-95 | fp16 mAP50-95 | mAP50 | mAP75 | max-F1 conf | kept / frame | detector p50 ms (fp32 → fp16) |
+|---|---|---|---|---|---|---|---|---|
+| sam3-raw-fp16-nms0.5 | 988c3622 | 24.97 | 24.86 | 59.2 | 16.8 | 0.593 | 145 | 1594 → 481 |
+| sam3-raw-fp16-nms-off | c5a57eee | 25.38 | 25.28 | 59.8 | 17.2 | 0.625 | 269 | 1594 → 481 |
+| sam3-nouns-fp16-nms0.5 | 50ea4653 | 24.68 | 24.60 | 58.3 | 16.9 | 0.559 | 160 | 1424 → 429 |
+| sam3-nouns-fp16-nms-off | 189cda7e | 25.28 | 25.23 | 59.9 | 17.3 | 0.580 | 275 | 1424 → 429 |
+| gdino-b-raw-fp16-nms0.5 | d21e3724 | 23.89 | 23.89 | 52.7 | 18.1 | 0.200 | 202 | 323 → 200 |
+| **gdino-b-raw-fp16-nms-off** | d2622ccb | 24.47 | 24.46 | 53.3 | 18.7 | 0.218 | 284 | 323 → 200 |
+
+**Result:**
+- fp16 costs at most 0.11 pt and cuts SAM 3's time 3.3×, GDINO-B's 1.6×. Later stages run fp16.
+- **gdino-b-raw with NMS off is the winner so far:** 0.40 pt behind sam3-raw at NMS 0.5 and 2.4×
+  faster. It is weaker on two-three-wheelers (10.5 against 16.8 AP in fp32), where tiling may
+  help most, so stage 3 tiles both.
 
 ## 2. Box tracker
 

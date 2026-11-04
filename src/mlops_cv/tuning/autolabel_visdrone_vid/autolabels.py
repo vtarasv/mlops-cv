@@ -1,9 +1,6 @@
-"""The auto-labeled train split: production's auto-labels on the subset's train frames.
+"""The auto-labeled train split: ``label_clip``'s auto-labels on the subset's train frames.
 
-The stored train-clip pass is tracked as ``label_clip`` tracks it (``label_eval.label_sequences``,
-pinned to it by a unit test), so the detector doesn't rerun. Each subset frame keeps the
-auto-labels at the floor and outside its ignored regions (VisDrone's rule), as YOLO lines from
-ingestion's converter. YOLO trains on it: ``configs/tuning/yolo26-visdrone-vid/autolabels.yaml``.
+The stored train-clip pass is tracked as ``label_clip`` tracks it, so the detector doesn't rerun.
 """
 
 from __future__ import annotations
@@ -24,7 +21,7 @@ from mlops_cv.tuning.autolabel_visdrone_vid import label_eval, visdrone_vid
 logger = logging.getLogger(__name__)
 
 SPLIT = "train"
-# The labeling config of ``AutolabelSettings``' defaults (a unit test pins the two).
+# Production's labeling config, ``AutolabelSettings``' defaults, as a labeling stage.
 LABELER_STAGE = Path("configs/tuning/autolabel-visdrone-vid/labeler.yaml")
 
 
@@ -72,13 +69,12 @@ def main(argv: list[str] | None = None) -> int:
         .read_text()
         .splitlines()
     )
-    out = data.subset_dir / IMAGES_DIRNAME / visdrone_vid.AUTOLABEL_SPLIT
     dropped = floored - auto.total()
     logger.info(f"{len(labels)} frames, {dropped} auto-labels at the floor dropped by the rule")
     for name in [*YOLO_NAMES.values(), "total"]:
         a, t = (auto.total(), truth.total()) if name == "total" else (auto[name], truth[name])
         logger.info(f"{name}: {a} auto-labels, {t} ground truth ({a / t:.2f}x)")
-    logger.info(f"-> {out}")
+    logger.info(f"-> {data.subset_dir / IMAGES_DIRNAME / visdrone_vid.AUTOLABEL_SPLIT}")
     return 0
 
 

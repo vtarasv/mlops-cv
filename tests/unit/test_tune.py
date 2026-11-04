@@ -48,7 +48,7 @@ def test_knobs_reach_model_train_with_their_types(tmp_path: Path) -> None:
     }
 
 
-def test_a_dataset_knob_reaches_training_as_its_dataset_yaml(tmp_path: Path) -> None:
+def test_a_dataset_knob_reaches_training_as_its_dataset_yaml() -> None:
     knobs = {"model": "yolo26n", "dataset": "configs/x.yaml"}
     assert "dataset" not in " ".join(trial_argv("stage1-a", knobs))
     assert trial_env(knobs)["DATA__DATASET_YAML"] == "configs/x.yaml"
@@ -60,7 +60,7 @@ def test_a_dataset_knob_reaches_training_as_its_dataset_yaml(tmp_path: Path) -> 
 def test_the_autolabel_stage_is_the_final_s_on_the_autolabel_split() -> None:
     from mlops_cv.tuning.autolabel_visdrone_vid.visdrone_vid import AUTOLABEL_SPLIT
 
-    (final,) = [k for n, k in load_stage(STAGES / "stage2.yaml").items() if n == "stage2-s1280"]
+    final = load_stage(STAGES / "stage2.yaml")["stage2-s1280"]
     (trial,) = load_stage(STAGES / "autolabels.yaml").values()
     dataset = ROOT / trial.pop("dataset")
     assert trial == final

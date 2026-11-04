@@ -28,7 +28,7 @@ def both_rules(
     images: list[visdrone_vid.Image],
     rule_yaml: Path,
     repo_yaml: Path,
-    split: str = "val",
+    split: str,
 ) -> dict[str, float]:
     """``split``'s readings under VisDrone's rule and, on the same detections, under the repo's."""
     rule = visdrone_vid.drop_all_ignored(detections, images)
@@ -45,7 +45,9 @@ def main(argv: list[str] | None = None) -> int:
 
     p = argparse.ArgumentParser(description="Score tuning trials' best.pt under VisDrone's rule.")
     p.add_argument("trials", nargs="+", help="trial run names, e.g. stage2-s1280")
-    p.add_argument("--split", choices=("val", "test"), default="val", help="test is read once")
+    p.add_argument(
+        "--split", choices=visdrone_vid.RULE_SPLITS, default="val", help="test is read once"
+    )
     args = p.parse_args(argv)
 
     os.environ["MLFLOW__EXPERIMENT"] = EXPERIMENT  # the trials stay in YOLO tuning's

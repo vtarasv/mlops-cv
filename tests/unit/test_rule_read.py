@@ -47,7 +47,7 @@ def test_a_false_positive_in_an_ignored_region_counts_only_under_the_repo_rule(
         frame=1,
     )
     rows = np.array([[130, 30, 170, 70, 0.9, 0], [10, 10, 50, 50, 0.95, 0]], np.float32)
-    out = both_rules({"a.jpg": rows}, [image], data_yaml, data_yaml)
+    out = both_rules({"a.jpg": rows}, [image], data_yaml, data_yaml, "val")
     assert out["val-visdrone-rule/precision"] == 1.0
     assert out["val/precision"] < 1.0
     test = both_rules({"a.jpg": rows}, [image], data_yaml, data_yaml, "test")

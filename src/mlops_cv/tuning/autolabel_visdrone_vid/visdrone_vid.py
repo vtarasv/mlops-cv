@@ -256,7 +256,8 @@ def write_split(subset_dir: Path, split: str, source: str, labels: Mapping[str, 
     for name, lines in labels.items():
         # One relative link per file: ultralytics resolves a linked split directory.
         (images_dir / name).symlink_to(Path("..") / source / name)
-        (labels_dir / Path(name).with_suffix(".txt")).write_text("".join(f"{x}\n" for x in lines))
+        label = subset_dir / label_relpath(split, Path(name).stem)
+        label.write_text("".join(f"{x}\n" for x in lines))
 
 
 def build_rule_split(raw_dir: Path, subset_dir: Path, split: str) -> tuple[int, int]:

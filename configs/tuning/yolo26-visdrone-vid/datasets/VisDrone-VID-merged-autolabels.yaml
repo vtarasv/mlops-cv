@@ -1,0 +1,10 @@
+# VisDrone-VID-merged.yaml with train's auto-labels (python -m mlops_cv.tuning.autolabel_visdrone_vid.autolabels)
+# in place of its ground truth. Val and test stay ground truth.
+path: /abs/data/visdrone-vid-small
+train: images/train-autolabels
+val: images/val
+test: images/test
+names:
+  0: person
+  1: vehicle
+  2: two-three-wheeler

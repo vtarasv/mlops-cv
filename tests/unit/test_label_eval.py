@@ -18,6 +18,7 @@ from mlops_cv.autolabel.labeler import Labels
 from mlops_cv.config.settings import BoxFilter
 from mlops_cv.data.subset import MANIFEST_FIELDS, csv_line, image_relpath, label_relpath
 from mlops_cv.tuning.autolabel_visdrone_vid import (
+    autolabels,
     label_eval,
     open_vocab,
     track_scores,
@@ -97,6 +98,24 @@ def test_rule_split_links_frames_and_drops_ignored_boxes(dirs: tuple[Path, Path]
     assert label == "1 0.700000 0.300000 0.200000 0.200000\n"
     link = subset / "images/val-visdrone-rule/uav1_v_0000001.jpg"
     assert link.readlink() == Path("../val/uav1_v_0000001.jpg") and link.exists()
+
+
+def test_auto_labels_keep_the_floor_and_the_rule_and_convert_like_ingestion() -> None:
+    image = dataclasses.replace(_image("a", [], frame=3), ignored=np.array([[0, 0, 50, 100]]))
+    rows = np.array(
+        [
+            [60, 10, 80, 30, 0.9, 1],  # kept
+            [60, 40, 80, 60, 0.1, 0],  # below the floor
+            [5, 5, 20, 20, 0.9, 0],  # inside the ignored region
+            [90, 90, 110, 110, 0.5, 2],  # crosses the frame edge: clipped
+        ],
+        np.float32,
+    )
+    labels = Labels(rows, ["car", "pedestrian", "people", "motor"], {}, 4)
+    assert autolabels.yolo_labels(image, labels, 0.218) == [
+        "1 0.700000 0.200000 0.200000 0.200000",
+        "2 0.950000 0.950000 0.100000 0.100000",
+    ]
 
 
 def test_predictions_go_through_the_rule() -> None:
@@ -275,6 +294,12 @@ def _image(
         sequence,
         frame,
     )
+
+
+def test_labeling_trials_never_read_test() -> None:
+    assert "test" in visdrone_vid.RULE_SPLITS
+    with pytest.raises(SystemExit):
+        label_eval.main([str(STAGES / "labeler.yaml"), "--split", "test"])
 
 
 def test_cap_subset_and_recall_ceiling() -> None:

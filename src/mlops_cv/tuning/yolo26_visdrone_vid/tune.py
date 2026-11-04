@@ -29,17 +29,29 @@ logger = logging.getLogger(__name__)
 
 # Knobs with a named training flag (headed for Airflow); every other knob goes through ``--set``.
 FLAGS = ("model", "imgsz", "epochs", "batch", "seed")
+# A trial's dataset YAML (default: settings'), handed to training as ``DATA__DATASET_YAML``.
+DATASET = "dataset"
 
 
 def trial_argv(name: str, knobs: Mapping[str, Any]) -> list[str]:
     """The training command line for one trial; ``--set`` values travel as JSON (valid YAML)."""
     argv = [sys.executable, "-m", "mlops_cv.training", "--run-name", name, "--no-register"]
     for key, value in knobs.items():
+        if key == DATASET:
+            continue
         if key in FLAGS:
             argv += [f"--{key}", str(value)]
         else:
             argv += ["--set", f"{key}={json.dumps(value)}"]
     return argv
+
+
+def trial_env(knobs: Mapping[str, Any]) -> dict[str, str]:
+    """The training process's environment: the trial's ``dataset`` over the inherited one."""
+    env = dict(os.environ)
+    if DATASET in knobs:
+        env["DATA__DATASET_YAML"] = str(knobs[DATASET])
+    return env
 
 
 def _record_latency(mlflow: Any, name: str, imgsz: int, since_ms: int) -> None:
@@ -81,7 +93,9 @@ def main(argv: list[str] | None = None) -> int:
 
     since_ms = int(time.time() * 1000)
     failed = [
-        name for name, knobs in trials.items() if subprocess.run(trial_argv(name, knobs)).returncode
+        name
+        for name, knobs in trials.items()
+        if subprocess.run(trial_argv(name, knobs), env=trial_env(knobs)).returncode
     ]
 
     from mlops_cv.tracking import client

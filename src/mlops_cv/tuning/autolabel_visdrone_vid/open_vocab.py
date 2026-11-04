@@ -31,7 +31,8 @@ class Tiling(BaseModel):
     # ``edge`` drops boxes cut by an interior slice edge; ``contained`` merges a cut-off piece
     # into the larger box around it. Both then run class-aware NMS.
     merge: Literal["edge", "contained"] = "edge"
-    # ``False`` leaves out the full-frame pass, which a Swin-L GDINO can't fit in 8 GB
+    # ``False`` leaves out the full-frame pass, which a Swin-L GDINO can't fit in 8 GB; ``None``
+    # (not ``True``) keeps it, so older stores keep their keys
     full_frame: bool | None = None
 
 
@@ -154,11 +155,6 @@ def autocast(dtype: str | None, device: str) -> AbstractContextManager[Any]:
     )
 
 
-def tied_heads(config: Any) -> bool:
-    """Whether the decoder layers share one box head; MM-GDINO's (Large) are per layer."""
-    return getattr(config, "decoder_bbox_embed_share", True)
-
-
 def grounding_dino(cfg: Detector, device: str, max_det: int) -> Detect:
     """Grounding DINO: each box goes to the prompt whose tokens score it highest.
 
@@ -171,7 +167,7 @@ def grounding_dino(cfg: Detector, device: str, max_det: int) -> Detect:
     processor: Any = AutoProcessor.from_pretrained(cfg.model)
     # transformers 5.8 ties every decoder layer's heads to layer 0's unless told not to, which
     # overwrites MM-GDINO's per-layer heads and squashes its boxes
-    tie = tied_heads(AutoConfig.from_pretrained(cfg.model))
+    tie = getattr(AutoConfig.from_pretrained(cfg.model), "decoder_bbox_embed_share", True)
     model = AutoModelForZeroShotObjectDetection.from_pretrained(cfg.model, tie_word_embeddings=tie)
     model = model.to(device).eval()
     precision = autocast(cfg.dtype, device)

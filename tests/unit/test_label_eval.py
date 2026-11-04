@@ -6,7 +6,6 @@ from __future__ import annotations
 import dataclasses
 import typing
 from pathlib import Path
-from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -175,11 +174,6 @@ def test_a_tiled_trial_merges_before_the_box_filter() -> None:
     windows = np.array([[0, 0, 60, 60], [0, 0, 100, 100]], np.float32)
     out = labeler.finish(np.zeros((100, 100, 3)), Labels(rows, ["a", "b"], {}, 2, windows=windows))
     assert out.labels == ["b"] and set(out.ms) == {"merge", "filter"}
-
-
-def test_only_shared_decoder_heads_are_tied() -> None:
-    assert not open_vocab.tied_heads(SimpleNamespace(decoder_bbox_embed_share=False))
-    assert open_vocab.tied_heads(SimpleNamespace(decoder_bbox_embed_share=True))
 
 
 def test_prompt_spans_split_at_separators() -> None:

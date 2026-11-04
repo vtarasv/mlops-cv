@@ -6,6 +6,9 @@ ignored-region rule. The classes combine det-averaged: a class absent from a seq
 0 in a plain class average.
 """
 
+# pyright: reportMissingImports=false
+# its package is off the lock: the tuning doc runs it with `uv run --with`
+
 from __future__ import annotations
 
 import contextlib

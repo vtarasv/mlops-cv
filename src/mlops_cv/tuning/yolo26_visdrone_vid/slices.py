@@ -6,6 +6,9 @@ Slices land in ``images/train-sliced<imgsz>`` (labels alongside); the full frame
 (``configs/tuning/yolo26-visdrone-vid/datasets/VisDrone-VID-merged-sliced1280.yaml``).
 """
 
+# pyright: reportMissingImports=false
+# its package is off the lock: the tuning doc runs it with `uv run --with`
+
 from __future__ import annotations
 
 import argparse

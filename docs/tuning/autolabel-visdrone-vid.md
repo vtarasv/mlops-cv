@@ -67,10 +67,13 @@ flowchart LR
 
 `.env` sets `DATA__RAW_DIR` (raw VisDrone-VID, for the ignored regions and the full clips) and
 `DATA__SUBSET_DIR`; see [data](../data.md).
+Packages only the trials need stay off the lock, pinned in each stage's command (`uv run --with`):
+YOLOE-26's text encoder (ultralytics' CLIP fork, which ultralytics pip-installs unpinned
+otherwise), TrackEval for the tracker stages, and timm for EdgeTAM's RepViT backbone.
 
 ```bash
 uv run python -m mlops_cv.tuning.autolabel_visdrone_vid.visdrone_vid   # builds {train,val,test}-visdrone-rule
-uv run --env-file .env python -m mlops_cv.tuning.autolabel_visdrone_vid.label_eval \
+uv run --env-file .env --with "clip @ git+https://github.com/ultralytics/CLIP.git@7ffa84b3bfa40c42ecc1c77147a855e69cb2dd40" python -m mlops_cv.tuning.autolabel_visdrone_vid.label_eval \
   configs/tuning/autolabel-visdrone-vid/detector.yaml --split train
 ```
 
@@ -142,7 +145,7 @@ another detector within the 0.5 pt margin is faster per frame (detector p50 ms);
 one wins. Prompts are a setting of their detector, not a faster detector.
 
 ```bash
-uv run --env-file .env python -m mlops_cv.tuning.autolabel_visdrone_vid.label_eval \
+uv run --env-file .env --with "clip @ git+https://github.com/ultralytics/CLIP.git@7ffa84b3bfa40c42ecc1c77147a855e69cb2dd40" python -m mlops_cv.tuning.autolabel_visdrone_vid.label_eval \
   configs/tuning/autolabel-visdrone-vid/detector.yaml --split train
 ```
 
@@ -382,7 +385,7 @@ camera-motion compensation) is the baseline and the ground-truth rows the associ
 neither selects.
 
 ```bash
-uv run --env-file .env python -m mlops_cv.tuning.autolabel_visdrone_vid.label_eval \
+uv run --env-file .env --with trackeval==1.3.0 python -m mlops_cv.tuning.autolabel_visdrone_vid.label_eval \
   configs/tuning/autolabel-visdrone-vid/box-trackers.yaml --split train
 ```
 
@@ -438,7 +441,7 @@ starting cost gate of TrackTrack's iterative assignment (lowered by `reduce_step
 IoU gate.
 
 ```bash
-uv run --env-file .env python -m mlops_cv.tuning.autolabel_visdrone_vid.label_eval \
+uv run --env-file .env --with trackeval==1.3.0 python -m mlops_cv.tuning.autolabel_visdrone_vid.label_eval \
   configs/tuning/autolabel-visdrone-vid/tracker-settings.yaml --split train
 ```
 
@@ -478,7 +481,7 @@ floor. The first trial stores GDINO-B's pass over the val clips (11 min of GPU,
 more than the 0.5 margin, Taras would decide.
 
 ```bash
-uv run --env-file .env python -m mlops_cv.tuning.autolabel_visdrone_vid.label_eval \
+uv run --env-file .env --with trackeval==1.3.0 python -m mlops_cv.tuning.autolabel_visdrone_vid.label_eval \
   configs/tuning/autolabel-visdrone-vid/tracker-val.yaml --split val
 ```
 
@@ -519,7 +522,7 @@ defaults reruns beside it on the same pass, so both rows come from one run.
 faster at a HOTA within 0.5.
 
 ```bash
-uv run --env-file .env python -m mlops_cv.tuning.autolabel_visdrone_vid.label_eval \
+uv run --env-file .env --with trackeval==1.3.0 --with timm==1.0.30 python -m mlops_cv.tuning.autolabel_visdrone_vid.label_eval \
   configs/tuning/autolabel-visdrone-vid/video-trackers.yaml --split val
 ```
 

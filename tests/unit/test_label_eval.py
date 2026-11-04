@@ -6,7 +6,6 @@ from __future__ import annotations
 import dataclasses
 import typing
 from pathlib import Path
-from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -14,7 +13,9 @@ import yaml
 from PIL import Image
 from pydantic import ValidationError
 
+from mlops_cv.autolabel import labeler
 from mlops_cv.autolabel.labeler import Labels
+from mlops_cv.config.settings import BoxFilter
 from mlops_cv.data.subset import MANIFEST_FIELDS, csv_line, image_relpath, label_relpath
 from mlops_cv.tuning.autolabel_visdrone_vid import (
     label_eval,
@@ -177,44 +178,14 @@ def test_a_tiled_trial_merges_before_the_box_filter() -> None:
     assert out.labels == ["b"] and set(out.ms) == {"merge", "filter"}
 
 
-def test_grounding_dino_unties_per_layer_decoder_heads(monkeypatch: pytest.MonkeyPatch) -> None:
-    transformers = pytest.importorskip("transformers")
-    tokenizer = SimpleNamespace(cls_token_id=1, sep_token_id=2, convert_tokens_to_ids=lambda t: 3)
-    tied = {}
-
-    class Model:
-        def to(self, device: str) -> Model:
-            return self
-
-        def eval(self) -> Model:
-            return self
-
-    def model(name: str, tie_word_embeddings: bool) -> Model:
-        tied[name] = tie_word_embeddings
-        return Model()
-
-    processor = SimpleNamespace(tokenizer=tokenizer)
-    monkeypatch.setattr(transformers.AutoProcessor, "from_pretrained", lambda _: processor)
-    monkeypatch.setattr(transformers.AutoModelForZeroShotObjectDetection, "from_pretrained", model)
-    for name, share in [("base", True), ("mm-large", False)]:
-        config = SimpleNamespace(decoder_bbox_embed_share=share)
-        monkeypatch.setattr(transformers.AutoConfig, "from_pretrained", lambda _, c=config: c)
-        open_vocab.grounding_dino(open_vocab.Detector(model=name), "cpu", 300)
-    assert tied == {"base": True, "mm-large": False}
-
-
-def test_prompt_spans_split_at_separators() -> None:
-    spans = open_vocab.prompt_spans([101, 5, 1012, 7, 8, 1012, 102], {101, 102, 1012})
-    assert spans == [[1], [3, 4]]
-
-
-def test_detector_loader_is_picked_by_model_name(monkeypatch: pytest.MonkeyPatch) -> None:
-    for name in ("grounding_dino", "owlv2", "sam3", "yoloe"):
-        monkeypatch.setattr(open_vocab, name, lambda cfg, device, max_det, name=name: name)
+def test_trial_detectors_beyond_production_are_picked_by_model_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for module, name in ((open_vocab, "owlv2"), (open_vocab, "yoloe"), (labeler, "grounding_dino")):
+        monkeypatch.setattr(module, name, lambda cfg, device, max_det, name=name: name)
     pick = {
         "IDEA-Research/grounding-dino-base": "grounding_dino",
         "google/owlv2-base-patch16-ensemble": "owlv2",
-        "facebook/sam3": "sam3",
         "yoloe-26l-seg.pt": "yoloe",
     }
     for model, loader in pick.items():
@@ -263,7 +234,7 @@ def test_stage_trials_update_default_sections(tmp_path: Path) -> None:
     a, b = trials["s-a"], trials["s-b"]
     assert a.detector.threshold == 0.1 and len(a.detector.prompts) == 2
     assert b.detector.prompts == {"vehicle": "vehicle"} and b.box_filter.min_score == 0.4
-    assert b.box_filter.nms_iou == 0.5  # unset knobs are production's
+    assert b.box_filter == BoxFilter(min_score=0.4)  # unset knobs are production's
 
 
 def test_stage_rejects_repeats_and_unknown_keys(tmp_path: Path) -> None:
@@ -581,14 +552,3 @@ def test_trackeval_scores_perfect_tracks_and_counts_id_switches() -> None:
     out = track_scores.readings(images, switched)
     assert out["track/IDSW"] == 2 and out["track/DetA"] == pytest.approx(1.0)
     assert out["track/HOTA"] < 1
-
-
-def test_autocast_runs_matmuls_at_the_dtype_and_is_off_without_one() -> None:
-    torch = pytest.importorskip("torch")
-    from mlops_cv.tuning.autolabel_visdrone_vid.open_vocab import autocast
-
-    x = torch.ones(2, 2)
-    with autocast("bfloat16", "cpu"):
-        assert (x @ x).dtype == torch.bfloat16
-    with autocast(None, "cpu"):
-        assert (x @ x).dtype == torch.float32

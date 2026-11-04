@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -119,3 +120,51 @@ def test_ingestion_reads_annotation_lines_back() -> None:
     text = "\n".join(labeler.annotation_lines(1, Labels(rows, ["truck"], {}, 1)))
     (box,) = convert_sequence_text(text, (100, 100))[1]
     assert (box.cls, box.xc, box.yc, box.w, box.h) == pytest.approx((1, 0.25, 0.25, 0.3, 0.1))
+
+
+def test_grounding_dino_unties_per_layer_decoder_heads(monkeypatch: pytest.MonkeyPatch) -> None:
+    transformers = pytest.importorskip("transformers")
+    tokenizer = SimpleNamespace(cls_token_id=1, sep_token_id=2, convert_tokens_to_ids=lambda t: 3)
+    tied = {}
+
+    class Model:
+        def to(self, device: str) -> Model:
+            return self
+
+        def eval(self) -> Model:
+            return self
+
+    def model(name: str, tie_word_embeddings: bool) -> Model:
+        tied[name] = tie_word_embeddings
+        return Model()
+
+    processor = SimpleNamespace(tokenizer=tokenizer)
+    monkeypatch.setattr(transformers.AutoProcessor, "from_pretrained", lambda _: processor)
+    monkeypatch.setattr(transformers.AutoModelForZeroShotObjectDetection, "from_pretrained", model)
+    for name, share in [("base", True), ("mm-large", False)]:
+        config = SimpleNamespace(decoder_bbox_embed_share=share)
+        monkeypatch.setattr(transformers.AutoConfig, "from_pretrained", lambda _, c=config: c)
+        labeler.grounding_dino(AutolabelDetector(model=name), "cpu", 300)
+    assert tied == {"base": True, "mm-large": False}
+
+
+def test_prompt_spans_split_at_separators() -> None:
+    spans = labeler.prompt_spans([101, 5, 1012, 7, 8, 1012, 102], {101, 102, 1012})
+    assert spans == [[1], [3, 4]]
+
+
+def test_the_detector_is_picked_by_model_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in ("grounding_dino", "sam3"):
+        monkeypatch.setattr(labeler, name, lambda cfg, device, max_det, name=name: name)
+    pick = {"IDEA-Research/grounding-dino-base": "grounding_dino", "facebook/sam3": "sam3"}
+    for model, loader in pick.items():
+        assert labeler.detector(AutolabelDetector(model=model), "cpu", 300) == loader
+
+
+def test_autocast_runs_matmuls_at_the_dtype_and_is_off_without_one() -> None:
+    torch = pytest.importorskip("torch")
+    x = torch.ones(2, 2)
+    with labeler.autocast("bfloat16", "cpu"):
+        assert (x @ x).dtype == torch.bfloat16
+    with labeler.autocast(None, "cpu"):
+        assert (x @ x).dtype == torch.float32

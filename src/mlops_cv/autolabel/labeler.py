@@ -1,4 +1,4 @@
-"""The auto-labeler: SAM 3 on text prompts -> box filter, one decoded RGB frame at a time.
+"""The auto-labeler: SAM 3 or Grounding DINO on text prompts -> box filter, one RGB frame at a time.
 
 Each stage is timed on its own, the GPU synchronised at its edges. Its auto-labels are written as
 VisDrone-VID annotation lines, which ingestion reads like VisDrone's own.
@@ -7,7 +7,8 @@ VisDrone-VID annotation lines, which ingestion reads like VisDrone's own.
 from __future__ import annotations
 
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -146,6 +147,69 @@ def sam3(cfg: AutolabelDetector, device: str, max_det: int) -> Detect:
     return detect
 
 
+def prompt_spans(input_ids: Sequence[int], separators: set[int]) -> list[list[int]]:
+    """The token positions of each prompt in a ``a . b .`` text, split at the separator ids."""
+    spans: list[list[int]] = [[]]
+    for i, token in enumerate(input_ids):
+        if token not in separators:
+            spans[-1].append(i)
+        elif spans[-1]:
+            spans.append([])
+    return [s for s in spans if s]
+
+
+def autocast(dtype: str | None, device: str) -> AbstractContextManager[Any]:
+    """``dtype`` through autocast, not half weights: transformers' GDINO keeps some tensors fp32."""
+    import torch
+
+    return (
+        torch.autocast(torch.device(device).type, getattr(torch, dtype)) if dtype else nullcontext()
+    )
+
+
+def grounding_dino(cfg: AutolabelDetector, device: str, max_det: int) -> Detect:
+    """Grounding DINO: each box goes to the prompt whose tokens score it highest.
+
+    transformers' own post-processing decodes the tokens above a threshold into a phrase, which
+    can run two prompts together; the per-prompt maximum can't.
+    """
+    import torch
+    from transformers import AutoConfig, AutoModelForZeroShotObjectDetection, AutoProcessor
+
+    processor: Any = AutoProcessor.from_pretrained(cfg.model)
+    # transformers 5.8 otherwise ties MM-GDINO's per-layer decoder heads to layer 0's
+    share = getattr(AutoConfig.from_pretrained(cfg.model), "decoder_bbox_embed_share", True)
+    model = AutoModelForZeroShotObjectDetection.from_pretrained(
+        cfg.model, tie_word_embeddings=share
+    )
+    model = model.to(device).eval()
+    precision = autocast(cfg.dtype, device)
+    text = ". ".join(p.strip().lower() for p in cfg.prompts) + "."
+    tok = processor.tokenizer
+    separators = {tok.cls_token_id, tok.sep_token_id, tok.convert_tokens_to_ids(".")}
+
+    def detect(image: np.ndarray) -> tuple[np.ndarray, list[str]]:
+        h, w = image.shape[:2]
+        inputs = processor(images=image, text=text, return_tensors="pt").to(device)
+        with torch.inference_mode(), precision:
+            out = model(**inputs)
+        spans = prompt_spans(inputs["input_ids"][0].tolist(), separators)
+        if len(spans) != len(cfg.prompts):
+            raise ValueError(f"{len(spans)} token spans for {len(cfg.prompts)} prompts in {text!r}")
+        probs = out.logits[0].float().sigmoid()
+        conf, label = torch.stack([probs[:, s].max(-1).values for s in spans], 1).max(1)
+        cx, cy, bw, bh = (out.pred_boxes[0].float() * torch.tensor([w, h, w, h], device=device)).T
+        boxes = torch.stack([cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2], 1)
+        return top_rows(boxes, conf, label, cfg, max_det)
+
+    return detect
+
+
+def detector(cfg: AutolabelDetector, device: str, max_det: int) -> Detect:
+    """SAM 3 or Grounding DINO, picked by the model name."""
+    return (sam3 if "sam3" in cfg.model else grounding_dino)(cfg, device, max_det)
+
+
 class Labeler:
     """The detector and the box filter, loaded once; called on one decoded RGB image."""
 
@@ -168,7 +232,7 @@ class Labeler:
             self.detect = self.load()
 
     def load(self) -> Detect:
-        return sam3(self.detector, self.device, self.max_det)
+        return detector(self.detector, self.device, self.max_det)
 
     def timed(self, fn: Callable[..., Any], *args: Any) -> tuple[Any, float]:
         self._sync()

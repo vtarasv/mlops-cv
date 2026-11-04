@@ -446,7 +446,7 @@ def test_box_trackers_take_the_floor_as_their_track_thresholds(
 ) -> None:
     pytest.importorskip("lap")
     images = []
-    for i in range(5):
+    for i in range(5):  # TrackTrack reports a track after 3 updates
         path = tmp_path / f"{i}.jpg"
         Image.new("RGB", (100, 100)).save(path)
         images.append(dataclasses.replace(_image(path.name, []), path=path))

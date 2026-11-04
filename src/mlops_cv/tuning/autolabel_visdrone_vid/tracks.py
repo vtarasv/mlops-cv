@@ -358,7 +358,7 @@ def box_tracks(
         if im.sequence != sequence:
             sequence, tracker = im.sequence, TRACKER_MAP[name](args=args)
             BaseTrack.reset_id()  # TrackTrack has no reset_id of its own; the counter is shared
-        bgr = np.ascontiguousarray(read_rgb(im.path)[..., ::-1])  # the motion compensation's
+        bgr = np.ascontiguousarray(read_rgb(im.path)[..., ::-1])  # for camera-motion compensation
         start = time.perf_counter()
         out = tracker.update(Boxes(det.rows, (im.height, im.width)), bgr).reshape(-1, 8)
         ms = (time.perf_counter() - start) * 1000

@@ -330,8 +330,10 @@ def run_trial(
         # (n, 7) rows: x1 y1 x2 y2 conf class track-id
         rows = [(im, np.column_stack([lab.rows, np.asarray(lab.track_ids)])) for im, lab in pairs]
         tracked = [visdrone_vid.drop_ignored(r, im) for im, r in rows]
-        subset = visdrone_vid.subset_frames(settings.data.subset_dir, split)
-        on_subset = {images[i].name: tracked[i][:, :6] for i in subset_positions(images, subset)}
+        in_subset = subset_positions(
+            images, visdrone_vid.subset_frames(settings.data.subset_dir, split)
+        )
+        on_subset = {images[i].name: tracked[i][:, :6] for i in in_subset}
         metrics = (
             amortised_latency(labels, config.tracker)
             | track_scores.readings(images, tracked)
@@ -339,8 +341,11 @@ def run_trial(
         )
         if on_subset:  # a --limit can stop short of the clips' first subset frame
             data_yaml = visdrone_vid.rule_yaml(settings, split)
-            prefix, floor = f"subset/{split}", config.confidence_floor
-            metrics |= visdrone_vid.readings(on_subset, data_yaml, "val", prefix, on_subset, floor)
+            floor = config.confidence_floor
+            # scored on exactly the frames it holds
+            metrics |= visdrone_vid.readings(
+                on_subset, data_yaml, "val", f"subset/{split}", on_subset, floor
+            )
     with tempfile.TemporaryDirectory() as tmp:
         write_annotations(Path(tmp), images, labels)
         with mlflow.start_run(run_name=f"{name}-{split}"):

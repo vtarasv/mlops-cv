@@ -172,9 +172,10 @@ fixed. Keep inner is left out (8–11 pt down on both detectors the earlier effo
 trial rescores the detector's stored stage 1 pass on CPU, so the NMS 0.5 / nested-off rows
 repeat stage 1's.
 
-**Why:** the box filter is tuned per detector. Each detector's winner so far is its stage 1 row,
-and a setting replaces it only by the 0.5 pt margin. The best detector + filter then wins, with
-stage 1's speed rule.
+**Why:** the box filter is tuned per detector. SAM 3's winner so far is sam3-raw's stage 1 row
+(nouns are one of its settings), GDINO-B's is its own, and a setting replaces it only by the
+0.5 pt margin. The detectors' best filters then meet in
+the fp16 check.
 
 ```bash
 uv run --env-file .env python -m mlops_cv.tuning.autolabel_visdrone_vid.label_eval \
@@ -214,21 +215,20 @@ Columns as in stage 1; the detector p50 ms are stage 1's (1594, 1424 and 323).
 - Without the nested-box rule, looser NMS scores higher on every detector: NMS off tops each
   (sam3-raw's NMS 0.7 ties it). The rule reverses that order and costs 0.7–4.5 pt on SAM 3 and
   12–16 pt on GDINO-B, where it keeps only a quarter to a third of the boxes.
-- **Best filter per detector:** sam3-raw keeps NMS 0.5 (NMS off is 0.41 pt up, under the margin);
-  sam3-nouns and gdino-b-raw take NMS off (+0.59 and +0.58 pt).
-- **sam3-raw with NMS 0.5 stays SAM 3's winner so far** (25.0): no SAM 3 setting beats it by
-  0.5 pt (sam3-nouns with NMS off is +0.30). gdino-b-raw with NMS off is 0.50 pt behind, just
-  outside the margin in fp32.
-- NMS off keeps almost every box (277 per frame against 160) and lowers P and R at the max-F1
-  point slightly (0.646 / 0.632 against 0.655 / 0.637): the gain is in the low-confidence tail.
+- **SAM 3 keeps sam3-raw with NMS 0.5** (25.0): no SAM 3 setting beats it by 0.5 pt (raw with
+  NMS off +0.41, nouns with NMS off +0.30). **GDINO-B takes NMS off** (+0.58), 0.502 pt behind
+  SAM 3: just outside the margin in fp32.
+- On sam3-nouns, NMS off keeps almost every box (277 per frame against 160) and lowers P and R
+  at the max-F1 point slightly (0.646 / 0.632 against 0.655 / 0.637): the gain is in the
+  low-confidence tail.
 
-### fp16
+### fp16 check
 
 **What:** stage 2's three detectors in fp16, each with NMS 0.5 and NMS off (no nested-box rule).
 SAM 3 loads half weights; GDINO runs under autocast, since transformers' GDINO fails in pure fp16.
 
 **Why:** production runs fp16, and the speed rule weighs latency, so the detectors compare at that
-precision.
+precision: GDINO-B wins if its winner so far is within 0.5 pt of SAM 3's and faster.
 
 ```bash
 uv run --env-file .env python -m mlops_cv.tuning.autolabel_visdrone_vid.label_eval \

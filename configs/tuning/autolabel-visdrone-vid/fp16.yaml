@@ -1,6 +1,6 @@
-# Experiment 1: stage 2's top 3 detectors in fp16, each with NMS 0.5 and NMS off (no nested-box
-# rule), against their fp32 rows in box-filter.yaml. One fp16 pass per detector; the second filter
-# rescores it on CPU.
+# Experiment 1, fp16 check: stage 2's top 3 detectors in fp16, each with NMS 0.5 and NMS off
+# (no nested-box rule), against their fp32 rows in box-filter.yaml. One fp16 pass per detector;
+# the second filter rescores it on CPU.
 # Winner so far: gdino-b-raw-fp16-nms-off (0.40 pt behind sam3-raw-fp16-nms0.5, 2.4x faster).
 defaults:
   detector:

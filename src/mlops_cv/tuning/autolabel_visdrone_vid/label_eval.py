@@ -2,8 +2,9 @@
 
 A trial without a tracker labels a subset split's frames and is scored by ultralytics' validator
 against the split's VisDrone-rule copy, its boxes through the same rule. A trial with a tracker
-labels the split's full raw clips and scores its tracks through TrackEval. Each logs its boxes
-as VisDrone-VID annotation files, one per sequence.
+labels the split's full raw clips and scores its tracks through TrackEval, and its tracked boxes
+on the subset frames inside the clips through the validator. Each logs its boxes as VisDrone-VID
+annotation files, one per sequence.
 """
 
 from __future__ import annotations
@@ -16,15 +17,16 @@ import logging
 import os
 import tempfile
 from collections import Counter, defaultdict
-from collections.abc import Collection
+from collections.abc import Collection, Mapping
 from pathlib import Path
 from typing import Any
 
 import numpy as np
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 from mlops_cv.autolabel.labeler import Labels, annotation_lines, read_rgb
 from mlops_cv.config.settings import BoxFilter
+from mlops_cv.data.convert_visdrone_vid import RAW_NAMES
 from mlops_cv.data.subset import IMAGES_DIRNAME
 from mlops_cv.startup import StartupError, exits_on_startup_error
 from mlops_cv.tuning import common
@@ -55,6 +57,14 @@ class LabelingConfig(BaseModel):
     tracker: Tracker | None = None  # ``None`` labels each frame on its own
     # The track thresholds and P/R readings; scoring and stored boxes aren't cut at it.
     confidence_floor: float | None = None
+    # A box tracker on the clips' ground-truth boxes (score 1.0) instead: the association ceiling.
+    ground_truth: bool = False
+
+    @model_validator(mode="after")
+    def _ground_truth_under_a_box_tracker(self) -> LabelingConfig:
+        if self.ground_truth and (self.tracker is None or self.tracker.model not in BOX_TRACKERS):
+            raise ValueError("ground_truth boxes run only under a box tracker")
+        return self
 
 
 def load_stage(path: Path) -> dict[str, LabelingConfig]:
@@ -124,6 +134,24 @@ def select_frames(
     if sequences:
         images = [im for im in images if im.sequence in sequences]
     return images[::every][:limit]
+
+
+def subset_positions(
+    images: list[visdrone_vid.Image], frames: Mapping[str, Collection[int]]
+) -> list[int]:
+    """The positions in ``images`` of the subset's frames, ``{sequence: frame indices}``."""
+    return [i for i, im in enumerate(images) if im.frame in frames.get(im.sequence, ())]
+
+
+def ground_truth_labels(images: list[visdrone_vid.Image]) -> list[Labels]:
+    """Each frame's ground-truth boxes as detections at score 1.0, in merged classes."""
+    out = []
+    for im in images:
+        xyxy = np.column_stack([im.boxes[:, :2], im.boxes[:, :2] + im.boxes[:, 2:]])
+        rows = np.column_stack([xyxy, np.ones(len(xyxy)), visdrone_vid.merged(im.categories)])
+        labels = [RAW_NAMES[int(c)] for c in im.categories]
+        out.append(Labels(rows.astype(np.float32), labels, {}, len(rows)))
+    return out
 
 
 def latency(labels: list[Labels]) -> dict[str, float]:
@@ -256,7 +284,11 @@ def label_sequences(
         shared = {"tracker": None, "confidence_floor": None}
         key = config.model_copy(update=shared).model_dump_json()
         if key not in detections:
-            detections[key] = label_frames(config, images, device, store)
+            detections[key] = (
+                ground_truth_labels(images)
+                if config.ground_truth
+                else label_frames(config, images, device, store)
+            )
         tracked = list(tracks.box_tracks(config.tracker.model, images, detections[key], floor))
         return [lab for lab, _ in tracked], [n for _, n in tracked]
     raw = load_detections(store, images) if store and store.exists() else None
@@ -298,11 +330,22 @@ def run_trial(
         # (n, 7) rows: x1 y1 x2 y2 conf class track-id
         rows = [(im, np.column_stack([lab.rows, np.asarray(lab.track_ids)])) for im, lab in pairs]
         tracked = [visdrone_vid.drop_ignored(r, im) for im, r in rows]
+        in_subset = subset_positions(
+            images, visdrone_vid.subset_frames(settings.data.subset_dir, split)
+        )
+        on_subset = {images[i].name: tracked[i][:, :6] for i in in_subset}
         metrics = (
             amortised_latency(labels, config.tracker)
             | track_scores.readings(images, tracked)
             | {"tracks/peak_live": float(max(live))}
         )
+        if on_subset:  # a --limit can stop short of the clips' first subset frame
+            data_yaml = visdrone_vid.rule_yaml(settings, split)
+            floor = config.confidence_floor
+            # scored on exactly the frames it holds
+            metrics |= visdrone_vid.readings(
+                on_subset, data_yaml, "val", f"subset/{split}", on_subset, floor
+            )
     with tempfile.TemporaryDirectory() as tmp:
         write_annotations(Path(tmp), images, labels)
         with mlflow.start_run(run_name=f"{name}-{split}"):

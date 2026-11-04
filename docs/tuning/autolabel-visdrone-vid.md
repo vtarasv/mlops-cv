@@ -32,7 +32,10 @@ beside YOLO26 s trained on ground truth.
     and mAP75 beside it. The detector keeps its top 300 boxes above 0.001, so every box is
     scored.
   - Trackers rank on **HOTA** (TrackEval, per merged class, det-averaged), with DetA, AssA, IDF1
-    and ID switches beside it.
+    and ID switches beside it. A tracker trial also scores its tracked boxes on the subset frames
+    inside the clips through the validator (`subset/<split>/` keys), reported only.
+  - `ground_truth: true` runs a box tracker on the clips' ground-truth boxes (score 1.0) instead
+    of the detector's: the association ceiling, never selecting.
   - F1 never selects. The confidence floor decides which auto-labels are kept, and P and R are
     read at it. Each row is also scored on the frames where no raw category has more than 200
     boxes (`uncapped200`), SAM 3's per-prompt cap.
@@ -362,7 +365,61 @@ through autocast, untiled, box filter with NMS off (`min_side` 8, `max_area` 0.0
 
 ## 2. Box tracker
 
-_Not run yet._ BoT-SORT, TrackTrack and Hybrid-SORT on the train clips, ByteTrack as a baseline.
+### Stage 1: the candidates
+
+**What:** BoT-SORT, TrackTrack and ByteTrack (ultralytics 8.4.72) on one stored pass of the
+labeler (Experiment 1's winner) over the train clips (24,201 frames, 90 min of GPU), each at
+its defaults with `track_high_thresh` = `new_track_thresh` = the floor (0.218), and each again on
+the ground-truth boxes. boxmot's Hybrid-SORT runs on the same pass from a throwaway script.
+
+**Why:** BoT-SORT is the winner so far; a challenger replaces it only by 0.5 HOTA. ByteTrack (no
+camera-motion compensation) is the baseline and the ground-truth rows the association ceiling;
+neither selects.
+
+```bash
+uv run --env-file .env python -m mlops_cv.tuning.autolabel_visdrone_vid.label_eval \
+  configs/tuning/autolabel-visdrone-vid/box-trackers.yaml --split train
+```
+
+Hybrid-SORT (boxmot 26.0.0, kept off the lock) runs on the same stored pass, one process per
+clip, with `det_thresh` at the floor, no ReID (`use_embeddings: false`, as for every tracker
+here) and boxmot's other defaults (ECC motion compensation):
+
+```bash
+uv run --env-file .env --with boxmot==26.0.0 python .scratch/autolabel-training-data/scratch/13_hybridsort.py
+```
+
+HOTA, DetA, AssA and IDF1 are TrackEval's over the 24,201 clip frames. Label mAP50-95 (with mAP50,
+mAP75 and the merged classes) scores each row's tracked boxes on the 1,238 subset frames inside
+the clips (`subset/train/`). Tracker ms is the per-frame update; Hybrid-SORT's was timed with 16
+clips in parallel.
+
+| Trial | Run | HOTA | DetA | AssA | IDF1 | ID switches | label mAP50-95 | mAP50 | mAP75 | person | vehicle | 2-3-wheeler | P / R at floor | tracker ms |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| **tracktrack** | da793ee4 | **48.8** | 39.7 | 61.2 | 60.4 | 5,269 | 21.0 | 44.2 | 17.0 | 18.3 | 37.9 | 6.8 | 0.694 / 0.515 | 14.8 |
+| botsort | dce52119 | 47.1 | 36.2 | 62.3 | 56.7 | 2,924 | 18.3 | 36.0 | 16.0 | 15.4 | 35.3 | 4.2 | 0.772 / 0.408 | 12.9 |
+| hybridsort | 8ac4f0f0 | 45.2 | 38.1 | 55.1 | 55.0 | 13,437 | 20.5 | 43.1 | 16.5 | 17.2 | 37.1 | 7.2 | 0.629 / 0.539 | 81 |
+| bytetrack (baseline) | 8616beee | 42.5 | 33.8 | 54.6 | 48.6 | 5,696 | 17.2 | 33.7 | 15.0 | 14.0 | 33.9 | 3.6 | 0.785 / 0.371 | 2.0 |
+| detector, untracked, at the floor | 3e65b294 | | | | | | 21.6 | 45.5 | 17.2 | 19.1 | 38.3 | 7.4 | 0.627 / 0.540 | |
+| detector, untracked, down to 0.001 | 3e65b294 | | | | | | 24.5 | 53.3 | 18.8 | 20.9 | 41.9 | 10.5 | | |
+| botsort-gt (ground truth) | 769f8b93 | 96.4 | 99.3 | 93.6 | 95.4 | 1,841 | 98.8 | | | | | | 1.000 / 0.987 | 12.4 |
+| tracktrack-gt (ground truth) | ce2695ed | 93.2 | 96.7 | 89.8 | 92.3 | 3,173 | 95.8 | | | | | | 1.000 / 0.958 | 14.2 |
+| bytetrack-gt (ground truth) | 9c72c41f | 91.4 | 98.5 | 84.8 | 88.6 | 5,525 | 97.8 | | | | | | 1.000 / 0.978 | 1.5 |
+
+**Result:**
+- **TrackTrack wins:** +1.7 HOTA over BoT-SORT, beyond the 0.5 margin, from detection (DetA
+  +3.5); BoT-SORT keeps slightly better association (AssA +1.1, half the ID switches).
+  Hybrid-SORT trails BoT-SORT by 1.9, so boxmot stays out.
+- **This is TrackTrack with its low-score stage off.** Its `track_low_thresh` default (0.25) sits
+  above the floor, so no box falls between them; BoT-SORT's and ByteTrack's (0.1) sit below it.
+  Its recovered-box cue (`dets_del`) needs the YOLO predictor, so it is off on a stored pass.
+- **On ground-truth boxes BoT-SORT leads** (96.4 against 93.2): TrackTrack's gain comes from
+  coping with the detector's boxes, not from better association.
+- **Camera-motion compensation pays:** ByteTrack is 4.6 HOTA under BoT-SORT.
+- **Label mAP:** the floor alone takes the untracked boxes from 24.5 to 21.6 on the same frames
+  (the 24.5 equals Experiment 1's on the subset frames). Tracking costs 0.6 more for TrackTrack,
+  1.1 for Hybrid-SORT and 3.3 for BoT-SORT, which keeps the fewest boxes (recall 0.408 at the
+  floor).
 
 ## 3. Video tracker confirmation
 

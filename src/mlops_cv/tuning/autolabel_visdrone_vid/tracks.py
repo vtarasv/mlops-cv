@@ -27,7 +27,7 @@ from mlops_cv.tuning.autolabel_visdrone_vid import visdrone_vid
 logger = logging.getLogger(__name__)
 
 # ultralytics' box trackers, run with their default settings; any other tracker is a video model.
-BOX_TRACKERS = ("botsort", "bytetrack")
+BOX_TRACKERS = ("botsort", "bytetrack", "tracktrack")
 # Non-seed frames a video tracker keeps: memory stays flat at unchanged latency.
 KEEP_FRAMES = 16
 # Masks per post-processing pass: bounds the full-resolution masks' memory.
@@ -344,6 +344,7 @@ def box_tracks(
     score scale. The tracker reports the detections it assigned a track to; their rows are kept.
     """
     from ultralytics.engine.results import Boxes
+    from ultralytics.trackers.basetrack import BaseTrack
     from ultralytics.trackers.track import TRACKER_MAP
     from ultralytics.utils import YAML, IterableSimpleNamespace
     from ultralytics.utils.checks import check_yaml
@@ -356,8 +357,8 @@ def box_tracks(
     for im, det in zip(images, detections, strict=True):
         if im.sequence != sequence:
             sequence, tracker = im.sequence, TRACKER_MAP[name](args=args)
-            tracker.reset_id()
-        bgr = np.ascontiguousarray(read_rgb(im.path)[..., ::-1])  # BoT-SORT's motion compensation
+            BaseTrack.reset_id()  # TrackTrack has no reset_id of its own; the counter is shared
+        bgr = np.ascontiguousarray(read_rgb(im.path)[..., ::-1])  # for camera-motion compensation
         start = time.perf_counter()
         out = tracker.update(Boxes(det.rows, (im.height, im.width)), bgr).reshape(-1, 8)
         ms = (time.perf_counter() - start) * 1000

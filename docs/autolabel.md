@@ -22,6 +22,55 @@ mAP50-95. TrackTrack beat BoT-SORT on the train clips (48.8 vs 47.1 HOTA) and he
 46.7). The code is `mlops_cv.autolabel` (`Labeler`, `label_clip`, `annotation_lines`); the labeling
 trials track through the same code. Nothing in continuous training calls it yet.
 
+## Run it and view it in FiftyOne
+
+`python -m mlops_cv.autolabel <sequence dir>...` labels each VisDrone-VID `sequences/<seq>/`
+folder (frames `0000001.jpg` on, no gaps) and writes `<seq>.txt` to `--out`, by default
+`runs/autolabel/labeler/annotations/`. GDINO-B takes about a minute for a 200-frame sequence on
+the 8 GB GPU.
+
+1. Pick sequences of a raw split, for example val's:
+
+   ```bash
+   RAW=$(uv run python -c "from mlops_cv.config import get_settings as s; print(s().data.raw_dir.resolve())")
+   ls $RAW/VisDrone2019-VID-val/sequences
+   ```
+
+2. Label them:
+
+   ```bash
+   uv run python -m mlops_cv.autolabel \
+     $RAW/VisDrone2019-VID-val/sequences/uav0000305_00000_v \
+     $RAW/VisDrone2019-VID-val/sequences/uav0000137_00458_v
+   ```
+
+3. Start the annotation editor (FiftyOne, `docker-compose/docker-compose.fiftyone.yml`). It mounts
+   the raw split and `runs/autolabel/` read-only at their host paths:
+
+   ```bash
+   make fiftyone-up   # the App on http://localhost:5151
+   ```
+
+4. Load the auto-labels beside the split's ground truth:
+
+   ```bash
+   docker exec fiftyone python /opt/load_trial.py $RAW/VisDrone2019-VID-val $PWD/runs/autolabel/labeler/annotations
+   ```
+
+5. Open http://localhost:5151 and the dataset `visdrone-vid-val`:
+   - `ground_truth` holds VisDrone's boxes and `ignored` its ignored regions (crowds and distant
+     traffic left unlabeled, where an auto-label is no error).
+   - `labeler` (the folder above `annotations/`) holds the auto-labels, each with its confidence
+     and track id. The App's confidence slider shows what a higher floor would keep.
+   - `eval_labeler` flags each box TP, FP or FN at IoU 0.5 against `ground_truth`, for browsing
+     only: it counts every confidence. Scores come from the [labeling
+     trials](tuning/autolabel-visdrone-vid.md).
+
+To keep two runs side by side, label into another folder (`--out runs/autolabel/<name>/annotations`)
+and load that one: each folder name becomes its own field, and reloading a folder overwrites its
+field. The sequences must sit under the raw VisDrone-VID dir (`DATA__RAW_DIR`), the App's only
+footage mount.
+
 ## Settings
 
 `AutolabelSettings`, at `settings.autolabel` (env `AUTOLABEL__…`, see [config](config.md)). The

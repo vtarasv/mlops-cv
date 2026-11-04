@@ -514,6 +514,20 @@ def test_parallel_clips_track_like_one_serial_process(tmp_path: Path, tracker: s
     assert run(3) == serial
 
 
+def test_clip_workers_start_fresh_not_forked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pytest.importorskip("lap")
+    images = _frames(tmp_path, 2, 3)
+    detections = [Labels(np.zeros((0, 6), np.float32), [], {}, 0)] * len(images)
+
+    def inherited(path: Path) -> None:
+        raise AssertionError("a forked worker inherits the parent's state, its threads too")
+
+    monkeypatch.setattr(tracks, "read_rgb", inherited)
+    assert len(tracks.box_tracks("bytetrack", images, detections, workers=2)) == len(images)
+
+
 def test_box_trackers_share_one_pass_across_trackers_and_floors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

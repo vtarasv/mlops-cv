@@ -440,33 +440,60 @@ def test_box_iou_keeps_its_shape_when_empty() -> None:
     assert tracks.box_iou(a, np.zeros((0, 4))).shape == (1, 0)
 
 
-def test_box_trackers_take_the_floor_as_their_track_thresholds(tmp_path: Path) -> None:
+@pytest.mark.parametrize("tracker", tracks.BOX_TRACKERS)
+def test_box_trackers_take_the_floor_as_their_track_thresholds(
+    tmp_path: Path, tracker: str
+) -> None:
     pytest.importorskip("lap")
     images = []
-    for i in range(3):
+    for i in range(5):
         path = tmp_path / f"{i}.jpg"
         Image.new("RGB", (100, 100)).save(path)
         images.append(dataclasses.replace(_image(path.name, []), path=path))
     rows = np.array([[10, 10, 30, 30, 0.5, 1]], np.float32)
-    detections = [Labels(rows, ["car"], {"detector": 1.0}, 1)] * 3
+    detections = [Labels(rows, ["car"], {"detector": 1.0}, 1)] * 5
 
     def tracked(floor: float | None) -> int:
-        out = tracks.box_tracks("bytetrack", images, detections, floor)
+        out = tracks.box_tracks(tracker, images, detections, floor)
         return sum(len(lab.rows) for lab, _ in out)
 
-    assert tracked(None) > 0  # 0.5 clears ultralytics' 0.25 default
-    assert tracked(0.6) == 0
+    assert tracked(0.4) > 0
+    assert tracked(0.6) == 0  # 0.5 is under the floor: it starts no track
 
 
-def test_box_trackers_share_one_pass_across_floors(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_box_trackers_share_one_pass_across_trackers_and_floors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     passes = []
     monkeypatch.setattr(label_eval, "label_frames", lambda *a: passes.append(1) or [])
     monkeypatch.setattr(tracks, "box_tracks", lambda *a: [])
     detections: dict[str, list[Labels]] = {}
-    for floor in (0.5, 0.6):
-        config = _config(tracker={"model": "botsort"}, confidence_floor=floor)
-        label_eval.label_sequences(config, [], "cpu", detections, None)
-    assert len(passes) == 1
+    for tracker in tracks.BOX_TRACKERS:
+        for floor in (0.5, 0.6):
+            config = _config(tracker={"model": tracker}, confidence_floor=floor)
+            label_eval.label_sequences(config, [], "cpu", detections, None)
+    gt = _config(tracker={"model": "botsort"}, ground_truth=True)
+    label_eval.label_sequences(gt, [], "cpu", detections, None)
+    assert len(passes) == 1  # the ground-truth trial runs no detector
+
+
+def test_ground_truth_boxes_are_detections_at_score_one() -> None:
+    im = _image("a", [1, 4], boxes=[[10, 20, 5, 8], [0, 0, 30, 10]])
+    (lab,) = label_eval.ground_truth_labels([im])
+    assert lab.rows.tolist() == [[10, 20, 15, 28, 1, 0], [0, 0, 30, 10, 1, 1]]
+    assert lab.labels == ["pedestrian", "car"] and lab.detected == 2
+
+
+@pytest.mark.parametrize("tracker", [None, {"model": "yonigozlan/EdgeTAM-hf"}])
+def test_ground_truth_boxes_need_a_box_tracker(tracker: dict | None) -> None:
+    with pytest.raises(ValidationError, match="box tracker"):
+        _config(tracker=tracker, ground_truth=True)
+
+
+def test_subset_positions_pick_the_subset_frames_inside_the_clips() -> None:
+    images = [_image(f"{q}{f}", [], sequence=q, frame=f) for q in "ab" for f in (1, 2, 3)]
+    frames = {"a": [2], "b": [1, 3], "c": [1]}
+    assert label_eval.subset_positions(images, frames) == [1, 3, 5]
 
 
 class _Session:

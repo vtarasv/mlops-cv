@@ -32,7 +32,10 @@ beside YOLO26 s trained on ground truth.
     and mAP75 beside it. The detector keeps its top 300 boxes above 0.001, so every box is
     scored.
   - Trackers rank on **HOTA** (TrackEval, per merged class, det-averaged), with DetA, AssA, IDF1
-    and ID switches beside it.
+    and ID switches beside it. A tracker trial also scores its tracked boxes on the subset frames
+    inside the clips through the validator (`subset/<split>/` keys), reported only.
+  - `ground_truth: true` runs a box tracker on the clips' ground-truth boxes (score 1.0) instead
+    of the detector's: the association ceiling, never selecting.
   - F1 never selects. The confidence floor decides which auto-labels are kept, and P and R are
     read at it. Each row is also scored on the frames where no raw category has more than 200
     boxes (`uncapped200`), SAM 3's per-prompt cap.
@@ -362,7 +365,26 @@ through autocast, untiled, box filter with NMS off (`min_side` 8, `max_area` 0.0
 
 ## 2. Box tracker
 
-_Not run yet._ BoT-SORT, TrackTrack and Hybrid-SORT on the train clips, ByteTrack as a baseline.
+### Stage 1: the candidates
+
+**What:** BoT-SORT, TrackTrack and ByteTrack (ultralytics 8.4.72) on one stored pass of the
+labeler (Experiment 1's winner) over the train clips (24,201 frames, ≈ 81 min of GPU), each at
+its defaults with `track_high_thresh` = `new_track_thresh` = the floor (0.218), and each again on
+the ground-truth boxes. boxmot's Hybrid-SORT runs on the same pass from a throwaway script.
+
+**Why:** BoT-SORT is the winner so far; a challenger replaces it only by 0.5 HOTA. ByteTrack (no
+camera-motion compensation) is the baseline and the ground-truth rows the association ceiling;
+neither selects.
+
+```bash
+uv run --env-file .env python -m mlops_cv.tuning.autolabel_visdrone_vid.label_eval \
+  configs/tuning/autolabel-visdrone-vid/box-trackers.yaml --split train
+```
+
+TrackTrack's `track_low_thresh` default (0.25) sits above the floor, so its low-score second
+stage gets no boxes; BoT-SORT's and ByteTrack's (0.1) sit below it.
+
+_Running._
 
 ## 3. Video tracker confirmation
 

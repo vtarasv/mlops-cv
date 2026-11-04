@@ -43,6 +43,8 @@ TRACK_COL = 1  # target_id
 IGNORED_SHARE = 0.5
 # The subset splits labeling trials score on; test is read once, by YOLO, at the end.
 RULE_SPLITS = ("train", "val")
+# The labeler's auto-labels on the subset's train frames, through the rule (``autolabels.py``).
+AUTOLABEL_SPLIT = "train-autolabels"
 # mAP at IoU 0.75, reported beside a labeling trial's mAP50-95.
 MAP75 = "mAP75"
 # The confidence at the validator's max-F1 point, where it reads P and R.
@@ -242,24 +244,29 @@ def rule_yaml(settings: Settings, split: str) -> Path:
     return stamp_split_yaml(settings.data.dataset_yaml, subset_dir, visdrone_rule_split(split))
 
 
-def build_rule_split(raw_dir: Path, subset_dir: Path, split: str) -> tuple[int, int]:
-    """Write ``split``'s VisDrone-rule copy -> (ground-truth boxes kept, boxes the rule drops)."""
-    rule = visdrone_rule_split(split)
-    images_dir = (subset_dir / image_relpath(rule, "x")).parent
-    labels_dir = (subset_dir / label_relpath(rule, "x")).parent
+def write_split(subset_dir: Path, split: str, source: str, labels: Mapping[str, list[str]]) -> None:
+    """Write ``split``: a link to each ``source`` frame named in ``labels``, with its YOLO lines."""
+    images_dir = (subset_dir / image_relpath(split, "x")).parent
+    labels_dir = (subset_dir / label_relpath(split, "x")).parent
     for out in images_dir, labels_dir:
         shutil.rmtree(out, ignore_errors=True)
         out.mkdir(parents=True)
     labels_dir.with_suffix(".cache").unlink(missing_ok=True)
-    kept = total = 0
-    for im in read_split(raw_dir, subset_dir, split):
-        stem = Path(im.name).stem
+    for name, lines in labels.items():
         # One relative link per file: ultralytics resolves a linked split directory.
-        (images_dir / im.name).symlink_to(Path("..") / split / im.name)
-        lines = yolo_lines(im)
-        text = (subset_dir / label_relpath(split, stem)).read_text(encoding="utf-8")
-        (subset_dir / label_relpath(rule, stem)).write_text("".join(f"{x}\n" for x in lines))
-        kept, total = kept + len(lines), total + len(text.splitlines())
+        (images_dir / name).symlink_to(Path("..") / source / name)
+        (labels_dir / Path(name).with_suffix(".txt")).write_text("".join(f"{x}\n" for x in lines))
+
+
+def build_rule_split(raw_dir: Path, subset_dir: Path, split: str) -> tuple[int, int]:
+    """Write ``split``'s VisDrone-rule copy -> (ground-truth boxes kept, boxes the rule drops)."""
+    labels, total = {}, 0
+    for im in read_split(raw_dir, subset_dir, split):
+        labels[im.name] = yolo_lines(im)
+        text = (subset_dir / label_relpath(split, Path(im.name).stem)).read_text(encoding="utf-8")
+        total += len(text.splitlines())
+    write_split(subset_dir, visdrone_rule_split(split), split, labels)
+    kept = sum(map(len, labels.values()))
     return kept, total - kept
 
 

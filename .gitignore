@@ -17,7 +17,6 @@ yocto/kas/local.yml
 
 # Data, weights, and training outputs
 *.pt
-/mobileclip*.ts
 /.ultralytics/*
 !/.ultralytics/.gitkeep
 /data/

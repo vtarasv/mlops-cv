@@ -33,8 +33,13 @@ beside YOLO26 s trained on ground truth.
     and mAP75 beside it. The detector keeps its top 300 boxes above 0.001, so every box is
     scored.
   - Trackers rank on **HOTA** (TrackEval, per merged class, det-averaged), with DetA, AssA, IDF1
-    and ID switches beside it. A tracker trial also scores its tracked boxes on the subset frames
-    inside the clips through the validator (`subset/<split>/` keys), reported only.
+    and ID switches beside it, over every clip frame.
+  - **Label mAP50-95** (tracker tables only, reported, never selecting) is the same validator
+    score on a tracker trial's tracked boxes, on the subset frames inside the clips
+    (`subset/<split>/` keys): the frames, and so the labels, YOLO trains on. A tracker keeps only
+    boxes that start or continue a track, which cuts them near the floor, while the detector
+    stages score every box down to 0.001. Compare it with the detector's own score at the floor:
+    Experiment 2 stage 1's `detector, untracked, at the floor`.
   - `ground_truth: true` runs a box tracker on the clips' ground-truth boxes (score 1.0) instead
     of the detector's: the association ceiling, never selecting.
   - F1 never selects. The confidence floor decides which auto-labels are kept, and P and R are
@@ -53,9 +58,11 @@ beside YOLO26 s trained on ground truth.
   (`mlops_cv.autolabel`), each clip in its own fresh (forkserver) process, 16 at a time.
   `tracker.overrides` sets keys of the tracker's ultralytics YAML; a key the YAML lacks, or one the
   confidence floor sets, fails the trial. `labeler.yaml` is production's config, tracker included.
-- **Video trackers** (EdgeTAM, SAM 2.1 video) run the detector every K-th frame and carry objects
+- **Video trackers** (EdgeTAM) run the detector every K-th frame and carry objects
   between those frames. Each mask leaves the tracker only as its tight box.
 - **Latency** is batch 1 per frame, decoded image to boxes, with the first 3 frames left out.
+- **Hardware:** the laptop in [YOLO26 tuning](yolo26-visdrone-vid.md#hardware) (RTX 5070 Laptop
+  8 GB, Core Ultra 9 275HX with 24 cores). GPU times and latencies hold for it alone.
 
 ```mermaid
 flowchart LR
@@ -113,7 +120,7 @@ docker exec fiftyone python /opt/load_trial.py \
 YOLO26 trained on ground truth, on the scale that YOLO trained on auto-labels reads: the final
 YOLO tuning recipe's `stage2-{n,s,m}1280` trials (their `best.pt`), predicting val once at imgsz 1280 with val's floor and cap. The same predictions are
 scored under both rules. The repo-rule column is the trial's `model.val` score, with this
-predict-path score after the slash; the 0.1–0.3 pt gap is the padding difference described in
+predict-path score (`model.predict()`) after the slash; the 0.1–0.3 pt gap is the padding difference described in
 [YOLO26 tuning](yolo26-visdrone-vid.md#10-other-ways-to-run-the-same-weights-the-second-head-and-sahi).
 
 ```bash
@@ -137,11 +144,20 @@ VisDrone's rule lifts each size by 0.5–0.9 pt over the same predictions under 
 
 **What:** GDINO-T, GDINO-B, OWLv2-B/16, YOLOE-26-L (at 640 and 1280) and SAM 3 on subset train,
 each with the 10 raw names and with plain nouns. All in fp32, with the box filter production had
-then (NMS 0.5, no nested-box rule).
+then (NMS 0.5, no nested-box rule). The two prompt sets, each prompt mapped to its merged class:
+
+| Merged class | raw (VisDrone's 10 category names) | nouns (8 plain nouns) |
+|---|---|---|
+| person | `pedestrian`, `people` | `person` |
+| vehicle | `car`, `van`, `truck`, `bus` | `car`, `van`, `truck`, `bus` |
+| two-three-wheeler | `bicycle`, `tricycle`, `awning-tricycle`, `motor` | `bicycle`, `motorcycle`, `tricycle` |
+
+A raw prompt names a VisDrone category, so its auto-labels keep that raw category. A noun that
+names none (`person`, `motorcycle`) takes the lowest raw category of its merged class.
 
 **Why:** picks the detector and prompts that the later stages tune. The top mAP50-95 wins, unless
 another detector within the 0.5 pt margin is faster per frame (detector p50 ms); then the faster
-one wins. Prompts are a setting of their detector, not a faster detector.
+one wins.
 
 ```bash
 uv run --env-file .env --with "clip @ git+https://github.com/ultralytics/CLIP.git@7ffa84b3bfa40c42ecc1c77147a855e69cb2dd40" python -m mlops_cv.tuning.autolabel_visdrone_vid.label_eval \
@@ -152,7 +168,7 @@ The person, vehicle and 2-3-wheeler columns are each merged class's mAP50-95. Ma
 confidence floor's candidate (it never selects), and kept / frame counts the boxes left after the
 box filter, above 0.001.
 
-| Trial | mAP50-95 | mAP50 | mAP75 | person | vehicle | 2-3-wheeler | max-F1 conf | kept / frame | detector p50 ms |
+| Trial | mAP50-95 | mAP50 | mAP75 | person AP50-95 | vehicle AP50-95 | 2-3-wheeler AP50-95 | max-F1 conf | kept / frame | detector p50 ms |
 |---|---|---|---|---|---|---|---|---|---|
 | **sam3-raw** | 25.0 | 59.5 | 17.0 | 16.9 | 41.2 | 16.8 | 0.594 | 146 | 1594 |
 | sam3-nouns | 24.7 | 58.5 | 16.9 | 16.5 | 41.2 | 16.3 | 0.558 | 160 | 1424 |
@@ -195,7 +211,7 @@ uv run --env-file .env python -m mlops_cv.tuning.autolabel_visdrone_vid.label_ev
 
 Columns as in stage 1; the detector p50 ms are stage 1's (1594, 1424 and 323).
 
-| Trial | mAP50-95 | mAP50 | mAP75 | person | vehicle | 2-3-wheeler | max-F1 conf | kept / frame |
+| Trial | mAP50-95 | mAP50 | mAP75 | person AP50-95 | vehicle AP50-95 | 2-3-wheeler AP50-95 | max-F1 conf | kept / frame |
 |---|---|---|---|---|---|---|---|---|
 | sam3-raw-nms-off-nested-off | 25.4 | 60.2 | 17.3 | 17.1 | 41.5 | 17.6 | 0.626 | 271 |
 | sam3-raw-nms0.7-nested-off | 25.4 | 60.6 | 17.1 | 17.3 | 41.3 | 17.5 | 0.596 | 179 |
@@ -266,8 +282,7 @@ uv run --env-file .env python -m mlops_cv.tuning.autolabel_visdrone_vid.label_ev
 **What:** each detector's winner so far (gdino-b-raw + NMS off, sam3-raw + NMS 0.5) in fp16,
 on slices plus the full frame at zoom 1.25, merged by the edge rule or the contained merge (a
 CPU rescore of the same passes). The untiled rows are the fp16 check's. Zoom 2 runs only if a
-zoom 1.25 row beats its untiled row by 0.5 pt (Taras; this replaced "if SAM 3 at 1.25 beats
-GDINO-B's best tiled row").
+zoom 1.25 row beats its untiled row by 0.5 pt.
 
 **Why:** tiling enlarges small objects, and GDINO-B is weak on two-three-wheelers. Each
 detector's best tiled row replaces its untiled row only by 0.5 pt; then the per-model tie rule
@@ -283,7 +298,7 @@ uv run --env-file .env python -m mlops_cv.tuning.autolabel_visdrone_vid.label_ev
   configs/tuning/autolabel-visdrone-vid/tiling.yaml --split train
 ```
 
-| Trial | mAP50-95 | mAP50 | mAP75 | person | vehicle | 2-3-wheeler | max-F1 conf | kept / frame | detector p50 ms |
+| Trial | mAP50-95 | mAP50 | mAP75 | person AP50-95 | vehicle AP50-95 | 2-3-wheeler AP50-95 | max-F1 conf | kept / frame | detector p50 ms |
 |---|---|---|---|---|---|---|---|---|---|
 | **gdino-b-raw-fp16-nms-off** (untiled) | 24.46 | 53.3 | 18.8 | 20.9 | 41.9 | 10.5 | 0.218 | 284 | 200 |
 | gdino-b-raw-nms-off-zoom1.25 | 24.94 | 56.8 | 18.3 | 19.7 | 42.0 | 13.1 | 0.302 | 1041 | 1314 |
@@ -306,20 +321,19 @@ uv run --env-file .env python -m mlops_cv.tuning.autolabel_visdrone_vid.label_ev
 
 **What:** MM-GDINO-L (`openmmlab-community/mm_grounding_dino_large_all`) and LLMDet-L
 (`iSEE-Laboratory/llmdet_large`), Swin-L and neither trained on VisDrone, raw names, NMS off,
-fp16, on every 12th train frame (104 frames, all six frame sizes). A full frame (1333 × 750 in)
+fp16, on every 12th train frame (104 frames). A full frame (1333 × 750 in)
 runs out of 8 GB in transformers' deformable attention (≈ 83k encoder tokens; an 800 × 800 slice
 peaks at 5.1 GB), so they run at zoom 1.25 on 640 px slices without the full-frame pass, beside
 GDINO-B the same way. The other rows rescore stored passes of the same frames.
 
-**Why:** a Large model would replace GDINO-B only by 0.5 pt; a lead of 2 pt over GDINO-B's zoom
-1.25 edge row on the probe would have gone to Taras for a full-frame run.
+**Why:** a Larger model would replace GDINO-B.
 
 ```bash
 uv run --env-file .env python -m mlops_cv.tuning.autolabel_visdrone_vid.label_eval \
   configs/tuning/autolabel-visdrone-vid/gdino-large-probe.yaml --split train --every 12
 ```
 
-| Trial | mAP50-95 | mAP50 | mAP75 | person | vehicle | 2-3-wheeler | max-F1 conf | kept / frame | detector p50 ms |
+| Trial | mAP50-95 | mAP50 | mAP75 | person AP50-95 | vehicle AP50-95 | 2-3-wheeler AP50-95 | max-F1 conf | kept / frame | detector p50 ms |
 |---|---|---|---|---|---|---|---|---|---|
 | gdino-b-raw-nms-off | 24.34 | 53.5 | 18.6 | 20.9 | 42.9 | 9.3 | 0.214 | 285 | 200 |
 | sam3-raw-nms0.5 | 24.66 | 58.1 | 16.9 | 16.7 | 41.8 | 15.5 | 0.609 | 146 | 481 |
@@ -340,15 +354,14 @@ uv run --env-file .env python -m mlops_cv.tuning.autolabel_visdrone_vid.label_ev
 fp16, on val, beside the [YOLO reference rows](#yolo-reference-rows). Each confidence floor is the
 trial's max-F1 confidence on train (fp16 check), and P and R are read at it.
 
-**Why:** val checks that the winner holds on new footage. If SAM 3 beat GDINO-B there by more
-than the 0.5 pt margin, the tie rule would flip, and Taras would decide.
+**Why:** val checks that the winner holds on new footage.
 
 ```bash
 uv run --env-file .env python -m mlops_cv.tuning.autolabel_visdrone_vid.label_eval \
   configs/tuning/autolabel-visdrone-vid/val-check.yaml --split val
 ```
 
-| Trial | val mAP50-95 | mAP50 | mAP75 | person | vehicle | 2-3-wheeler | floor | P / R at floor | kept / frame | detector p50 ms |
+| Trial | val mAP50-95 | mAP50 | mAP75 | person AP50-95 | vehicle AP50-95 | 2-3-wheeler AP50-95 | floor | P / R at floor | kept / frame | detector p50 ms |
 |---|---|---|---|---|---|---|---|---|---|---|
 | **gdino-b-raw-nms-off** | **27.6** | 56.6 | 23.2 | 27.5 | 42.1 | 13.3 | 0.218 | 0.602 / 0.587 | 288 | 205 |
 | sam3-raw-nms0.5 | 23.9 | 55.2 | 17.5 | 21.6 | 38.4 | 11.8 | 0.593 | 0.613 / 0.611 | 158 | 485 |
@@ -379,9 +392,9 @@ labeler (Experiment 1's winner) over the train clips (24,201 frames, 90 min of G
 its defaults with `track_high_thresh` = `new_track_thresh` = the floor (0.218), and each again on
 the ground-truth boxes. boxmot's Hybrid-SORT runs on the same pass from a throwaway script.
 
-**Why:** BoT-SORT is the winner so far; a challenger replaces it only by 0.5 HOTA. ByteTrack (no
-camera-motion compensation) is the baseline and the ground-truth rows the association ceiling;
-neither selects.
+**Why:** BoT-SORT is the winner so far (ultralytics' default tracker). A challenger replaces it
+only by 0.5 HOTA. ByteTrack (no camera-motion compensation) is the baseline and the ground-truth
+rows the association ceiling; neither selects.
 
 ```bash
 uv run --env-file .env --with trackeval==1.3.0 python -m mlops_cv.tuning.autolabel_visdrone_vid.label_eval \
@@ -390,18 +403,14 @@ uv run --env-file .env --with trackeval==1.3.0 python -m mlops_cv.tuning.autolab
 
 Hybrid-SORT (boxmot 26.0.0, kept off the lock) runs on the same stored pass, one process per
 clip, with `det_thresh` at the floor, no ReID (`use_embeddings: false`, as for every tracker
-here) and boxmot's other defaults (ECC motion compensation):
-
-```bash
-uv run --env-file .env --with boxmot==26.0.0 python .scratch/autolabel-training-data/scratch/13_hybridsort.py
-```
+here) and boxmot's other defaults (ECC motion compensation).
 
 HOTA, DetA, AssA and IDF1 are TrackEval's over the 24,201 clip frames. Label mAP50-95 (with mAP50,
 mAP75 and the merged classes) scores each row's tracked boxes on the 1,238 subset frames inside
 the clips (`subset/train/`). Tracker ms is the per-frame update; Hybrid-SORT's was timed with 16
 clips in parallel.
 
-| Trial | HOTA | DetA | AssA | IDF1 | ID switches | label mAP50-95 | mAP50 | mAP75 | person | vehicle | 2-3-wheeler | P / R at floor | tracker ms |
+| Trial | HOTA | DetA | AssA | IDF1 | ID switches | label mAP50-95 | mAP50 | mAP75 | person AP50-95 | vehicle AP50-95 | 2-3-wheeler AP50-95 | P / R at floor | tracker ms |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | **tracktrack** | **48.8** | 39.7 | 61.2 | 60.4 | 5,269 | 21.0 | 44.2 | 17.0 | 18.3 | 37.9 | 6.8 | 0.694 / 0.515 | 14.8 |
 | botsort | 47.1 | 36.2 | 62.3 | 56.7 | 2,924 | 18.3 | 36.0 | 16.0 | 15.4 | 35.3 | 4.2 | 0.772 / 0.408 | 12.9 |
@@ -473,11 +482,9 @@ table.
 
 **What:** the winner, TrackTrack at its defaults (stage 2 changed none), and the runner-up,
 BoT-SORT, on the val clips (7 sequences, 2,846 frames), with stage 1's detector, box filter and
-floor. The first trial stores GDINO-B's pass over the val clips (11 min of GPU,
-`runs/autolabel/detections/val-clips-14c3ada25eefb00f.npz`); Experiment 3 reads it.
+floor. The first trial stores GDINO-B's pass over the val clips (11 min of GPU); Experiment 3 reads it.
 
-**Why:** val checks that the ranking holds on new footage. If BoT-SORT beat TrackTrack there by
-more than the 0.5 margin, Taras would decide.
+**Why:** val checks that the ranking holds on new footage.
 
 ```bash
 uv run --env-file .env --with trackeval==1.3.0 python -m mlops_cv.tuning.autolabel_visdrone_vid.label_eval \
@@ -488,7 +495,7 @@ Label mAP scores the tracked boxes on the 146 subset frames inside the val clips
 The train rows are stage 1's. Val's tracker ms is timed with its 7 clips in parallel, train's in
 one process, so compare it only within one split.
 
-| Trial | Split | HOTA | DetA | AssA | IDF1 | ID switches | label mAP50-95 | mAP50 | mAP75 | person | vehicle | 2-3-wheeler | P / R at floor | tracker ms |
+| Trial | Split | HOTA | DetA | AssA | IDF1 | ID switches | label mAP50-95 | mAP50 | mAP75 | person AP50-95 | vehicle AP50-95 | 2-3-wheeler AP50-95 | P / R at floor | tracker ms |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | **tracktrack** | val | **48.0** | 38.6 | 61.3 | 58.4 | 742 | 25.0 | 49.8 | 21.6 | 25.1 | 39.5 | 10.3 | 0.675 / 0.561 | 37 |
 | botsort | val | 46.7 | 36.9 | 60.7 | 56.3 | 415 | 23.2 | 44.2 | 21.1 | 22.9 | 38.1 | 8.6 | 0.770 / 0.486 | 33 |
@@ -500,7 +507,6 @@ one process, so compare it only within one split.
   the stop rule doesn't fire. It leads on DetA, AssA and IDF1 there; BoT-SORT again keeps fewer ID
   switches and the higher precision at the floor, TrackTrack the higher recall.
 - Label mAP on the subset frames inside the clips: TrackTrack 25.0 against BoT-SORT's 23.2.
-- **TrackTrack's val row is Experiment 3's comparison row**, on the same stored pass.
 - **Defaults:** `AutolabelSettings.tracker` now carries TrackTrack at its defaults, and the
   production labeler tracks each clip (`labeler.yaml`).
 
@@ -510,9 +516,9 @@ clips, 48.0 on the val clips, ≈ 15 ms per frame in a lone process.
 
 ## 3. Video tracker confirmation
 
-**What:** one EdgeTAM run (`yonigozlan/EdgeTAM-hf`, bf16) at K=5, the earlier effort's best key
-interval, on the val clips. Its key frames read GDINO-B's stored val-clip pass through Experiment
-2's box filter; kept boxes at or above the floor 0.218 start or refresh a track, and each mask
+**What:** one EdgeTAM run (`yonigozlan/EdgeTAM-hf`, bf16) at K=5, on the val clips.
+Its key frames read GDINO-B's stored val-clip pass through Experiment 2's box filter;
+kept boxes at or above the floor 0.218 start or refresh a track, and each mask
 leaves only as its tight box. The key-frame rules keep their defaults (`new_iou` 0.3,
 `empty_frames` 25, `unmatched_keys` 2, `duplicate_iou` 0.8, no object cap). TrackTrack at its
 defaults reruns beside it on the same pass, so both rows come from one run.
@@ -531,7 +537,7 @@ EdgeTAM (its stored ms over the key frames, amortised over all frames). TrackTra
 lone-process 14.8 from Experiment 2 stage 1; this run's 32 ms is timed with 7 clips in parallel.
 EdgeTAM tracks the clips one after another in one process.
 
-| Trial | HOTA | DetA | AssA | IDF1 | ID switches | label mAP50-95 | mAP50 | mAP75 | person | vehicle | 2-3-wheeler | P / R at floor | ms per frame (detector + tracker) |
+| Trial | HOTA | DetA | AssA | IDF1 | ID switches | label mAP50-95 | mAP50 | mAP75 | person AP50-95 | vehicle AP50-95 | 2-3-wheeler AP50-95 | P / R at floor | ms per frame (detector + tracker) |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | **tracktrack** | **48.0** | 38.6 | 61.3 | 58.4 | 742 | 25.0 | 49.8 | 21.6 | 25.1 | 39.5 | 10.3 | 0.675 / 0.561 | ≈ 223 (208 + 15) |
 | edgetam-k5 | 38.0 | 29.6 | 51.4 | 42.9 | 1,619 | 17.3 | 39.9 | 12.8 | 17.3 | 30.1 | 4.6 | 0.463 / 0.529 | 463 (42 + 421) |
@@ -544,8 +550,6 @@ EdgeTAM tracks the clips one after another in one process.
   takes 1.2 s per frame.
 - **Label mAP:** EdgeTAM's boxes lose 7.6 pt on the subset frames, and the precision at the
   floor falls from 0.675 to 0.463.
-- The earlier effort's 8 HOTA lead of the box tracker over EdgeTAM K=5 (SAM 3 at floor 0.597)
-  holds with GDINO-B at 0.218.
 
 **Experiment 3:** EdgeTAM at K=5 on GDINO-B's key frames scores 38.0 HOTA on the val clips
 against TrackTrack's 48.0, at ≈ 463 ms per frame against ≈ 223, so the box chain (GDINO-B +
@@ -553,8 +557,7 @@ TrackTrack) is the labeler.
 
 ## 4. YOLO trained on auto-labels
 
-**What:** the final YOLO tuning recipe's s (`stage2-s1280`: yolo26s, imgsz 1280, 30 epochs, batch
-4, seed 0) retrained with only its train labels swapped for the labeler's. `autolabels.py` tracks
+**What:** the final YOLO tuning recipe's s (`stage2-s1280`: yolo26s, imgsz 1280, 30 epochs, seed 0) retrained with only its train labels swapped for the labeler's. `autolabels.py` tracks
 GDINO-B's stored train-clip pass with TrackTrack as `label_clip` does, keeps the subset's 1,238
 train frames and the auto-labels at the floor 0.218, and drops 6,477 of them by VisDrone's rule.
 It writes `images/train-autolabels` (labels alongside) through ingestion's converter. Val and test
@@ -584,7 +587,7 @@ auto-labels):
 
 Under VisDrone's rule (the ground-truth val row reproduces the reference row):
 
-| Trained on | Split | mAP50-95 | mAP50 | mAP75 | person | vehicle | two-three-wheeler | mAP50-95_small |
+| Trained on | Split | mAP50-95 | mAP50 | mAP75 | person AP50-95 | vehicle AP50-95 | 2-3-wheeler AP50-95 | mAP50-95_small |
 |---|---|---|---|---|---|---|---|---|
 | auto-labels | val | 27.2 | 56.3 | 23.5 | 25.3 | 40.9 | 15.4 | 11.2 |
 | ground truth | val | **31.1** | 61.5 | 27.2 | 27.9 | 42.4 | 23.0 | 13.7 |

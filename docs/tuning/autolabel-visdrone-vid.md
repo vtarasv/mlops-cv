@@ -111,8 +111,7 @@ docker exec fiftyone python /opt/load_trial.py \
 ## YOLO reference rows
 
 YOLO26 trained on ground truth, on the scale that YOLO trained on auto-labels reads: the final
-YOLO tuning recipe's `stage2-{n,s,m}1280` trials (`best.pt` from runs `4131a712`, `8567958a`,
-`e8715d0c`), predicting val once at imgsz 1280 with val's floor and cap. The same predictions are
+YOLO tuning recipe's `stage2-{n,s,m}1280` trials (their `best.pt`), predicting val once at imgsz 1280 with val's floor and cap. The same predictions are
 scored under both rules. The repo-rule column is the trial's `model.val` score, with this
 predict-path score after the slash; the 0.1–0.3 pt gap is the padding difference described in
 [YOLO26 tuning](yolo26-visdrone-vid.md#10-other-ways-to-run-the-same-weights-the-second-head-and-sahi).
@@ -153,20 +152,20 @@ The person, vehicle and 2-3-wheeler columns are each merged class's mAP50-95. Ma
 confidence floor's candidate (it never selects), and kept / frame counts the boxes left after the
 box filter, above 0.001.
 
-| Trial | Run | mAP50-95 | mAP50 | mAP75 | person | vehicle | 2-3-wheeler | max-F1 conf | kept / frame | detector p50 ms |
-|---|---|---|---|---|---|---|---|---|---|---|
-| **sam3-raw** | 95f43253 | 25.0 | 59.5 | 17.0 | 16.9 | 41.2 | 16.8 | 0.594 | 146 | 1594 |
-| sam3-nouns | 836be2c3 | 24.7 | 58.5 | 16.9 | 16.5 | 41.2 | 16.3 | 0.558 | 160 | 1424 |
-| gdino-b-raw | cb644ea7 | 23.9 | 52.7 | 18.1 | 20.4 | 41.7 | 9.5 | 0.200 | 202 | 323 |
-| gdino-t-raw | d2418a8c | 22.5 | 50.4 | 17.3 | 15.3 | 41.1 | 11.2 | 0.189 | 204 | 230 |
-| gdino-t-nouns | 4444881a | 21.5 | 50.3 | 15.6 | 13.9 | 39.0 | 11.7 | 0.282 | 217 | 231 |
-| gdino-b-nouns | b2d0fcf6 | 19.4 | 48.7 | 12.2 | 13.5 | 34.4 | 10.4 | 0.261 | 216 | 322 |
-| yoloe-26l-1280-nouns | 63a05ac0 | 19.1 | 48.4 | 11.9 | 13.5 | 34.7 | 9.1 | 0.212 | 178 | 54 |
-| yoloe-26l-1280-raw | 41999bef | 18.7 | 47.0 | 11.7 | 12.9 | 34.7 | 8.5 | 0.054 | 170 | 53 |
-| owlv2-b16-nouns | cf4a2348 | 16.9 | 43.7 | 10.5 | 7.9 | 34.7 | 8.1 | 0.271 | 240 | 202 |
-| yoloe-26l-nouns | f8cba2cf | 16.4 | 40.3 | 11.0 | 12.4 | 31.1 | 5.7 | 0.123 | 171 | 18 |
-| owlv2-b16-raw | d59f2e37 | 15.9 | 40.1 | 10.4 | 6.7 | 34.6 | 6.4 | 0.281 | 242 | 208 |
-| yoloe-26l-raw | 45ef672a | 15.5 | 37.7 | 10.6 | 9.7 | 31.0 | 5.8 | 0.053 | 158 | 18 |
+| Trial | mAP50-95 | mAP50 | mAP75 | person | vehicle | 2-3-wheeler | max-F1 conf | kept / frame | detector p50 ms |
+|---|---|---|---|---|---|---|---|---|---|
+| **sam3-raw** | 25.0 | 59.5 | 17.0 | 16.9 | 41.2 | 16.8 | 0.594 | 146 | 1594 |
+| sam3-nouns | 24.7 | 58.5 | 16.9 | 16.5 | 41.2 | 16.3 | 0.558 | 160 | 1424 |
+| gdino-b-raw | 23.9 | 52.7 | 18.1 | 20.4 | 41.7 | 9.5 | 0.200 | 202 | 323 |
+| gdino-t-raw | 22.5 | 50.4 | 17.3 | 15.3 | 41.1 | 11.2 | 0.189 | 204 | 230 |
+| gdino-t-nouns | 21.5 | 50.3 | 15.6 | 13.9 | 39.0 | 11.7 | 0.282 | 217 | 231 |
+| gdino-b-nouns | 19.4 | 48.7 | 12.2 | 13.5 | 34.4 | 10.4 | 0.261 | 216 | 322 |
+| yoloe-26l-1280-nouns | 19.1 | 48.4 | 11.9 | 13.5 | 34.7 | 9.1 | 0.212 | 178 | 54 |
+| yoloe-26l-1280-raw | 18.7 | 47.0 | 11.7 | 12.9 | 34.7 | 8.5 | 0.054 | 170 | 53 |
+| owlv2-b16-nouns | 16.9 | 43.7 | 10.5 | 7.9 | 34.7 | 8.1 | 0.271 | 240 | 202 |
+| yoloe-26l-nouns | 16.4 | 40.3 | 11.0 | 12.4 | 31.1 | 5.7 | 0.123 | 171 | 18 |
+| owlv2-b16-raw | 15.9 | 40.1 | 10.4 | 6.7 | 34.6 | 6.4 | 0.281 | 242 | 208 |
+| yoloe-26l-raw | 15.5 | 37.7 | 10.6 | 9.7 | 31.0 | 5.8 | 0.053 | 158 | 18 |
 
 **Result:**
 - **sam3-raw wins.** SAM 3 leads on both prompt sets; nouns are 0.3 pt behind and 11% faster
@@ -196,32 +195,32 @@ uv run --env-file .env python -m mlops_cv.tuning.autolabel_visdrone_vid.label_ev
 
 Columns as in stage 1; the detector p50 ms are stage 1's (1594, 1424 and 323).
 
-| Trial | Run | mAP50-95 | mAP50 | mAP75 | person | vehicle | 2-3-wheeler | max-F1 conf | kept / frame |
-|---|---|---|---|---|---|---|---|---|---|
-| sam3-raw-nms-off-nested-off | 34f11df0 | 25.4 | 60.2 | 17.3 | 17.1 | 41.5 | 17.6 | 0.626 | 271 |
-| sam3-raw-nms0.7-nested-off | 5a0d4c3e | 25.4 | 60.6 | 17.1 | 17.3 | 41.3 | 17.5 | 0.596 | 179 |
-| sam3-raw-nms0.6-nested-off | aeaa0353 | 25.2 | 60.1 | 17.0 | 17.1 | 41.2 | 17.2 | 0.595 | 162 |
-| **sam3-raw-nms0.5-nested-off** | 76028050 | 25.0 | 59.5 | 17.0 | 16.9 | 41.2 | 16.8 | 0.594 | 146 |
-| sam3-raw-nms0.5-outer | 7675e2b0 | 24.1 | 57.0 | 16.7 | 15.0 | 40.9 | 16.5 | 0.580 | 114 |
-| sam3-raw-nms0.6-outer | a0037ff4 | 24.0 | 56.7 | 16.6 | 14.7 | 40.9 | 16.5 | 0.578 | 115 |
-| sam3-raw-nms0.7-outer | 1c0c5a9a | 23.9 | 56.2 | 16.6 | 14.2 | 40.9 | 16.5 | 0.574 | 115 |
-| sam3-raw-nms-off-outer | bb435b1c | 20.9 | 49.3 | 14.6 | 11.7 | 38.1 | 13.0 | 0.336 | 114 |
-| sam3-nouns-nms-off-nested-off | 5968a1a9 | 25.3 | 60.0 | 17.3 | 16.8 | 41.6 | 17.5 | 0.580 | 277 |
-| sam3-nouns-nms0.7-nested-off | a504c522 | 25.1 | 59.8 | 17.1 | 16.8 | 41.5 | 17.1 | 0.559 | 197 |
-| sam3-nouns-nms0.6-nested-off | c45591fe | 25.0 | 59.3 | 17.0 | 16.7 | 41.4 | 16.8 | 0.559 | 179 |
-| sam3-nouns-nms0.5-nested-off | 24bb3e60 | 24.7 | 58.5 | 16.9 | 16.5 | 41.2 | 16.3 | 0.558 | 160 |
-| sam3-nouns-nms0.5-outer | 557c4cdd | 24.0 | 56.5 | 16.7 | 15.3 | 40.9 | 15.8 | 0.543 | 124 |
-| sam3-nouns-nms0.6-outer | ab74b573 | 23.9 | 56.2 | 16.7 | 15.0 | 40.9 | 15.9 | 0.539 | 127 |
-| sam3-nouns-nms0.7-outer | 2cb5ff90 | 23.8 | 55.6 | 16.7 | 14.6 | 40.8 | 15.9 | 0.533 | 127 |
-| sam3-nouns-nms-off-outer | 27ce96fa | 20.8 | 48.9 | 14.3 | 13.6 | 37.1 | 11.6 | 0.388 | 126 |
-| gdino-b-raw-nms-off-nested-off | 9666fdb5 | 24.5 | 53.4 | 18.7 | 20.9 | 42.0 | 10.5 | 0.218 | 284 |
-| gdino-b-raw-nms0.7-nested-off | 986bc038 | 24.4 | 53.8 | 18.4 | 20.8 | 42.1 | 10.3 | 0.206 | 244 |
-| gdino-b-raw-nms0.6-nested-off | feb2cd0c | 24.2 | 53.5 | 18.2 | 20.7 | 41.9 | 10.0 | 0.204 | 226 |
-| gdino-b-raw-nms0.5-nested-off | 7dc32cd1 | 23.9 | 52.7 | 18.1 | 20.4 | 41.7 | 9.5 | 0.200 | 202 |
-| gdino-b-raw-nms0.5-outer | 272366f9 | 11.4 | 23.3 | 9.8 | 6.0 | 21.7 | 6.6 | 0.153 | 68 |
-| gdino-b-raw-nms0.6-outer | 78dbf6f1 | 10.7 | 21.7 | 9.3 | 5.1 | 20.9 | 6.0 | 0.143 | 66 |
-| gdino-b-raw-nms0.7-outer | e302a682 | 10.1 | 20.4 | 9.0 | 4.6 | 20.6 | 5.2 | 0.134 | 65 |
-| gdino-b-raw-nms-off-outer | e02e2159 | 8.9 | 18.0 | 8.1 | 3.8 | 19.1 | 3.9 | 0.104 | 64 |
+| Trial | mAP50-95 | mAP50 | mAP75 | person | vehicle | 2-3-wheeler | max-F1 conf | kept / frame |
+|---|---|---|---|---|---|---|---|---|
+| sam3-raw-nms-off-nested-off | 25.4 | 60.2 | 17.3 | 17.1 | 41.5 | 17.6 | 0.626 | 271 |
+| sam3-raw-nms0.7-nested-off | 25.4 | 60.6 | 17.1 | 17.3 | 41.3 | 17.5 | 0.596 | 179 |
+| sam3-raw-nms0.6-nested-off | 25.2 | 60.1 | 17.0 | 17.1 | 41.2 | 17.2 | 0.595 | 162 |
+| **sam3-raw-nms0.5-nested-off** | 25.0 | 59.5 | 17.0 | 16.9 | 41.2 | 16.8 | 0.594 | 146 |
+| sam3-raw-nms0.5-outer | 24.1 | 57.0 | 16.7 | 15.0 | 40.9 | 16.5 | 0.580 | 114 |
+| sam3-raw-nms0.6-outer | 24.0 | 56.7 | 16.6 | 14.7 | 40.9 | 16.5 | 0.578 | 115 |
+| sam3-raw-nms0.7-outer | 23.9 | 56.2 | 16.6 | 14.2 | 40.9 | 16.5 | 0.574 | 115 |
+| sam3-raw-nms-off-outer | 20.9 | 49.3 | 14.6 | 11.7 | 38.1 | 13.0 | 0.336 | 114 |
+| sam3-nouns-nms-off-nested-off | 25.3 | 60.0 | 17.3 | 16.8 | 41.6 | 17.5 | 0.580 | 277 |
+| sam3-nouns-nms0.7-nested-off | 25.1 | 59.8 | 17.1 | 16.8 | 41.5 | 17.1 | 0.559 | 197 |
+| sam3-nouns-nms0.6-nested-off | 25.0 | 59.3 | 17.0 | 16.7 | 41.4 | 16.8 | 0.559 | 179 |
+| sam3-nouns-nms0.5-nested-off | 24.7 | 58.5 | 16.9 | 16.5 | 41.2 | 16.3 | 0.558 | 160 |
+| sam3-nouns-nms0.5-outer | 24.0 | 56.5 | 16.7 | 15.3 | 40.9 | 15.8 | 0.543 | 124 |
+| sam3-nouns-nms0.6-outer | 23.9 | 56.2 | 16.7 | 15.0 | 40.9 | 15.9 | 0.539 | 127 |
+| sam3-nouns-nms0.7-outer | 23.8 | 55.6 | 16.7 | 14.6 | 40.8 | 15.9 | 0.533 | 127 |
+| sam3-nouns-nms-off-outer | 20.8 | 48.9 | 14.3 | 13.6 | 37.1 | 11.6 | 0.388 | 126 |
+| gdino-b-raw-nms-off-nested-off | 24.5 | 53.4 | 18.7 | 20.9 | 42.0 | 10.5 | 0.218 | 284 |
+| gdino-b-raw-nms0.7-nested-off | 24.4 | 53.8 | 18.4 | 20.8 | 42.1 | 10.3 | 0.206 | 244 |
+| gdino-b-raw-nms0.6-nested-off | 24.2 | 53.5 | 18.2 | 20.7 | 41.9 | 10.0 | 0.204 | 226 |
+| gdino-b-raw-nms0.5-nested-off | 23.9 | 52.7 | 18.1 | 20.4 | 41.7 | 9.5 | 0.200 | 202 |
+| gdino-b-raw-nms0.5-outer | 11.4 | 23.3 | 9.8 | 6.0 | 21.7 | 6.6 | 0.153 | 68 |
+| gdino-b-raw-nms0.6-outer | 10.7 | 21.7 | 9.3 | 5.1 | 20.9 | 6.0 | 0.143 | 66 |
+| gdino-b-raw-nms0.7-outer | 10.1 | 20.4 | 9.0 | 4.6 | 20.6 | 5.2 | 0.134 | 65 |
+| gdino-b-raw-nms-off-outer | 8.9 | 18.0 | 8.1 | 3.8 | 19.1 | 3.9 | 0.104 | 64 |
 
 **Result:**
 - Without the nested-box rule, looser NMS scores higher on every detector: NMS off tops each
@@ -247,14 +246,14 @@ uv run --env-file .env python -m mlops_cv.tuning.autolabel_visdrone_vid.label_ev
   configs/tuning/autolabel-visdrone-vid/fp16.yaml --split train
 ```
 
-| Trial | Run | fp32 mAP50-95 | fp16 mAP50-95 | mAP50 | mAP75 | max-F1 conf | kept / frame | detector p50 ms (fp32 → fp16) |
-|---|---|---|---|---|---|---|---|---|
-| sam3-raw-fp16-nms0.5 | 988c3622 | 24.97 | 24.86 | 59.2 | 16.8 | 0.593 | 145 | 1594 → 481 |
-| sam3-raw-fp16-nms-off | c5a57eee | 25.38 | 25.28 | 59.8 | 17.2 | 0.625 | 269 | 1594 → 481 |
-| sam3-nouns-fp16-nms0.5 | 50ea4653 | 24.68 | 24.60 | 58.3 | 16.9 | 0.559 | 160 | 1424 → 429 |
-| sam3-nouns-fp16-nms-off | 189cda7e | 25.28 | 25.23 | 59.9 | 17.3 | 0.580 | 275 | 1424 → 429 |
-| gdino-b-raw-fp16-nms0.5 | d21e3724 | 23.89 | 23.89 | 52.7 | 18.1 | 0.200 | 202 | 323 → 200 |
-| **gdino-b-raw-fp16-nms-off** | d2622ccb | 24.47 | 24.46 | 53.3 | 18.7 | 0.218 | 284 | 323 → 200 |
+| Trial | fp32 mAP50-95 | fp16 mAP50-95 | mAP50 | mAP75 | max-F1 conf | kept / frame | detector p50 ms (fp32 → fp16) |
+|---|---|---|---|---|---|---|---|
+| sam3-raw-fp16-nms0.5 | 24.97 | 24.86 | 59.2 | 16.8 | 0.593 | 145 | 1594 → 481 |
+| sam3-raw-fp16-nms-off | 25.38 | 25.28 | 59.8 | 17.2 | 0.625 | 269 | 1594 → 481 |
+| sam3-nouns-fp16-nms0.5 | 24.68 | 24.60 | 58.3 | 16.9 | 0.559 | 160 | 1424 → 429 |
+| sam3-nouns-fp16-nms-off | 25.28 | 25.23 | 59.9 | 17.3 | 0.580 | 275 | 1424 → 429 |
+| gdino-b-raw-fp16-nms0.5 | 23.89 | 23.89 | 52.7 | 18.1 | 0.200 | 202 | 323 → 200 |
+| **gdino-b-raw-fp16-nms-off** | 24.47 | 24.46 | 53.3 | 18.7 | 0.218 | 284 | 323 → 200 |
 
 **Result:**
 - fp16 costs at most 0.11 pt and cuts SAM 3's time 3.3×, GDINO-B's 1.6×. Later stages run fp16.
@@ -284,14 +283,14 @@ uv run --env-file .env python -m mlops_cv.tuning.autolabel_visdrone_vid.label_ev
   configs/tuning/autolabel-visdrone-vid/tiling.yaml --split train
 ```
 
-| Trial | Run | mAP50-95 | mAP50 | mAP75 | person | vehicle | 2-3-wheeler | max-F1 conf | kept / frame | detector p50 ms |
-|---|---|---|---|---|---|---|---|---|---|---|
-| **gdino-b-raw-fp16-nms-off** (untiled) | d2622ccb | 24.46 | 53.3 | 18.8 | 20.9 | 41.9 | 10.5 | 0.218 | 284 | 200 |
-| gdino-b-raw-nms-off-zoom1.25 | 1ef91425 | 24.94 | 56.8 | 18.3 | 19.7 | 42.0 | 13.1 | 0.302 | 1041 | 1314 |
-| gdino-b-raw-nms-off-zoom1.25-contained | 42bafc40 | 23.24 | 53.7 | 16.6 | 19.3 | 37.9 | 12.5 | 0.303 | 1024 | 1314 |
-| sam3-raw-fp16-nms0.5 (untiled) | 988c3622 | 24.86 | 59.2 | 16.8 | 16.8 | 41.1 | 16.7 | 0.593 | 145 | 481 |
-| sam3-raw-nms0.5-zoom1.25 | c9349b90 | 25.24 | 59.9 | 17.5 | 16.8 | 42.3 | 16.6 | 0.721 | 480 | 3388 |
-| sam3-raw-nms0.5-zoom1.25-contained | 9cca1650 | 24.69 | 59.0 | 16.9 | 16.6 | 41.2 | 16.3 | 0.723 | 482 | 3388 |
+| Trial | mAP50-95 | mAP50 | mAP75 | person | vehicle | 2-3-wheeler | max-F1 conf | kept / frame | detector p50 ms |
+|---|---|---|---|---|---|---|---|---|---|
+| **gdino-b-raw-fp16-nms-off** (untiled) | 24.46 | 53.3 | 18.8 | 20.9 | 41.9 | 10.5 | 0.218 | 284 | 200 |
+| gdino-b-raw-nms-off-zoom1.25 | 24.94 | 56.8 | 18.3 | 19.7 | 42.0 | 13.1 | 0.302 | 1041 | 1314 |
+| gdino-b-raw-nms-off-zoom1.25-contained | 23.24 | 53.7 | 16.6 | 19.3 | 37.9 | 12.5 | 0.303 | 1024 | 1314 |
+| sam3-raw-fp16-nms0.5 (untiled) | 24.86 | 59.2 | 16.8 | 16.8 | 41.1 | 16.7 | 0.593 | 145 | 481 |
+| sam3-raw-nms0.5-zoom1.25 | 25.24 | 59.9 | 17.5 | 16.8 | 42.3 | 16.6 | 0.721 | 480 | 3388 |
+| sam3-raw-nms0.5-zoom1.25-contained | 24.69 | 59.0 | 16.9 | 16.6 | 41.2 | 16.3 | 0.723 | 482 | 3388 |
 
 **Result:**
 - **No tiled row clears the margin:** GDINO-B at zoom 1.25 is +0.48 (two-three-wheelers +2.6,
@@ -320,14 +319,14 @@ uv run --env-file .env python -m mlops_cv.tuning.autolabel_visdrone_vid.label_ev
   configs/tuning/autolabel-visdrone-vid/gdino-large-probe.yaml --split train --every 12
 ```
 
-| Trial | Run | mAP50-95 | mAP50 | mAP75 | person | vehicle | 2-3-wheeler | max-F1 conf | kept / frame | detector p50 ms |
-|---|---|---|---|---|---|---|---|---|---|---|
-| gdino-b-raw-nms-off | a4029189 | 24.34 | 53.5 | 18.6 | 20.9 | 42.9 | 9.3 | 0.214 | 285 | 200 |
-| sam3-raw-nms0.5 | a4592037 | 24.66 | 58.1 | 16.9 | 16.7 | 41.8 | 15.5 | 0.609 | 146 | 481 |
-| gdino-b-raw-nms-off-zoom1.25 | 907febee | 24.87 | 57.0 | 18.0 | 19.3 | 42.8 | 12.5 | 0.309 | 1022 | 1316 |
-| gdino-b-raw-nms-off-zoom1.25-slices | d0520775 | 24.72 | 56.6 | 17.8 | 19.2 | 42.5 | 12.4 | 0.307 | 971 | 1113 |
-| mm-gdino-l-raw-nms-off-zoom1.25-slices | 50b42ecf | 22.76 | 54.4 | 15.7 | 16.6 | 40.2 | 11.4 | 0.335 | 1062 | 4035 |
-| llmdet-l-raw-nms-off-zoom1.25-slices | 8413d27b | 21.74 | 52.0 | 15.1 | 16.0 | 39.7 | 9.5 | 0.352 | 1025 | 4037 |
+| Trial | mAP50-95 | mAP50 | mAP75 | person | vehicle | 2-3-wheeler | max-F1 conf | kept / frame | detector p50 ms |
+|---|---|---|---|---|---|---|---|---|---|
+| gdino-b-raw-nms-off | 24.34 | 53.5 | 18.6 | 20.9 | 42.9 | 9.3 | 0.214 | 285 | 200 |
+| sam3-raw-nms0.5 | 24.66 | 58.1 | 16.9 | 16.7 | 41.8 | 15.5 | 0.609 | 146 | 481 |
+| gdino-b-raw-nms-off-zoom1.25 | 24.87 | 57.0 | 18.0 | 19.3 | 42.8 | 12.5 | 0.309 | 1022 | 1316 |
+| gdino-b-raw-nms-off-zoom1.25-slices | 24.72 | 56.6 | 17.8 | 19.2 | 42.5 | 12.4 | 0.307 | 971 | 1113 |
+| mm-gdino-l-raw-nms-off-zoom1.25-slices | 22.76 | 54.4 | 15.7 | 16.6 | 40.2 | 11.4 | 0.335 | 1062 | 4035 |
+| llmdet-l-raw-nms-off-zoom1.25-slices | 21.74 | 52.0 | 15.1 | 16.0 | 39.7 | 9.5 | 0.352 | 1025 | 4037 |
 
 **Result:**
 - **Both Large models trail GDINO-B's zoom 1.25 edge row**, by 2.1 and 3.1 pt (2.0 and 3.0 on
@@ -349,13 +348,13 @@ uv run --env-file .env python -m mlops_cv.tuning.autolabel_visdrone_vid.label_ev
   configs/tuning/autolabel-visdrone-vid/val-check.yaml --split val
 ```
 
-| Trial | Run | val mAP50-95 | mAP50 | mAP75 | person | vehicle | 2-3-wheeler | floor | P / R at floor | kept / frame | detector p50 ms |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| **gdino-b-raw-nms-off** | ebac9e4e | **27.6** | 56.6 | 23.2 | 27.5 | 42.1 | 13.3 | 0.218 | 0.602 / 0.587 | 288 | 205 |
-| sam3-raw-nms0.5 | 18dcf036 | 23.9 | 55.2 | 17.5 | 21.6 | 38.4 | 11.8 | 0.593 | 0.613 / 0.611 | 158 | 485 |
-| yolo26n (ground truth) | | 29.0 | 57.0 | 25.9 | | | | | | | |
-| yolo26s (ground truth) | | 31.1 | 61.5 | 27.2 | | | | | | | |
-| yolo26m (ground truth) | | 33.5 | 66.3 | 29.3 | | | | | | | |
+| Trial | val mAP50-95 | mAP50 | mAP75 | person | vehicle | 2-3-wheeler | floor | P / R at floor | kept / frame | detector p50 ms |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **gdino-b-raw-nms-off** | **27.6** | 56.6 | 23.2 | 27.5 | 42.1 | 13.3 | 0.218 | 0.602 / 0.587 | 288 | 205 |
+| sam3-raw-nms0.5 | 23.9 | 55.2 | 17.5 | 21.6 | 38.4 | 11.8 | 0.593 | 0.613 / 0.611 | 158 | 485 |
+| yolo26n (ground truth) | 29.0 | 57.0 | 25.9 | | | | | | | |
+| yolo26s (ground truth) | 31.1 | 61.5 | 27.2 | | | | | | | |
+| yolo26m (ground truth) | 33.5 | 66.3 | 29.3 | | | | | | | |
 
 **Result:**
 - **GDINO-B holds on val:** 27.6 against SAM 3's 23.9, 3.7 pt ahead where train had SAM 3
@@ -402,17 +401,17 @@ mAP75 and the merged classes) scores each row's tracked boxes on the 1,238 subse
 the clips (`subset/train/`). Tracker ms is the per-frame update; Hybrid-SORT's was timed with 16
 clips in parallel.
 
-| Trial | Run | HOTA | DetA | AssA | IDF1 | ID switches | label mAP50-95 | mAP50 | mAP75 | person | vehicle | 2-3-wheeler | P / R at floor | tracker ms |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| **tracktrack** | da793ee4 | **48.8** | 39.7 | 61.2 | 60.4 | 5,269 | 21.0 | 44.2 | 17.0 | 18.3 | 37.9 | 6.8 | 0.694 / 0.515 | 14.8 |
-| botsort | dce52119 | 47.1 | 36.2 | 62.3 | 56.7 | 2,924 | 18.3 | 36.0 | 16.0 | 15.4 | 35.3 | 4.2 | 0.772 / 0.408 | 12.9 |
-| hybridsort | 8ac4f0f0 | 45.2 | 38.1 | 55.1 | 55.0 | 13,437 | 20.5 | 43.1 | 16.5 | 17.2 | 37.1 | 7.2 | 0.629 / 0.539 | 81 |
-| bytetrack (baseline) | 8616beee | 42.5 | 33.8 | 54.6 | 48.6 | 5,696 | 17.2 | 33.7 | 15.0 | 14.0 | 33.9 | 3.6 | 0.785 / 0.371 | 2.0 |
-| detector, untracked, at the floor | 3e65b294 | | | | | | 21.6 | 45.5 | 17.2 | 19.1 | 38.3 | 7.4 | 0.627 / 0.540 | |
-| detector, untracked, down to 0.001 | 3e65b294 | | | | | | 24.5 | 53.3 | 18.8 | 20.9 | 41.9 | 10.5 | | |
-| botsort-gt (ground truth) | 769f8b93 | 96.4 | 99.3 | 93.6 | 95.4 | 1,841 | 98.8 | | | | | | 1.000 / 0.987 | 12.4 |
-| tracktrack-gt (ground truth) | ce2695ed | 93.2 | 96.7 | 89.8 | 92.3 | 3,173 | 95.8 | | | | | | 1.000 / 0.958 | 14.2 |
-| bytetrack-gt (ground truth) | 9c72c41f | 91.4 | 98.5 | 84.8 | 88.6 | 5,525 | 97.8 | | | | | | 1.000 / 0.978 | 1.5 |
+| Trial | HOTA | DetA | AssA | IDF1 | ID switches | label mAP50-95 | mAP50 | mAP75 | person | vehicle | 2-3-wheeler | P / R at floor | tracker ms |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| **tracktrack** | **48.8** | 39.7 | 61.2 | 60.4 | 5,269 | 21.0 | 44.2 | 17.0 | 18.3 | 37.9 | 6.8 | 0.694 / 0.515 | 14.8 |
+| botsort | 47.1 | 36.2 | 62.3 | 56.7 | 2,924 | 18.3 | 36.0 | 16.0 | 15.4 | 35.3 | 4.2 | 0.772 / 0.408 | 12.9 |
+| hybridsort | 45.2 | 38.1 | 55.1 | 55.0 | 13,437 | 20.5 | 43.1 | 16.5 | 17.2 | 37.1 | 7.2 | 0.629 / 0.539 | 81 |
+| bytetrack (baseline) | 42.5 | 33.8 | 54.6 | 48.6 | 5,696 | 17.2 | 33.7 | 15.0 | 14.0 | 33.9 | 3.6 | 0.785 / 0.371 | 2.0 |
+| detector, untracked, at the floor | | | | | | 21.6 | 45.5 | 17.2 | 19.1 | 38.3 | 7.4 | 0.627 / 0.540 | |
+| detector, untracked, down to 0.001 | | | | | | 24.5 | 53.3 | 18.8 | 20.9 | 41.9 | 10.5 | | |
+| botsort-gt (ground truth) | 96.4 | 99.3 | 93.6 | 95.4 | 1,841 | 98.8 | | | | | | 1.000 / 0.987 | 12.4 |
+| tracktrack-gt (ground truth) | 93.2 | 96.7 | 89.8 | 92.3 | 3,173 | 95.8 | | | | | | 1.000 / 0.958 | 14.2 |
+| bytetrack-gt (ground truth) | 91.4 | 98.5 | 84.8 | 88.6 | 5,525 | 97.8 | | | | | | 1.000 / 0.978 | 1.5 |
 
 **Result:**
 - **TrackTrack wins:** +1.7 HOTA over BoT-SORT, beyond the 0.5 margin, from detection (DetA
@@ -445,21 +444,21 @@ uv run --env-file .env --with trackeval==1.3.0 python -m mlops_cv.tuning.autolab
   configs/tuning/autolabel-visdrone-vid/tracker-settings.yaml --split train
 ```
 
-The defaults row reproduces stage 1's `tracktrack` (da793ee4) on every score, with the clips
+The defaults row reproduces stage 1's `tracktrack` on every score, with the clips
 tracked in parallel. Tracker ms is timed with 16 clips in parallel, mostly on the CPU's
 efficiency cores: about 3× a lone process (14.8 ms in stage 1), so compare it only within this
 table.
 
-| Trial | Run | HOTA | DetA | AssA | IDF1 | ID switches | label mAP50-95 | mAP50 | mAP75 | P / R at floor | tracker ms |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| **defaults** | c4dc728f | **48.8** | 39.7 | 61.2 | 60.4 | 5,269 | 21.0 | 44.2 | 17.0 | 0.694 / 0.515 | 47 |
-| `track_low_thresh` 0.05 | 54f0f8d6 | 47.5 | 38.0 | 60.8 | 57.7 | 6,271 | 21.7 | 46.1 | 17.3 | 0.684 / 0.504 | 56 |
-| `track_low_thresh` 0.1 | 76fb4356 | 48.1 | 38.7 | 61.1 | 58.7 | 6,005 | 21.8 | 46.1 | 17.4 | 0.686 / 0.507 | 53 |
-| `track_low_thresh` 0.2 | a1080845 | 48.9 | 39.9 | 61.3 | 60.5 | 5,194 | 21.3 | 44.8 | 17.0 | 0.693 / 0.514 | 49 |
-| `match_thresh` 0.8 | 930285be | 49.0 | 39.9 | 61.6 | 60.9 | 5,026 | 21.1 | 44.1 | 17.0 | 0.689 / 0.521 | 47 |
-| `match_thresh` 0.9 | f320b6fa | 49.0 | 39.8 | 61.6 | 61.1 | 5,131 | 21.2 | 44.4 | 17.0 | 0.683 / 0.525 | 48 |
-| `track_buffer` 60 | 0f9676d6 | 48.7 | 39.7 | 61.2 | 60.4 | 5,364 | 21.0 | 44.2 | 17.0 | 0.693 / 0.515 | 49 |
-| `gmc_method` orb | 7d5694af | 48.7 | 39.7 | 61.1 | 60.3 | 5,300 | 21.0 | 44.0 | 17.1 | 0.695 / 0.514 | 450 |
+| Trial | HOTA | DetA | AssA | IDF1 | ID switches | label mAP50-95 | mAP50 | mAP75 | P / R at floor | tracker ms |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **defaults** | **48.8** | 39.7 | 61.2 | 60.4 | 5,269 | 21.0 | 44.2 | 17.0 | 0.694 / 0.515 | 47 |
+| `track_low_thresh` 0.05 | 47.5 | 38.0 | 60.8 | 57.7 | 6,271 | 21.7 | 46.1 | 17.3 | 0.684 / 0.504 | 56 |
+| `track_low_thresh` 0.1 | 48.1 | 38.7 | 61.1 | 58.7 | 6,005 | 21.8 | 46.1 | 17.4 | 0.686 / 0.507 | 53 |
+| `track_low_thresh` 0.2 | 48.9 | 39.9 | 61.3 | 60.5 | 5,194 | 21.3 | 44.8 | 17.0 | 0.693 / 0.514 | 49 |
+| `match_thresh` 0.8 | 49.0 | 39.9 | 61.6 | 60.9 | 5,026 | 21.1 | 44.1 | 17.0 | 0.689 / 0.521 | 47 |
+| `match_thresh` 0.9 | 49.0 | 39.8 | 61.6 | 61.1 | 5,131 | 21.2 | 44.4 | 17.0 | 0.683 / 0.525 | 48 |
+| `track_buffer` 60 | 48.7 | 39.7 | 61.2 | 60.4 | 5,364 | 21.0 | 44.2 | 17.0 | 0.693 / 0.515 | 49 |
+| `gmc_method` orb | 48.7 | 39.7 | 61.1 | 60.3 | 5,300 | 21.0 | 44.0 | 17.1 | 0.695 / 0.514 | 450 |
 
 **Result:**
 - **TrackTrack's defaults stand.** No value clears the margin: the best, `match_thresh` 0.8, is
@@ -489,12 +488,12 @@ Label mAP scores the tracked boxes on the 146 subset frames inside the val clips
 The train rows are stage 1's. Val's tracker ms is timed with its 7 clips in parallel, train's in
 one process, so compare it only within one split.
 
-| Trial | Split | Run | HOTA | DetA | AssA | IDF1 | ID switches | label mAP50-95 | mAP50 | mAP75 | person | vehicle | 2-3-wheeler | P / R at floor | tracker ms |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| **tracktrack** | val | 20e47eba | **48.0** | 38.6 | 61.3 | 58.4 | 742 | 25.0 | 49.8 | 21.6 | 25.1 | 39.5 | 10.3 | 0.675 / 0.561 | 37 |
-| botsort | val | dcbe4c85 | 46.7 | 36.9 | 60.7 | 56.3 | 415 | 23.2 | 44.2 | 21.1 | 22.9 | 38.1 | 8.6 | 0.770 / 0.486 | 33 |
-| tracktrack | train | da793ee4 | 48.8 | 39.7 | 61.2 | 60.4 | 5,269 | 21.0 | 44.2 | 17.0 | 18.3 | 37.9 | 6.8 | 0.694 / 0.515 | 14.8 |
-| botsort | train | dce52119 | 47.1 | 36.2 | 62.3 | 56.7 | 2,924 | 18.3 | 36.0 | 16.0 | 15.4 | 35.3 | 4.2 | 0.772 / 0.408 | 12.9 |
+| Trial | Split | HOTA | DetA | AssA | IDF1 | ID switches | label mAP50-95 | mAP50 | mAP75 | person | vehicle | 2-3-wheeler | P / R at floor | tracker ms |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| **tracktrack** | val | **48.0** | 38.6 | 61.3 | 58.4 | 742 | 25.0 | 49.8 | 21.6 | 25.1 | 39.5 | 10.3 | 0.675 / 0.561 | 37 |
+| botsort | val | 46.7 | 36.9 | 60.7 | 56.3 | 415 | 23.2 | 44.2 | 21.1 | 22.9 | 38.1 | 8.6 | 0.770 / 0.486 | 33 |
+| tracktrack | train | 48.8 | 39.7 | 61.2 | 60.4 | 5,269 | 21.0 | 44.2 | 17.0 | 18.3 | 37.9 | 6.8 | 0.694 / 0.515 | 14.8 |
+| botsort | train | 47.1 | 36.2 | 62.3 | 56.7 | 2,924 | 18.3 | 36.0 | 16.0 | 15.4 | 35.3 | 4.2 | 0.772 / 0.408 | 12.9 |
 
 **Result:**
 - **TrackTrack holds on val:** 47.95 HOTA against BoT-SORT's 46.74, 1.21 ahead (train 1.7), so
@@ -526,16 +525,16 @@ uv run --env-file .env --with trackeval==1.3.0 --with timm==1.0.30 python -m mlo
   configs/tuning/autolabel-visdrone-vid/video-trackers.yaml --split val
 ```
 
-The TrackTrack row reproduces Experiment 2's val row (20e47eba) on every score. ms per frame is
+The TrackTrack row reproduces Experiment 2's val row on every score. ms per frame is
 the box chain in one process: the detector on every frame for TrackTrack, on every 5th for
 EdgeTAM (its stored ms over the key frames, amortised over all frames). TrackTrack's own ms is the
 lone-process 14.8 from Experiment 2 stage 1; this run's 32 ms is timed with 7 clips in parallel.
 EdgeTAM tracks the clips one after another in one process.
 
-| Trial | Run | HOTA | DetA | AssA | IDF1 | ID switches | label mAP50-95 | mAP50 | mAP75 | person | vehicle | 2-3-wheeler | P / R at floor | ms per frame (detector + tracker) |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| **tracktrack** | a56dd222 | **48.0** | 38.6 | 61.3 | 58.4 | 742 | 25.0 | 49.8 | 21.6 | 25.1 | 39.5 | 10.3 | 0.675 / 0.561 | ≈ 223 (208 + 15) |
-| edgetam-k5 | f6023837 | 38.0 | 29.6 | 51.4 | 42.9 | 1,619 | 17.3 | 39.9 | 12.8 | 17.3 | 30.1 | 4.6 | 0.463 / 0.529 | 463 (42 + 421) |
+| Trial | HOTA | DetA | AssA | IDF1 | ID switches | label mAP50-95 | mAP50 | mAP75 | person | vehicle | 2-3-wheeler | P / R at floor | ms per frame (detector + tracker) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| **tracktrack** | **48.0** | 38.6 | 61.3 | 58.4 | 742 | 25.0 | 49.8 | 21.6 | 25.1 | 39.5 | 10.3 | 0.675 / 0.561 | ≈ 223 (208 + 15) |
+| edgetam-k5 | 38.0 | 29.6 | 51.4 | 42.9 | 1,619 | 17.3 | 39.9 | 12.8 | 17.3 | 30.1 | 4.6 | 0.463 / 0.529 | 463 (42 + 421) |
 
 **Result:**
 - **TrackTrack stands:** EdgeTAM is 9.9 HOTA behind, on detection (DetA −9.0) and association
@@ -585,12 +584,12 @@ auto-labels):
 
 Under VisDrone's rule (the ground-truth val row reproduces the reference row):
 
-| Trained on | Split | Run | mAP50-95 | mAP50 | mAP75 | person | vehicle | two-three-wheeler | mAP50-95_small |
-|---|---|---|---|---|---|---|---|---|---|
-| auto-labels | val | 1e1c2822 | 27.2 | 56.3 | 23.5 | 25.3 | 40.9 | 15.4 | 11.2 |
-| ground truth | val | 736ab5dc | **31.1** | 61.5 | 27.2 | 27.9 | 42.4 | 23.0 | 13.7 |
-| auto-labels | test | 14b319c1 | 22.2 | 48.7 | 17.3 | 18.6 | 41.6 | 6.4 | 13.5 |
-| ground truth | test | 3466bd5f | **27.2** | 57.0 | 22.7 | 19.6 | 46.7 | 15.3 | 17.0 |
+| Trained on | Split | mAP50-95 | mAP50 | mAP75 | person | vehicle | two-three-wheeler | mAP50-95_small |
+|---|---|---|---|---|---|---|---|---|
+| auto-labels | val | 27.2 | 56.3 | 23.5 | 25.3 | 40.9 | 15.4 | 11.2 |
+| ground truth | val | **31.1** | 61.5 | 27.2 | 27.9 | 42.4 | 23.0 | 13.7 |
+| auto-labels | test | 22.2 | 48.7 | 17.3 | 18.6 | 41.6 | 6.4 | 13.5 |
+| ground truth | test | **27.2** | 57.0 | 22.7 | 19.6 | 46.7 | 15.3 | 17.0 |
 
 **Result:**
 - **Auto-labels reach 87.5 % of ground truth's mAP50-95 on val and 81.6 % on test:** 3.9 pt

@@ -589,7 +589,8 @@ chain (GDINO-B + TrackTrack) is the labeler.
 
 **What:** the final YOLO tuning recipe's s (`stage2-s1280`: yolo26s, imgsz 1280, 30 epochs, seed 0) retrained with only its train labels swapped for the labeler's. `autolabels.py` tracks
 GDINO-B's stored train-clip pass with TrackTrack as `label_clip` does, keeps the subset's 1,238
-train frames and the auto-labels at the floor 0.218, and drops 6,477 of them by VisDrone's rule.
+train frames (every tracked box is at or above the floor 0.218), and drops 6,477 auto-labels by
+VisDrone's rule.
 It writes `images/train-autolabels` (labels alongside) through ingestion's converter. Val and test
 stay ground truth. Both arms predict val, then test once, as the reference rows do.
 

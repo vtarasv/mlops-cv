@@ -107,6 +107,7 @@ def test_a_default_tracked_trial_reproduces_the_production_labeler(tmp_path: Pat
     label_eval.write_annotations(tmp_path, images, tracked)
 
     assert {line.split(",")[1] for line in lines} - {"-1"}  # tracks were written
+    # TrackTrack's low-score stage starts above the floor, so no box below it reaches a track
     assert min(float(line.split(",")[6]) for line in lines) >= settings.confidence_floor
     assert lines == (tmp_path / "s.txt").read_text().splitlines()
 

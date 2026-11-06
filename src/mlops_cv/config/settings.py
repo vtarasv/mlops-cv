@@ -161,7 +161,7 @@ class AutolabelSettings(BaseModel):
     detector: AutolabelDetector = AutolabelDetector()
     box_filter: BoxFilter = BoxFilter()
     tracker: AutolabelTracker = AutolabelTracker()
-    # auto-labels below it are not kept; the tracker's ``FLOOR_KEYS``
+    # the tracker's ``FLOOR_KEYS``: a box below it matches no track and starts none
     confidence_floor: float = 0.218
     max_det: int = 300  # the top boxes kept per frame: val's cap, so trials score like val
     runs_dir: Path = Path("runs/autolabel")  # the FiftyOne App mounts it: HOST_AUTOLABEL_RUNS

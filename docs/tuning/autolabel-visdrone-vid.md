@@ -530,8 +530,7 @@ at once. Each is capped (`max_objects`) at the most live tracks that fit there: 
 (peak 7.5 GB), SAM 3 96 (128 runs out; 96 peaks at 7.7 GB). Both run with
 `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`.
 
-**Why:** a confirmation, not a grid. EdgeTAM is the earlier effort's fastest video tracker; the SAM
-trackers check whether a full-size one closes the gap. A video tracker wins only by 0.5 HOTA over
+**Why:** a confirmation, not a grid. A video tracker wins only by 0.5 HOTA over
 TrackTrack, or by being faster at a HOTA within 0.5.
 
 ```bash
@@ -560,19 +559,16 @@ parallel. A video tracker tracks the clips one after another in one process.
   at ≈ 10× the box chain's ms per frame. It matches TrackTrack on association (AssA +0.4, two thirds of the ID
   switches) and loses on detection (DetA −5.0). SAM 2.1 S is 5.1 behind at 6.6×, EdgeTAM 9.9
   behind at 2.1× (DetA −9.0, AssA −10.0, twice the ID switches).
-- **SAM 2.1 S is 4.9 HOTA above EdgeTAM**, the same gap the earlier effort measured (44.8 vs
-  39.9); SAM 3 adds 1.7 more.
-- **The caps don't explain the gap** (below): SAM 2.1 S's cap binds only on
-  `uav0000137_00458_v` (233 frames), SAM 3's on `uav0000117_02622_v`, `uav0000137_00458_v` and
-  `uav0000182_00000_v` (945 of 2,846 frames). Neither fits 8 GB uncapped. On the densest clip
-  they take 3.6 s (SAM 2.1 S) and 4.4 s (SAM 3) per frame.
 - **Detecting on every 5th frame doesn't pay for the tracker:** it saves 167 ms of GDINO-B, and
   the trackers spend 421 (EdgeTAM) to 2,261 ms (SAM 3).
 - **Label mAP:** the video trackers' boxes lose 4.5 (SAM 3) to 7.6 pt (EdgeTAM) on the subset
   frames, and the precision at the floor falls from 0.675 to 0.463–0.558.
+- **The caps don't explain the gap** (below): SAM 2.1 S's cap binds only on
+  `uav0000137_00458_v` (233 frames), SAM 3's on `uav0000117_02622_v`, `uav0000137_00458_v` and
+  `uav0000182_00000_v` (945 of 2,846 frames). Neither fits 8 GB uncapped. On the densest clip
+  they take 3.6 s (SAM 2.1 S) and 4.4 s (SAM 3) per frame.
 
-**Clips where no cap binds:** each run's logged annotations, rescored per clip group with the
-same TrackEval scoring (all 7 clips reproduce the table). HOTA, gap to TrackTrack in brackets:
+**Clips where no cap binds:** HOTA, gap to TrackTrack in brackets:
 
 | Trial | 4 clips, no cap binds (`086`, `268`, `305`, `339`) | 3 clips, SAM 3's cap binds (`117`, `137`, `182`) |
 |---|---|---|
@@ -581,8 +577,7 @@ same TrackEval scoring (all 7 clips reproduce the table). HOTA, gap to TrackTrac
 | sam2.1-s-k5 (cap 128) | 45.1 (−5.0) | 40.9 (−5.2) |
 | edgetam-k5 | 40.4 (−9.7) | 36.1 (−10.0) |
 
-Each gap holds where nothing caps the SAM trackers, and SAM 3's is no wider where its cap binds.
-The dense clips are harder for every tracker, TrackTrack included. Uncapped, SAM 3 still loses on
+Each gap holds where nothing caps the SAM trackers. Uncapped, SAM 3 still loses on
 detection (DetA 35.7 vs 40.4) at equal association (AssA 62.9 vs 63.5).
 
 **Experiment 3:** at K=5 on GDINO-B's key frames, SAM 3's tracker scores 44.6 HOTA on the val

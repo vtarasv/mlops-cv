@@ -98,9 +98,10 @@ class ServingSettings(BaseModel):
     max_inflight: int = Field(default=2, ge=1)  # detects at once, per service or consumer
 
 
+GDINO_B = "IDEA-Research/grounding-dino-base"
 SAM3 = "facebook/sam3"
-# The labeler's detectors, the default first.
-DETECTORS = ("IDEA-Research/grounding-dino-base", SAM3)
+# The labeler's detectors.
+DETECTORS = (GDINO_B, SAM3)
 
 
 class AutolabelDetector(BaseModel):
@@ -108,7 +109,8 @@ class AutolabelDetector(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    model: str = DETECTORS[0]  # a Hugging Face repo id; ``SAM3`` loads SAM 3, any other GDINO
+    # or ``SAM3``, chosen with box_filter.nms_iou 0.5 and confidence_floor 0.593
+    model: str = GDINO_B
     # prompt text -> the merged class its boxes get; VisDrone's 10 raw names
     prompts: dict[str, str] = Field(
         default_factory=lambda: {n: YOLO_NAMES[CLASS_MERGE[c]] for c, n in RAW_NAMES.items()}

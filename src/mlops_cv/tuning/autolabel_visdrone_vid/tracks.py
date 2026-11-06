@@ -50,7 +50,7 @@ PER_OBJECT = (
 class Tracker(AutolabelTracker):
     """Production's tracker, or a video one; the key-frame rules apply to the video trackers."""
 
-    # ``model``: one of ``BOX_TRACKERS``, or a transformers video repo (EdgeTAM, SAM 2.1)
+    # ``model``: one of ``BOX_TRACKERS``, or a transformers video repo (EdgeTAM, SAM 2.1, SAM 3)
     key_interval: int = 10  # K: frame 0 and every K-th frame after it are key frames
     new_iou: float = 0.3  # tau: a kept box below it against every live track is a new object
     empty_frames: int = 25  # a track ends after this many consecutive empty-mask frames
@@ -218,15 +218,21 @@ def area(boxes: np.ndarray) -> np.ndarray:
 
 
 class VideoTracker:
-    """A transformers SAM 2-family video model (EdgeTAM, SAM 2.1) under the key-frame rules."""
+    """A transformers SAM 2-family video model (EdgeTAM, SAM 2.1, SAM 3) on the key-frame rules."""
 
     def __init__(self, cfg: Tracker, device: str) -> None:
         import torch
-        from transformers import AutoModel, AutoProcessor
+        import transformers
 
+        # AutoModel on a SAM 3 repo loads its text-prompted detector, not the box-prompted tracker
+        model_cls, processor_cls = (
+            (transformers.Sam3TrackerVideoModel, transformers.Sam3TrackerVideoProcessor)
+            if "sam3" in cfg.model
+            else (transformers.AutoModel, transformers.AutoProcessor)
+        )
         self.cfg, self.device, self.dtype = cfg, device, torch.bfloat16
-        self.processor: Any = AutoProcessor.from_pretrained(cfg.model)
-        model: Any = AutoModel.from_pretrained(cfg.model)
+        self.processor: Any = processor_cls.from_pretrained(cfg.model)
+        model: Any = model_cls.from_pretrained(cfg.model)
         self.model = model.to(device, dtype=self.dtype).eval()
 
     def _forward(self, session: Any, inputs: Any, k: int) -> tuple[list[int], np.ndarray]:

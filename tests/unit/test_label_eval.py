@@ -4,6 +4,7 @@ tiling, the stage runner, the key-frame tracking rules and the TrackEval glue.""
 from __future__ import annotations
 
 import dataclasses
+import sys
 import typing
 from pathlib import Path
 
@@ -612,6 +613,43 @@ def test_set_objects_reindexes_the_session() -> None:
     tracks.set_objects(session, {})
     tracks.set_objects(session, state)
     assert tracks.objects(session) == state
+
+
+class _Pretrained:
+    def __init__(self, cls: str, repo: str) -> None:
+        self.loaded = (cls, repo)
+
+    def to(self, *args: typing.Any, **kwargs: typing.Any) -> _Pretrained:
+        return self
+
+    def eval(self) -> _Pretrained:
+        return self
+
+
+@pytest.mark.parametrize(
+    ("repo", "model", "processor"),
+    [
+        ("facebook/sam3", "Sam3TrackerVideoModel", "Sam3TrackerVideoProcessor"),
+        ("facebook/sam2.1-hiera-small", "AutoModel", "AutoProcessor"),
+    ],
+)
+def test_video_tracker_loads_sam3s_box_tracker_not_its_detector(
+    monkeypatch: pytest.MonkeyPatch, repo: str, model: str, processor: str
+) -> None:
+    def loader(cls: str) -> typing.Any:
+        return type(cls, (), {"from_pretrained": staticmethod(lambda r: _Pretrained(cls, r))})
+
+    names = ("AutoModel", "AutoProcessor", "Sam3TrackerVideoModel", "Sam3TrackerVideoProcessor")
+    fake = type(sys)("transformers")
+    for name in names:
+        setattr(fake, name, loader(name))
+    monkeypatch.setitem(sys.modules, "transformers", fake)
+    torch = type(sys)("torch")
+    torch.bfloat16 = "bf16"
+    monkeypatch.setitem(sys.modules, "torch", torch)
+    tracker = tracks.VideoTracker(Tracker(model=repo), "cpu")
+    assert tracker.model.loaded == (model, repo)
+    assert tracker.processor.loaded == (processor, repo)
 
 
 def test_prune_keeps_seed_frames_and_the_last_window() -> None:

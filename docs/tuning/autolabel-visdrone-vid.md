@@ -544,7 +544,7 @@ PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True uv run --env-file .env --with t
 The first command took 23 min; the second 69 min for SAM 2.1 S and 109 min for SAM 3.
 The TrackTrack row reproduces Experiment 2's val row on every score. ms per frame is
 the box chain in one process: the detector on every frame for TrackTrack, on every 5th for
-the video trackers (its stored ms over the key frames, amortised over all frames). TrackTrack's own
+the video trackers (their stored ms over the key frames, amortised over all frames). TrackTrack's own
 ms is the lone-process 14.8 from Experiment 2 stage 1; this run's 32 ms is timed with 7 clips in
 parallel. A video tracker tracks the clips one after another in one process.
 
@@ -556,8 +556,8 @@ parallel. A video tracker tracks the clips one after another in one process.
 | edgetam-k5 | 38.0 | 29.6 | 51.4 | 42.9 | 1,619 | 17.3 | 39.9 | 12.8 | 17.3 | 30.1 | 4.6 | 0.463 / 0.529 | 463 (42 + 421) |
 
 **Result:**
-- **TrackTrack stands:** the best video tracker, SAM 3, is 3.3 HOTA behind (44.61 vs 47.95) at ≈ 10× the box
-  chain's ms per frame. It matches TrackTrack on association (AssA +0.4, two thirds of the ID
+- **TrackTrack stands:** the best video tracker, SAM 3, is 3.3 HOTA behind (44.61 vs 47.95)
+  at ≈ 10× the box chain's ms per frame. It matches TrackTrack on association (AssA +0.4, two thirds of the ID
   switches) and loses on detection (DetA −5.0). SAM 2.1 S is 5.1 behind at 6.6×, EdgeTAM 9.9
   behind at 2.1× (DetA −9.0, AssA −10.0, twice the ID switches).
 - **SAM 2.1 S is 4.9 HOTA above EdgeTAM**, the same gap the earlier effort measured (44.8 vs
@@ -636,7 +636,7 @@ test mAP50-95 under VisDrone's rule, against 31.1 and 27.2 trained on ground tru
   TrackTrack at its defaults over each clip (`AutolabelSettings`' defaults).
 - **What lost:** SAM 3 (0.4 pt ahead on train, 3.7 behind on val, 2.4× slower), tiling, the
   Large GDINO models, BoT-SORT and Hybrid-SORT, TrackTrack's other settings, and the video
-  trackers (SAM 3's 3.3 HOTA behind at ≈ 10× the cost, SAM 2.1 S 5.1, EdgeTAM 9.9).
+  trackers (SAM 3 behind by 3.3 HOTA at ≈ 10× the cost, SAM 2.1 S by 5.1, EdgeTAM by 9.9).
 - **Training on it:** YOLO26 s trained on auto-labels is 3.9 pt (12.5 %) behind ground truth on
   val and 5.0 pt (18.4 %) on test under VisDrone's rule (27.2 vs 31.1, 22.2 vs 27.2), most of the
   gap on two-three-wheelers, which get 0.35× ground truth's labels.

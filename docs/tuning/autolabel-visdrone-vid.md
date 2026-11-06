@@ -58,8 +58,8 @@ beside YOLO26 s trained on ground truth.
   (`mlops_cv.autolabel`), each clip in its own fresh (forkserver) process, 16 at a time.
   `tracker.overrides` sets keys of the tracker's ultralytics YAML; a key the YAML lacks, or one the
   confidence floor sets, fails the trial. `labeler.yaml` is production's config, tracker included.
-- **Video trackers** (EdgeTAM) run the detector every K-th frame and carry objects
-  between those frames. Each mask leaves the tracker only as its tight box.
+- **Video trackers** (EdgeTAM, SAM 2.1 S, SAM 3's tracker) run the detector every K-th frame
+  and carry objects between those frames. Each mask leaves the tracker only as its tight box.
 - **Latency** is batch 1 per frame, decoded image to boxes, with the first 3 frames left out.
 - **Hardware:** the laptop in [YOLO26 tuning](yolo26-visdrone-vid.md#hardware) (RTX 5070 Laptop
   8 GB, Core Ultra 9 275HX with 24 cores). GPU times and latencies hold for it alone.
@@ -516,44 +516,65 @@ clips, 48.0 on the val clips, ≈ 15 ms per frame in a lone process.
 
 ## 3. Video tracker confirmation
 
-**What:** one EdgeTAM run (`yonigozlan/EdgeTAM-hf`, bf16) at K=5, on the val clips.
-Its key frames read GDINO-B's stored val-clip pass through Experiment 2's box filter;
+**What:** three video trackers at K=5 on the val clips, bf16: EdgeTAM (`yonigozlan/EdgeTAM-hf`),
+SAM 2.1 S (`facebook/sam2.1-hiera-small`) and SAM 3's box-prompted tracker (`facebook/sam3`
+through `Sam3TrackerVideoModel`; the text-prompted `Sam3VideoModel` would replace GDINO-B too).
+Their key frames read GDINO-B's stored val-clip pass through Experiment 2's box filter;
 kept boxes at or above the floor 0.218 start or refresh a track, and each mask
 leaves only as its tight box. The key-frame rules keep their defaults (`new_iou` 0.3,
-`empty_frames` 25, `unmatched_keys` 2, `duplicate_iou` 0.8, no object cap). TrackTrack at its
-defaults reruns beside it on the same pass, so both rows come from one run.
+`empty_frames` 25, `unmatched_keys` 2, `duplicate_iou` 0.8). TrackTrack at its
+defaults reruns beside EdgeTAM on the same pass, so those two rows come from one run.
+EdgeTAM runs uncapped. Uncapped, both SAM trackers run out of 8 GB on the densest clip
+(`uav0000137_00458_v`, 178 live tracks for EdgeTAM): the memory encoder encodes every live object
+at once. Each is capped (`max_objects`) at the most live tracks that fit there: SAM 2.1 S 128
+(peak 7.5 GB), SAM 3 96 (128 runs out; 96 peaks at 7.7 GB). Both run with
+`PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`.
 
-**Why:** a confirmation, not a grid. EdgeTAM wins only by 0.5 HOTA over TrackTrack, or by being
-faster at a HOTA within 0.5.
+**Why:** a confirmation, not a grid. EdgeTAM is the earlier effort's fastest video tracker; the SAM
+trackers check whether a full-size one closes the gap. A video tracker wins only by 0.5 HOTA over
+TrackTrack, or by being faster at a HOTA within 0.5.
 
 ```bash
 uv run --env-file .env --with trackeval==1.3.0 --with timm==1.0.30 python -m mlops_cv.tuning.autolabel_visdrone_vid.label_eval \
   configs/tuning/autolabel-visdrone-vid/video-trackers.yaml --split val
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True uv run --env-file .env --with trackeval==1.3.0 python -m mlops_cv.tuning.autolabel_visdrone_vid.label_eval \
+  configs/tuning/autolabel-visdrone-vid/video-trackers-sam.yaml --split val
 ```
 
+The first command took 23 min; the second 69 min for SAM 2.1 S and 109 min for SAM 3.
 The TrackTrack row reproduces Experiment 2's val row on every score. ms per frame is
 the box chain in one process: the detector on every frame for TrackTrack, on every 5th for
-EdgeTAM (its stored ms over the key frames, amortised over all frames). TrackTrack's own ms is the
-lone-process 14.8 from Experiment 2 stage 1; this run's 32 ms is timed with 7 clips in parallel.
-EdgeTAM tracks the clips one after another in one process.
+the video trackers (its stored ms over the key frames, amortised over all frames). TrackTrack's own
+ms is the lone-process 14.8 from Experiment 2 stage 1; this run's 32 ms is timed with 7 clips in
+parallel. A video tracker tracks the clips one after another in one process.
 
 | Trial | HOTA | DetA | AssA | IDF1 | ID switches | label mAP50-95 | mAP50 | mAP75 | person AP50-95 | vehicle AP50-95 | 2-3-wheeler AP50-95 | P / R at floor | ms per frame (detector + tracker) |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | **tracktrack** | **48.0** | 38.6 | 61.3 | 58.4 | 742 | 25.0 | 49.8 | 21.6 | 25.1 | 39.5 | 10.3 | 0.675 / 0.561 | ≈ 223 (208 + 15) |
+| sam3-tracker-k5 (cap 96) | 44.6 | 33.6 | 61.7 | 52.8 | 493 | 20.5 | 45.2 | 15.9 | 19.5 | 35.9 | 6.1 | 0.558 / 0.543 | 2,303 (42 + 2,261) |
+| sam2.1-s-k5 (cap 128) | 42.9 | 32.7 | 59.0 | 49.7 | 740 | 20.0 | 43.7 | 15.5 | 18.9 | 35.5 | 5.6 | 0.514 / 0.548 | 1,461 (42 + 1,419) |
 | edgetam-k5 | 38.0 | 29.6 | 51.4 | 42.9 | 1,619 | 17.3 | 39.9 | 12.8 | 17.3 | 30.1 | 4.6 | 0.463 / 0.529 | 463 (42 + 421) |
 
 **Result:**
-- **TrackTrack stands:** EdgeTAM is 9.9 HOTA behind, on detection (DetA −9.0) and association
-  (AssA −10.0, IDF1 −15.5, twice the ID switches), and costs 2.1× the box chain per frame.
+- **TrackTrack stands:** the best video tracker, SAM 3, is 3.3 HOTA behind (44.61 vs 47.95) at ≈ 10× the box
+  chain's ms per frame. It matches TrackTrack on association (AssA +0.4, two thirds of the ID
+  switches) and loses on detection (DetA −5.0). SAM 2.1 S is 5.1 behind at 6.6×, EdgeTAM 9.9
+  behind at 2.1× (DetA −9.0, AssA −10.0, twice the ID switches).
+- **SAM 2.1 S is 4.9 HOTA above EdgeTAM**, the same gap the earlier effort measured (44.8 vs
+  39.9); SAM 3 adds 1.7 more.
+- **The capped rows are lower bounds:** SAM 2.1 S's cap binds only on `uav0000137_00458_v`
+  (233 frames), SAM 3's on `uav0000117_02622_v`, `uav0000137_00458_v` and `uav0000182_00000_v`
+  (945 of 2,846 frames). Neither fits 8 GB uncapped. On the densest clip they take 3.6 s
+  (SAM 2.1 S) and 4.4 s (SAM 3) per frame.
 - **Detecting on every 5th frame doesn't pay for the tracker:** it saves 167 ms of GDINO-B, and
-  EdgeTAM spends 421. On the densest clip (`uav0000137_00458_v`, up to 178 live tracks) it
-  takes 1.2 s per frame.
-- **Label mAP:** EdgeTAM's boxes lose 7.6 pt on the subset frames, and the precision at the
-  floor falls from 0.675 to 0.463.
+  the trackers spend 421 (EdgeTAM) to 2,261 ms (SAM 3).
+- **Label mAP:** the video trackers' boxes lose 4.5 (SAM 3) to 7.6 pt (EdgeTAM) on the subset
+  frames, and the precision at the floor falls from 0.675 to 0.463–0.558.
 
-**Experiment 3:** EdgeTAM at K=5 on GDINO-B's key frames scores 38.0 HOTA on the val clips
-against TrackTrack's 48.0, at ≈ 463 ms per frame against ≈ 223, so the box chain (GDINO-B +
-TrackTrack) is the labeler.
+**Experiment 3:** at K=5 on GDINO-B's key frames, SAM 3's tracker scores 44.6 HOTA on the val
+clips (capped at 96 live tracks), SAM 2.1 S 42.9 (capped at 128) and EdgeTAM 38.0, against
+TrackTrack's 48.0 at ≈ 223 ms per frame (SAM 3 2,303, SAM 2.1 S 1,461, EdgeTAM 463), so the box
+chain (GDINO-B + TrackTrack) is the labeler.
 
 ## 4. YOLO trained on auto-labels
 
@@ -614,8 +635,8 @@ test mAP50-95 under VisDrone's rule, against 31.1 and 27.2 trained on ground tru
 - **The labeler:** GDINO-B on VisDrone's 10 raw names, fp16, untiled, NMS off, floor 0.218, then
   TrackTrack at its defaults over each clip (`AutolabelSettings`' defaults).
 - **What lost:** SAM 3 (0.4 pt ahead on train, 3.7 behind on val, 2.4× slower), tiling, the
-  Large GDINO models, BoT-SORT and Hybrid-SORT, TrackTrack's other settings, and EdgeTAM (9.9
-  HOTA behind at 2.1× the cost).
+  Large GDINO models, BoT-SORT and Hybrid-SORT, TrackTrack's other settings, and the video
+  trackers (SAM 3's 3.3 HOTA behind at ≈ 10× the cost, SAM 2.1 S 5.1, EdgeTAM 9.9).
 - **Training on it:** YOLO26 s trained on auto-labels is 3.9 pt (12.5 %) behind ground truth on
   val and 5.0 pt (18.4 %) on test under VisDrone's rule (27.2 vs 31.1, 22.2 vs 27.2), most of the
   gap on two-three-wheelers, which get 0.35× ground truth's labels.

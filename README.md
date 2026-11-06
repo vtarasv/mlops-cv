@@ -237,7 +237,8 @@ these numbers don't compare with the YOLO tuning. Details:
 - **Box tracker:** BoT-SORT, TrackTrack, ByteTrack and Hybrid-SORT on the labeler's boxes.
   **TrackTrack** at its defaults wins: 48.8 HOTA on the train clips (BoT-SORT 47.1) and 48.0 on val
   (46.7).
-- **Video tracker:** EdgeTAM, detecting every 5th frame, scores 38.0 HOTA at 2.1× the cost, so the
+- **Video trackers:** EdgeTAM, SAM 2.1 S and SAM 3's tracker, detecting every 5th frame, score
+  38.0, 42.9 and 44.6 HOTA (the SAM ones capped to fit 8 GB) at 2.1×, 6.6× and 10× the cost, so the
   box tracker stays.
 - **Training on auto-labels** (YOLO26 s, mAP50-95 under VisDrone's rule, %):
 

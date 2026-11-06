@@ -22,8 +22,8 @@ The labeling config comes from the labeling trials in
 
 `python -m mlops_cv.autolabel <sequence dir>...` labels each VisDrone-VID `sequences/<seq>/`
 folder (frames `0000001.jpg` on, no gaps) and writes `<seq>.txt` to `--out`, by default
-`<runs_dir>/labeler/annotations/` (`runs/autolabel/labeler/annotations/`). On the 8 GB GPU it
-takes ≈ 223 ms per frame, GDINO-B 208 and TrackTrack 15 ([Experiment
+`<runs_dir>/labeler/annotations/` (`runs/autolabel/labeler/annotations/`). On the RTX 5070 Laptop
+GPU it takes ≈ 223 ms per frame, GDINO-B 208 and TrackTrack 15 ([Experiment
 3](tuning/autolabel-visdrone-vid.md#3-video-tracker-confirmation)): the val clips (2,846 frames)
 take about 11 min, the train clips (24,201) about 90.
 

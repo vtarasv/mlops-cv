@@ -72,9 +72,10 @@ def _download(repo: str, revision: str, sha256: str, dest: Path) -> Path:
 
 @exits_on_startup_error
 def main() -> int:
-    from mlops_cv.tuning.tune import TUNE_EXPERIMENT, finished_trial
+    from mlops_cv.tuning.common import finished_trial
+    from mlops_cv.tuning.yolo26_visdrone_vid import EXPERIMENT
 
-    os.environ["MLFLOW__EXPERIMENT"] = TUNE_EXPERIMENT  # never production's experiment
+    os.environ["MLFLOW__EXPERIMENT"] = EXPERIMENT  # never production's experiment
     from mlops_cv.config import get_settings
 
     settings = get_settings()
@@ -88,14 +89,8 @@ def main() -> int:
     from mlops_cv.orchestration.handoff import best_weights_uri
     from mlops_cv.tracking import client
     from mlops_cv.tracking.resolve import resolve_model
-    from mlops_cv.tuning.zero_shot import (
-        CONF,
-        MAX_DET,
-        class_lut,
-        merge_classes,
-        readings,
-        result_rows,
-    )
+    from mlops_cv.tuning.common import CONF, MAX_DET, readings
+    from mlops_cv.tuning.yolo26_visdrone_vid.zero_shot import class_lut, merge_classes, result_rows
 
     mlflow = client.connect(settings)
     data_yaml = dataset_yaml(settings)
@@ -112,7 +107,7 @@ def main() -> int:
         params = {"source": f"hf://{repo}@{revision}", "sha256": sha256, "licence": LICENCE}
         models[name] = (_download(repo, revision, sha256, dest), VISDRONE_TO_MERGED, params)
     for trial in FINALISTS:
-        run = finished_trial(mlflow, trial)
+        run = finished_trial(mlflow, EXPERIMENT, trial)
         weights, _ = resolve_model(best_weights_uri(run.info.run_id))
         params = {"trial": trial, "trial_run_id": run.info.run_id}
         models[f"{trial}-predict"] = (weights, {n: n for n in YOLO_NAMES.values()}, params)

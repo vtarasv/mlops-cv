@@ -89,9 +89,15 @@ edge = [
     "opencv-python==4.13.0.92",
     "mlflow-skinny==3.14.0",
 ]
-tuning = [
-    "sahi==0.12.8",
+autolabel = [
+    # The 5.9.0-5.20.2 truncate Grounding DINO's text position embeddings
+    "transformers==5.8.0",
+    "torch==2.12.1",
+    "torchvision==0.27.1",
+    "ultralytics==8.4.72",
+    "lap==0.5.13",
 ]
+
 
 [tool.uv]
 default-groups = [
@@ -105,7 +111,7 @@ default-groups = [
     "serving",
     "edge",
     "link",
-    "tuning",
+    "autolabel",
 ]
 
 required-environments = [

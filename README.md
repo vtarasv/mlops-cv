@@ -191,6 +191,53 @@ Four Docker Compose stacks share one network. Each has `make <name>-up`, `-down`
 
 Details: [docs/containers.md](docs/containers.md).
 
+## Experiments
+
+The training recipe and the auto-labeler's config come from measured experiments. Each case has
+its own package under `src/mlops_cv/tuning/`, stage files under `configs/tuning/`, its own MLflow
+experiment, and a write-up in `docs/tuning/`.
+
+### YOLO26 training recipe
+
+Which settings train YOLO26 n, s and m best on the subset, in stages of one or two settings each.
+Details: [docs/tuning/yolo26-visdrone-vid.md](docs/tuning/yolo26-visdrone-vid.md).
+
+- **One recipe for every size:** the ultralytics defaults at imgsz 1280 and 30 epochs. Fine-tuning
+  on VisDrone adds 7–9 pt over the pretrained models, and imgsz 1280 another 4.3–7.4 pt over 640,
+  the only setting that won for every size.
+- **What didn't help:** more epochs, optimizer and learning rate, zoom and mosaic augmentation,
+  class weights, a frozen backbone, sliced training, and a denser train split (lower frame stride).
+- **Inference:** the one-to-many head adds 1.1–1.8 pt on the same weights. SAHI sliced inference
+  helps only on 4K frames, at 8–10× the latency. The confidence floor stays 0.25.
+- **Scores** (mAP50-95, %):
+
+  | | n | s | m |
+  |---|---|---|---|
+  | val | 28.4 | 30.8 | 32.9 |
+  | test | 25.0 | 26.6 | 28.3 |
+
+### Auto-labeling config
+
+Can a zero-shot detector plus a tracker label VisDrone-VID clips well enough to train on? The
+winner is the [auto-labeler](docs/autolabel.md)'s default config (`mlops_cv.autolabel`).
+Details: [docs/tuning/autolabel-visdrone-vid.md](docs/tuning/autolabel-visdrone-vid.md).
+
+- **Box detector:** Grounding DINO T and B, OWLv2, YOLOE-26 and SAM 3, then the box filter, fp16,
+  tiling and the confidence floor. **GDINO-B** on VisDrone's 10 raw names wins (fp16, NMS off,
+  floor 0.218): 0.4 pt behind SAM 3 on train, inside the margin, at 2.4× its speed, and 3.7 pt
+  ahead on val.
+- **Box tracker:** BoT-SORT, TrackTrack, ByteTrack and Hybrid-SORT on the labeler's boxes.
+  **TrackTrack** at its defaults wins: 48.8 HOTA on the train clips (BoT-SORT 47.1) and 48.0 on val
+  (46.7).
+- **Video trackers:** EdgeTAM, SAM 2.1 S and SAM 3's tracker, detecting every 5th frame, score
+  38.0, 42.9 and 44.6 HOTA (the SAM ones capped to fit 8 GB) at 2.1×, 6.6× and 10× the cost.
+- **Training on auto-labels** (YOLO26 s, mAP50-95 under VisDrone's eval rule, %):
+
+  | Trained on | val | test |
+  |---|---|---|
+  | auto-labels | 27.2 | 22.2 |
+  | ground truth | 31.1 | 27.2 |
+
 ## Repository layout
 
 ```
@@ -200,9 +247,11 @@ src/mlops_cv/
   pipelines/      Beam pipelines: ingest and profile
   training/       YOLO26 training + MLflow logging
   evaluation/     metrics, gate, report, demo videos, error crops
-  tuning/         tuning experiments (trials, baselines, SAHI)
+  autolabel/      zero-shot auto-labeler: GDINO-B boxes, TrackTrack tracks
+  tuning/         experiments, one package per case: YOLO26 recipe, auto-labeling
   optimize/       serving variants (ONNX, TensorRT, NCNN) + benchmarks
   serving/        FastAPI detection service + pre/post-processing
+  edge/           on-device NCNN detection, benchmark, live view
   streaming/      Kafka producer and consumers, message schemas
   monitoring/     drift monitor + episode evidence
   tracking/       MLflow helpers: champion lookup, metric keys, record runs
@@ -211,7 +260,7 @@ dags/             Airflow DAGs
 docker/           Dockerfiles
 docker-compose/   the four stacks
 observability/    Prometheus config + Grafana dashboards (as code)
-configs/          dataset YAML, demo clip list, tuning stages per case
+configs/          dataset YAML, demo clip list, video link SDPs, tuning stages per case
 docs/             one page per component
 tests/            unit tests (CPU) and integration tests (GPU / Docker, skipped in CI)
 ```

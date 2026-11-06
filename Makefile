@@ -6,18 +6,21 @@
 	streaming-up streaming-down streaming-logs \
 	link-sim link-produce stream-view \
 	serving-up serving-down serving-logs \
+	fiftyone-up fiftyone-down fiftyone-logs \
 	stack-up stack-down
 
 MLFLOW_COMPOSE := docker compose -f docker-compose/docker-compose.mlflow.yml --env-file docker-compose/.env.mlflow
 AIRFLOW_COMPOSE := docker compose -f docker-compose/docker-compose.airflow.yml --env-file docker-compose/.env.airflow
 STREAMING_COMPOSE := docker compose -f docker-compose/docker-compose.streaming.yml --env-file docker-compose/.env.streaming
 SERVING_COMPOSE := docker compose -f docker-compose/docker-compose.serving.yml --env-file docker-compose/.env.serving
+FIFTYONE_COMPOSE := docker compose -f docker-compose/docker-compose.fiftyone.yml --env-file docker-compose/.env.fiftyone
 
 # Derived/exported wiring for the Airflow + serving stacks (fails loudly if any is missing):
 #   *_IMAGE           : image tags — used for `docker build`, the DAG's operators, and compose
 #   HOST_RAW_DIR      : reuses DATA__RAW_DIR from the root .env (raw VisDrone-VID for the ingest task)
 #   HOST_SUBSET_DIR   : reuses DATA__SUBSET_DIR from the root .env (the training subset the DAG mounts)
 #   HOST_WEIGHTS      : reuses TRAINING__WEIGHTS from the root .env (pretrained-weights cache)
+#   HOST_AUTOLABEL_RUNS: AUTOLABEL__RUNS_DIR from the root .env, else runs/autolabel: the FiftyOne App's mount
 #   DOCKER_GID        : host docker group id — the scheduler needs it to use the mounted socket
 #   HOST_USER         : host uid:gid — the DAG's task containers run as it, so their outputs stay yours
 #   HOST_USERNAME     : host login — the task containers' USER, so `mlflow.user` names you
@@ -30,6 +33,7 @@ export MONITOR_IMAGE := mlops-cv-monitor:0.1.0
 export HOST_RAW_DIR := $(shell sed -n 's/^DATA__RAW_DIR=//p' .env 2>/dev/null)
 export HOST_SUBSET_DIR := $(shell sed -n 's/^DATA__SUBSET_DIR=//p' .env 2>/dev/null)
 export HOST_WEIGHTS := $(shell sed -n 's/^TRAINING__WEIGHTS=//p' .env 2>/dev/null)
+export HOST_AUTOLABEL_RUNS := $(abspath $(or $(shell sed -n 's/^AUTOLABEL__RUNS_DIR=//p' .env 2>/dev/null),runs/autolabel))
 export DOCKER_GID := $(shell getent group docker 2>/dev/null | cut -d: -f3)
 export HOST_USER := $(shell id -u):$(shell id -g)
 export HOST_USERNAME := $(shell id -un)
@@ -91,9 +95,9 @@ train: mlflow-up
 	uv run python -m mlops_cv.training $(if $(TARGET),--target "$(TARGET)")
 
 # Run one tuning stage (configs/tuning/$(STAGE).yaml, e.g. STAGE=yolo26-visdrone-vid/stage2)
-# -> unregistered trial runs in the tune experiment. Other experiment commands: docs/tuning.md.
+# -> unregistered trial runs in the tune experiment. Other experiment commands: docs/tuning/yolo26-visdrone-vid.md.
 tune: mlflow-up
-	uv run python -m mlops_cv.tuning.tune configs/tuning/$(STAGE).yaml
+	uv run python -m mlops_cv.tuning.yolo26_visdrone_vid.tune configs/tuning/$(STAGE).yaml
 
 # Evaluate an MLflow model -> test metrics + report + gate + demo videos + TP/FP crops in MLflow.
 # Pass MODEL=<models:/aerial-object-detector-server@champion | runs:/<run_id>/weights/best.pt>.
@@ -229,6 +233,17 @@ serving-down:
 
 serving-logs:
 	$(SERVING_COMPOSE) logs -f
+
+# FiftyOne annotation editor (App + MongoDB) on http://localhost:5151.
+fiftyone-up:
+	mkdir -p $(HOST_AUTOLABEL_RUNS)
+	$(FIFTYONE_COMPOSE) up -d --build --wait
+
+fiftyone-down:
+	$(FIFTYONE_COMPOSE) down
+
+fiftyone-logs:
+	$(FIFTYONE_COMPOSE) logs -f
 
 # Everything at once: MLflow + CT images + Airflow + streaming + serving.
 stack-up: airflow-up streaming-up serving-up

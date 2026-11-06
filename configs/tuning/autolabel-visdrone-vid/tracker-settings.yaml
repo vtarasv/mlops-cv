@@ -1,0 +1,37 @@
+# Experiment 2, stage 2: TrackTrack (stage 1's winner) one setting at a time from its defaults,
+# on stage 1's stored pass of the train clips. The confidence floor (0.218) stays its
+# track_high_thresh = new_track_thresh; a value replaces the default only by 0.5 HOTA. No ReID.
+defaults:
+  detector:
+    model: IDEA-Research/grounding-dino-base
+    prompts:
+      pedestrian: person
+      people: person
+      bicycle: two-three-wheeler
+      car: vehicle
+      van: vehicle
+      truck: vehicle
+      tricycle: two-three-wheeler
+      awning-tricycle: two-three-wheeler
+      bus: vehicle
+      motor: two-three-wheeler
+    dtype: float16
+  box_filter: {min_side: 8, max_area: 0.05, nms_iou: null}
+  confidence_floor: 0.218
+  tracker: {model: tracktrack}
+trials:
+  - name: defaults  # track_low_thresh 0.25, match_thresh 0.7, track_buffer 30, sparseOptFlow
+  - name: low-0.05
+    tracker: {overrides: {track_low_thresh: 0.05}}
+  - name: low-0.1
+    tracker: {overrides: {track_low_thresh: 0.1}}
+  - name: low-0.2
+    tracker: {overrides: {track_low_thresh: 0.2}}
+  - name: match-0.8
+    tracker: {overrides: {match_thresh: 0.8}}
+  - name: match-0.9
+    tracker: {overrides: {match_thresh: 0.9}}
+  - name: buffer-60
+    tracker: {overrides: {track_buffer: 60}}
+  - name: gmc-orb
+    tracker: {overrides: {gmc_method: orb}}

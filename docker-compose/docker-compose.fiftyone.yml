@@ -1,0 +1,54 @@
+# FiftyOne annotation editor: the App + its MongoDB, on its own network (it never calls MLflow).
+# Raw VisDrone-VID and the repo's runs/autolabel/ (downloaded labeling trials) are mounted
+# read-only at their host paths, so the samples' absolute paths resolve. Trials load as
+# docs/tuning/autolabel-visdrone-vid.md shows, the labeler's output as docs/autolabel.md shows.
+#
+#   docker compose -f docker-compose/docker-compose.fiftyone.yml \
+#     --env-file docker-compose/.env.fiftyone up -d --build --wait   # http://localhost:5151
+
+name: fiftyone
+
+volumes:
+  mongo-data:
+
+services:
+  fiftyone-mongo:
+    image: mongo:7.0.45
+    container_name: fiftyone-mongo
+    restart: always
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  fiftyone:
+    image: mlops-cv-fiftyone:1.22.1
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.fiftyone
+    container_name: fiftyone
+    restart: always
+    depends_on:
+      fiftyone-mongo:
+        condition: service_healthy
+    environment:
+      FIFTYONE_DATABASE_URI: mongodb://fiftyone-mongo:27017
+      FIFTYONE_DO_NOT_TRACK: "true"
+    command: ["python", "-m", "fiftyone.server.main", "--port", "${FIFTYONE_PORT}"]
+    ports:
+      - "${FIFTYONE_PORT}:${FIFTYONE_PORT}"
+    volumes:
+      - ${HOST_RAW_DIR:?set DATA__RAW_DIR in the root .env (or export HOST_RAW_DIR)}:${HOST_RAW_DIR}:ro,z
+      - ${HOST_AUTOLABEL_RUNS:?run through make (or export HOST_AUTOLABEL_RUNS)}:${HOST_AUTOLABEL_RUNS}:ro,z
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://localhost:${FIFTYONE_PORT}/fiftyone')
+      interval: 10s
+      timeout: 5s
+      retries: 30

@@ -65,7 +65,7 @@ def link_frames(
 
         def on_sigint(signum: int, frame: FrameType | None) -> None:
             interrupted.set()
-            previous(signum, frame)
+            previous(signum, frame)  # pyright: ignore[reportCallIssue, reportOptionalCall]
 
         signal.signal(signal.SIGINT, on_sigint)
     try:

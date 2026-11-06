@@ -1,0 +1,7 @@
+# FiftyOne App with the labeling-trial loader baked in (the build context is the repo root).
+FROM voxel51/fiftyone:1.22.1-python3.12
+
+# Server command + env are supplied by docker-compose.fiftyone.yml.
+# Ingestion's class vocabulary, imported as is (stdlib + Pillow, which FiftyOne ships).
+COPY src/mlops_cv/data/convert_visdrone_vid.py /opt/convert_visdrone_vid.py
+COPY docker/fiftyone/load_trial.py /opt/load_trial.py

@@ -24,7 +24,7 @@ def _line(
     top: float = 0,
     w: float = 10,
     h: float = 10,
-    score: int = 1,
+    score: float = 1,
     cat: int = 1,
     trunc: int = 0,
     occ: int = 0,
@@ -65,6 +65,10 @@ def test_center_normalization() -> None:
 
 def test_score_zero_skipped() -> None:
     assert convert_annotation_line(_line(score=0, cat=1), 100, 100) is None
+
+
+def test_float_score_auto_label_kept() -> None:
+    assert convert_annotation_line(_line(score=0.597, cat=4, w=20, h=20), 100, 100) is not None
 
 
 @pytest.mark.parametrize("cat", [0, 11])

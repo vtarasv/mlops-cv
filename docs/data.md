@@ -55,7 +55,9 @@ Each annotation line is comma-separated:
 ```
 
 `bbox_*` are absolute pixels with `(left, top)` the top-left corner. In the **ground truth**,
-`score` is `1` (counts) or `0` (ignored — skipped). The 10 raw categories collapse to 3:
+`score` is `1` (counts) or `0` (ignored — skipped). An [auto-label](autolabel.md) file writes its
+float confidence there, always above 0, so ingestion reads it like ground truth. The 10 raw
+categories collapse to 3:
 
 | Merged class (id)        | VisDrone raw categories                                   |
 |--------------------------|-----------------------------------------------------------|
@@ -109,6 +111,12 @@ read the same setting, and the directory's basename becomes the MLflow dataset n
   manifest.csv
   VisDrone-VID-merged.yaml                              # stamped by each consumer, see below
 ```
+
+Tuning adds splits beside these, each linking a split's images to its own labels:
+`{train,val,test}-visdrone-rule` (ground truth under VisDrone's ignored-region rule) and
+`train-autolabels` (the [auto-labeler](autolabel.md)'s labels on train's frames, through the same
+rule). See [auto-labeling tuning](tuning/autolabel-visdrone-vid.md); nothing in production reads
+them.
 
 Ingest writes no dataset YAML. Each ultralytics consumer (training, evaluation, optimize; the edge
 gate writes a test-only `-test.yaml`) stamps the committed template next to the data with `path:`

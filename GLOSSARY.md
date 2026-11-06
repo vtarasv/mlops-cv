@@ -2,19 +2,20 @@
 
 A continuously trained detector for objects in drone video: it learns from VisDrone-VID, serves
 the current best model over HTTP and a live stream, and watches whether live footage still looks
-like what that model learned from.
+like what that model learned from. Alongside, it measures auto-labelers that label drone imagery
+without being trained on it.
 
 ## Language
 
 ### Data
 
 **Raw dataset**:
-The VisDrone-VID benchmark as downloaded: drone video already cut into numbered frames, with
-per-frame annotations in its ten raw categories.
+A VisDrone benchmark as downloaded, annotated in its ten raw categories: VisDrone-VID (drone
+video already cut into numbered frames).
 _Avoid_: source data, VisDrone (unqualified)
 
 **Sequence**:
-One continuous drone recording in the raw dataset, stored as numbered frames, or one link session
+One continuous drone recording in VisDrone-VID, stored as numbered frames, or one link session
 on the stream. It is the unit that is split, keyed, replayed and baselined.
 _Avoid_: video, scene, clip (except for a demo clip)
 
@@ -67,8 +68,9 @@ _Avoid_: demo data, raw frames
 ### Dataset pipelines
 
 **Ingestion**:
-The pipeline that turns the raw dataset into the subset and its demo store. It is the only step
-that reads the raw dataset.
+The pipeline that turns VisDrone-VID into the subset and its demo store. It is the only step on
+the detector's path that reads a raw dataset; labeling trials read it directly for the ignored
+regions and the full clips.
 _Avoid_: conversion, preprocessing
 
 **Profiling**:
@@ -177,8 +179,8 @@ _Avoid_: failure sample, hard example
 ### Tuning
 
 **Tuning grid**:
-The fixed, staged list of trials. Each stage varies one or two factors and carries its winner
-into the next.
+The fixed, staged list of trials, or of labeling trials. Each stage varies one or two factors
+and carries its winner into the next.
 _Avoid_: sweep, search space, hyperparameter search
 
 **Trial**:
@@ -203,7 +205,8 @@ _Avoid_: variance, seed noise
 
 **Win margin**:
 How far a trial must beat its stage's winner so far on val mAP50-95 to count as a win. It sits
-above the noise floor, which is measured on one val sample with the data order held fixed.
+above the noise floor, which is measured on one val sample with the data order held fixed. A
+labeling trial has no noise floor; its win margin is on mAP50-95 too, or on HOTA for a tracker.
 _Avoid_: threshold, tolerance
 
 **Confirmation stage**:
@@ -374,3 +377,50 @@ _Avoid_: snapshots, thumbnails
 Detection-rate, confidence and class-share readings shown next to drift scores. They give
 context for a drift alarm but never trigger one.
 _Avoid_: model drift, output drift
+
+### Auto-labeling
+
+**Auto-labeler**:
+A chain of pretrained, text-prompted models that labels frames it was never trained on with
+boxes: an open-vocabulary detector, then a box filter. A tracker may link its boxes into tracks.
+_Also_: auto-labeling pipeline
+
+**Box filter**:
+The auto-labeler's step after the open-vocabulary detector. It drops detections that are too
+small, too large, too unsure or duplicated.
+_Avoid_: post-processing, NMS (that is one of its rules)
+
+**Auto-label**:
+One object as the auto-labeler reports it: a merged class, a confidence and a box, and with a
+tracker a track.
+_Avoid_: detection (that is the detector's output), pseudo-label
+
+**Key frame**:
+A frame on which a video tracker's detector runs and objects not yet tracked start being tracked.
+
+**Track**:
+One object followed through a sequence under one id, from the frame where it starts to the frame
+where it ends. Its auto-labels share that id.
+_Avoid_: tracklet, trajectory
+
+**Key-frame interval**:
+The N in "every N-th frame is a key frame". It has nothing to do with frame stride, which thins
+the subset.
+_Avoid_: frame stride, detection stride
+
+**Labeling config**:
+The tuned settings of the auto-labeler for one raw dataset: the detector, its prompts and
+thresholds, the box filter, and the tracker's settings. A box below its confidence floor starts
+no track and refreshes none; every tracked box is an auto-label. The winning one is
+`AutolabelSettings`' defaults.
+_Avoid_: per-dataset parameters
+
+**Labeling trial**:
+One labeling config run on a subset split, or on the full clips behind it, and scored against
+that split's ground truth under VisDrone's ignored-region rule. Nothing is trained.
+_Avoid_: trial (that is a training run of the detector's tuning)
+
+**Annotation editor**:
+The self-hosted browser app where auto-labels are viewed against ground truth, and later
+corrected.
+_Avoid_: viewer, labeling tool

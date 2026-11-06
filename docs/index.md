@@ -12,8 +12,12 @@ page here as it lands.
 - [VisDrone-VID dataset](data.md) — download, frame/label conversion, 3-class merge, validation.
 - [MLflow tracking & registry](mlflow.md) — Postgres + RustFS + MLflow Compose stack.
 - [Training](training.md) — YOLO26 transfer learning per deployment target, MLflow logging.
-- [Tuning](tuning.md) — YOLO26 on VisDrone-VID: each experiment's purpose, command and results,
-  and the recipe they chose.
+- [Tuning: YOLO26 on VisDrone-VID](tuning/yolo26-visdrone-vid.md) — each experiment's purpose,
+  command and results, and the recipe they chose.
+- [Auto-labeler](autolabel.md) — Grounding DINO B + TrackTrack labeling of VisDrone-VID footage,
+  VisDrone-VID annotation files, FiftyOne review.
+- [Tuning: auto-labeling VisDrone-VID](tuning/autolabel-visdrone-vid.md) — each experiment's
+  purpose, command and results, and the labeling config they chose.
 - [Evaluation](evaluation.md) — metrics (P/R/mAP), promotion gate, demo videos, error analysis,
   latency stub.
 - [Orchestration](orchestration.md) — Airflow continuous-training DAG (LocalExecutor,

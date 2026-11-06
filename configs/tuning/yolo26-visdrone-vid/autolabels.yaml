@@ -1,0 +1,9 @@
+# The final recipe's s (stage2-s1280) trained on the auto-labeled train split instead of ground truth.
+# Build the split first: python -m mlops_cv.tuning.autolabel_visdrone_vid.autolabels.
+defaults: {patience: 0, close_mosaic: 10, epochs: 30, seed: 0}
+trials:
+  - name: s1280
+    model: yolo26s
+    imgsz: 1280
+    batch: 4
+    dataset: configs/tuning/yolo26-visdrone-vid/datasets/VisDrone-VID-merged-autolabels.yaml

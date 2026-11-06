@@ -8,9 +8,12 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from mlops_cv.data.convert_visdrone_vid import CLASS_MERGE, RAW_NAMES, YOLO_NAMES
 
 
 class DataSettings(BaseModel):
@@ -35,7 +38,10 @@ class MlflowSettings(BaseModel):
 
 
 class TrainingSettings(BaseModel):
-    """The shared YOLO26 recipe (docs/tuning.md § Final recipe); the target picks the size."""
+    """The shared YOLO26 recipe (its § Final recipe); the target picks the size.
+
+    See docs/tuning/yolo26-visdrone-vid.md.
+    """
 
     weights: str = "yolo26s.pt"  # its directory is the pretrained-weights cache
     epochs: int = 30
@@ -92,6 +98,89 @@ class ServingSettings(BaseModel):
     max_inflight: int = Field(default=2, ge=1)  # detects at once, per service or consumer
 
 
+GDINO_B = "IDEA-Research/grounding-dino-base"
+SAM3 = "facebook/sam3"
+# The labeler's detectors.
+DETECTORS = (GDINO_B, SAM3)
+
+
+class AutolabelDetector(BaseModel):
+    """The auto-labeler's text-prompted detector."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    # or ``SAM3``, chosen with box_filter.nms_iou 0.5 and confidence_floor 0.593
+    model: str = GDINO_B
+    # prompt text -> the merged class its boxes get; VisDrone's 10 raw names
+    prompts: dict[str, str] = Field(
+        default_factory=lambda: {n: YOLO_NAMES[CLASS_MERGE[c]] for c, n in RAW_NAMES.items()}
+    )
+    threshold: float = 0.001  # the detector's own score floor (val's); it keeps its top 300
+    dtype: Literal["bfloat16", "float16"] | None = "float16"  # ``None`` is fp32
+
+    @field_validator("prompts")
+    @classmethod
+    def _merged_classes(cls, prompts: dict[str, str]) -> dict[str, str]:
+        if unknown := set(prompts.values()) - set(YOLO_NAMES.values()):
+            raise ValueError(f"not a merged class: {sorted(unknown)}")
+        return prompts
+
+
+class BoxFilter(BaseModel):
+    """The box filter's stages, applied in this order; ``None`` turns a stage off."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    min_side: float | None = 8  # px
+    max_area: float | None = 0.05  # share of the frame
+    min_score: float | None = None
+    nms_iou: float | None = None  # class-agnostic
+    nested_ios: float | None = None  # of two boxes this share nested, drop one
+    nested_keep: Literal["outer", "inner"] = "outer"  # ... the box the nested-box rule keeps
+    max_objects: int | None = None  # the highest-scoring K
+
+
+# The box-tracker keys the confidence floor sets.
+FLOOR_KEYS = frozenset({"track_high_thresh", "new_track_thresh"})
+
+
+class AutolabelTracker(BaseModel):
+    """An ultralytics box tracker over the box filter's output, fresh per clip."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    model: str = "tracktrack"  # an ultralytics tracker YAML's stem
+    overrides: dict[str, Any] = {}  # its YAML keys over ultralytics' defaults; none changed
+
+    @field_validator("overrides")
+    @classmethod
+    def _floor_keys_are_the_floors(cls, overrides: dict[str, Any]) -> dict[str, Any]:
+        if taken := overrides.keys() & FLOOR_KEYS:
+            raise ValueError(f"the confidence floor sets {sorted(taken)}")
+        return overrides
+
+
+class AutolabelSettings(BaseModel):
+    """The labeling config (docs/tuning/autolabel-visdrone-vid.md): the winner so far."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    detector: AutolabelDetector = AutolabelDetector()
+    box_filter: BoxFilter = BoxFilter()
+    tracker: AutolabelTracker = AutolabelTracker()
+    # the tracker's ``FLOOR_KEYS``: a box below it matches no track and starts none
+    confidence_floor: float = 0.218
+    max_det: int = 300  # the top boxes kept per frame: the YOLO validator's (ultralytics `max_det`)
+    runs_dir: Path = Path("runs/autolabel")  # the FiftyOne App mounts it: HOST_AUTOLABEL_RUNS
+
+    @field_validator("detector")
+    @classmethod
+    def _known_detector(cls, detector: AutolabelDetector) -> AutolabelDetector:
+        if detector.model not in DETECTORS:
+            raise ValueError(f"detector.model {detector.model!r} is not one of {DETECTORS}")
+        return detector
+
+
 class Settings(BaseSettings):
     """Process-wide configuration."""
 
@@ -112,6 +201,7 @@ class Settings(BaseSettings):
     monitoring: MonitoringSettings = MonitoringSettings()
     optimize: OptimizeSettings = OptimizeSettings()
     serving: ServingSettings = ServingSettings()
+    autolabel: AutolabelSettings = AutolabelSettings()
 
 
 def load_settings(base_dir: str | Path = ".") -> Settings:

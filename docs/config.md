@@ -61,7 +61,9 @@ isolate from the repo's `.env`.
 ## Nested settings
 
 `Settings` sets `env_nested_delimiter="__"`, so a nested config group is set with the `__`
-separator: `MLFLOW__TRACKING_URI=...` maps to `settings.mlflow.tracking_uri`.
+separator: `MLFLOW__TRACKING_URI=...` maps to `settings.mlflow.tracking_uri`. Groups nest deeper
+the same way: `AUTOLABEL__BOX_FILTER__NMS_IOU=0.6` sets one knob of the
+[auto-labeler](autolabel.md) and keeps the others' defaults.
 
 ## Quick check
 

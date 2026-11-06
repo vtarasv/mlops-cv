@@ -1,0 +1,35 @@
+# Experiment 1, stage 3: tiling, in fp16. Each detector's winner so far with slices plus the full
+# frame, merged by the edge rule or the contained merge (a CPU rescore of the edge trial's passes).
+# Zoom is the detector's input side over the slice side: SAM 3's 1008 square (1.25 -> 806 px,
+# 2 -> 504), GDINO-B's 800 shortest edge on a square slice (1.25 -> 640, 2 -> 400).
+# Untiled rows are the fp16 check's (fp16.yaml): gdino-b-raw-fp16-nms-off (24.46) and SAM 3's
+# sam3-raw-fp16-nms0.5 (24.86). No tiled row beats its untiled one by 0.5 pt, so zoom 2 (last)
+# was stopped unrun and gdino-b-raw-fp16-nms-off, untiled, stays the winner.
+defaults:
+  detector:
+    prompts:
+      pedestrian: person
+      people: person
+      bicycle: two-three-wheeler
+      car: vehicle
+      van: vehicle
+      truck: vehicle
+      tricycle: two-three-wheeler
+      awning-tricycle: two-three-wheeler
+      bus: vehicle
+      motor: two-three-wheeler
+    dtype: float16
+  box_filter: {min_side: 8, max_area: 0.05, nms_iou: null}
+trials:
+  - name: gdino-b-raw-nms-off-zoom1.25
+    detector: {model: IDEA-Research/grounding-dino-base, tiling: {side: 640}}
+  - name: gdino-b-raw-nms-off-zoom1.25-contained
+    detector: {model: IDEA-Research/grounding-dino-base, tiling: {side: 640, merge: contained}}
+  - name: sam3-raw-nms0.5-zoom1.25
+    detector: {model: facebook/sam3, tiling: {side: 806}}
+    box_filter: {nms_iou: 0.5}
+  - name: sam3-raw-nms0.5-zoom1.25-contained
+    detector: {model: facebook/sam3, tiling: {side: 806, merge: contained}}
+    box_filter: {nms_iou: 0.5}
+  - name: gdino-b-raw-nms-off-zoom2
+    detector: {model: IDEA-Research/grounding-dino-base, tiling: {side: 400}}

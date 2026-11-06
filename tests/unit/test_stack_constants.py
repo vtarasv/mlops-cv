@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
 from pathlib import Path
 from urllib.parse import urlsplit
 
 import pytest
 
 from mlops_cv.config.settings import (
+    AutolabelSettings,
     MlflowSettings,
     MonitoringSettings,
     ServingSettings,
@@ -53,3 +56,23 @@ def test_service_and_monitor_listen_where_the_serving_stack_says() -> None:
     env = _env("serving")
     assert int(env["SERVING_PORT"]) == ServingSettings().port
     assert int(env["MONITOR_METRICS_PORT"]) == MonitoringSettings().metrics_port
+
+
+def _fiftyone_mount(cwd: Path) -> Path:
+    show = "show: ; @echo $(HOST_AUTOLABEL_RUNS)"
+    makefile = str(COMPOSE.parent / "Makefile")
+    out = subprocess.run(
+        ["make", "-s", "-f", makefile, "--eval", show, "show"],
+        cwd=cwd,
+        env={"PATH": os.environ["PATH"]},
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return Path(out.stdout.strip())
+
+
+def test_the_fiftyone_app_mounts_where_labeling_trials_land(tmp_path: Path) -> None:
+    assert _fiftyone_mount(tmp_path) == tmp_path / AutolabelSettings().runs_dir
+    (tmp_path / ".env").write_text("AUTOLABEL__RUNS_DIR=labels/run\n")
+    assert _fiftyone_mount(tmp_path) == tmp_path / "labels" / "run"

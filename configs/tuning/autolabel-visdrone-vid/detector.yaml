@@ -1,0 +1,54 @@
+# Experiment 1, stage 1: detector x prompts. Each detector runs with the 10 raw names and with
+# plain nouns, in fp32, through the box filter production had then (NMS 0.5, no nested-box rule);
+# it keeps its top 300 boxes above 0.001. YOLOE also runs at 1280, since its native 640 halves
+# VisDrone frames.
+# Winner: sam3-raw; sam3-raw, sam3-nouns and gdino-b-raw go on to the box-filter stage.
+defaults:
+  detector:
+    model: IDEA-Research/grounding-dino-tiny
+    prompts: &raw
+      pedestrian: person
+      people: person
+      bicycle: two-three-wheeler
+      car: vehicle
+      van: vehicle
+      truck: vehicle
+      tricycle: two-three-wheeler
+      awning-tricycle: two-three-wheeler
+      bus: vehicle
+      motor: two-three-wheeler
+    dtype: null
+  box_filter: {min_side: 8, max_area: 0.05, nms_iou: 0.5}
+x-nouns: &nouns
+  person: person
+  car: vehicle
+  van: vehicle
+  truck: vehicle
+  bus: vehicle
+  bicycle: two-three-wheeler
+  motorcycle: two-three-wheeler
+  tricycle: two-three-wheeler
+trials:
+  - name: gdino-t-raw
+  - name: gdino-t-nouns
+    detector: {prompts: *nouns}
+  - name: gdino-b-raw
+    detector: {model: IDEA-Research/grounding-dino-base}
+  - name: gdino-b-nouns
+    detector: {model: IDEA-Research/grounding-dino-base, prompts: *nouns}
+  - name: owlv2-b16-raw
+    detector: {model: google/owlv2-base-patch16-ensemble}
+  - name: owlv2-b16-nouns
+    detector: {model: google/owlv2-base-patch16-ensemble, prompts: *nouns}
+  - name: yoloe-26l-raw
+    detector: {model: yoloe-26l-seg.pt}
+  - name: yoloe-26l-nouns
+    detector: {model: yoloe-26l-seg.pt, prompts: *nouns}
+  - name: yoloe-26l-1280-raw
+    detector: {model: yoloe-26l-seg.pt, imgsz: 1280}
+  - name: yoloe-26l-1280-nouns
+    detector: {model: yoloe-26l-seg.pt, imgsz: 1280, prompts: *nouns}
+  - name: sam3-raw
+    detector: {model: facebook/sam3}
+  - name: sam3-nouns
+    detector: {model: facebook/sam3, prompts: *nouns}

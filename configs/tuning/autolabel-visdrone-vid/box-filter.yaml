@@ -1,0 +1,103 @@
+# Experiment 1, stage 2: the box filter on stage 1's top 3 detectors, each with its stage 1
+# prompts, in fp32. NMS IoU {off, 0.5, 0.6, 0.7} x the nested-box rule {off, keep outer at IoS
+# 0.8}; min_side and max_area stay fixed. Every trial rescores the detector's stored stage 1 pass
+# on CPU. SAM 3's winner so far is sam3-raw's stage 1 row (nouns are one of its settings).
+# Winner so far: sam3-raw-nms0.5-nested-off for SAM 3, gdino-b-raw-nms-off-nested-off for GDINO-B.
+defaults:
+  detector:
+    prompts:
+      pedestrian: person
+      people: person
+      bicycle: two-three-wheeler
+      car: vehicle
+      van: vehicle
+      truck: vehicle
+      tricycle: two-three-wheeler
+      awning-tricycle: two-three-wheeler
+      bus: vehicle
+      motor: two-three-wheeler
+    dtype: null
+  box_filter: {min_side: 8, max_area: 0.05, nms_iou: null}
+x-nouns: &nouns
+  person: person
+  car: vehicle
+  van: vehicle
+  truck: vehicle
+  bus: vehicle
+  bicycle: two-three-wheeler
+  motorcycle: two-three-wheeler
+  tricycle: two-three-wheeler
+x-detectors:
+  - &sam3-raw {model: facebook/sam3}
+  - &sam3-nouns {model: facebook/sam3, prompts: *nouns}
+  - &gdino-b-raw {model: IDEA-Research/grounding-dino-base}
+trials:
+  - name: sam3-raw-nms-off-nested-off
+    detector: *sam3-raw
+  - name: sam3-raw-nms-off-outer
+    detector: *sam3-raw
+    box_filter: {nested_ios: 0.8}
+  - name: sam3-raw-nms0.5-nested-off
+    detector: *sam3-raw
+    box_filter: {nms_iou: 0.5}
+  - name: sam3-raw-nms0.5-outer
+    detector: *sam3-raw
+    box_filter: {nms_iou: 0.5, nested_ios: 0.8}
+  - name: sam3-raw-nms0.6-nested-off
+    detector: *sam3-raw
+    box_filter: {nms_iou: 0.6}
+  - name: sam3-raw-nms0.6-outer
+    detector: *sam3-raw
+    box_filter: {nms_iou: 0.6, nested_ios: 0.8}
+  - name: sam3-raw-nms0.7-nested-off
+    detector: *sam3-raw
+    box_filter: {nms_iou: 0.7}
+  - name: sam3-raw-nms0.7-outer
+    detector: *sam3-raw
+    box_filter: {nms_iou: 0.7, nested_ios: 0.8}
+  - name: sam3-nouns-nms-off-nested-off
+    detector: *sam3-nouns
+  - name: sam3-nouns-nms-off-outer
+    detector: *sam3-nouns
+    box_filter: {nested_ios: 0.8}
+  - name: sam3-nouns-nms0.5-nested-off
+    detector: *sam3-nouns
+    box_filter: {nms_iou: 0.5}
+  - name: sam3-nouns-nms0.5-outer
+    detector: *sam3-nouns
+    box_filter: {nms_iou: 0.5, nested_ios: 0.8}
+  - name: sam3-nouns-nms0.6-nested-off
+    detector: *sam3-nouns
+    box_filter: {nms_iou: 0.6}
+  - name: sam3-nouns-nms0.6-outer
+    detector: *sam3-nouns
+    box_filter: {nms_iou: 0.6, nested_ios: 0.8}
+  - name: sam3-nouns-nms0.7-nested-off
+    detector: *sam3-nouns
+    box_filter: {nms_iou: 0.7}
+  - name: sam3-nouns-nms0.7-outer
+    detector: *sam3-nouns
+    box_filter: {nms_iou: 0.7, nested_ios: 0.8}
+  - name: gdino-b-raw-nms-off-nested-off
+    detector: *gdino-b-raw
+  - name: gdino-b-raw-nms-off-outer
+    detector: *gdino-b-raw
+    box_filter: {nested_ios: 0.8}
+  - name: gdino-b-raw-nms0.5-nested-off
+    detector: *gdino-b-raw
+    box_filter: {nms_iou: 0.5}
+  - name: gdino-b-raw-nms0.5-outer
+    detector: *gdino-b-raw
+    box_filter: {nms_iou: 0.5, nested_ios: 0.8}
+  - name: gdino-b-raw-nms0.6-nested-off
+    detector: *gdino-b-raw
+    box_filter: {nms_iou: 0.6}
+  - name: gdino-b-raw-nms0.6-outer
+    detector: *gdino-b-raw
+    box_filter: {nms_iou: 0.6, nested_ios: 0.8}
+  - name: gdino-b-raw-nms0.7-nested-off
+    detector: *gdino-b-raw
+    box_filter: {nms_iou: 0.7}
+  - name: gdino-b-raw-nms0.7-outer
+    detector: *gdino-b-raw
+    box_filter: {nms_iou: 0.7, nested_ios: 0.8}

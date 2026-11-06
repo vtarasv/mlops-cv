@@ -195,21 +195,18 @@ Details: [docs/containers.md](docs/containers.md).
 
 The training recipe and the auto-labeler's config come from measured experiments. Each case has
 its own package under `src/mlops_cv/tuning/`, stage files under `configs/tuning/`, its own MLflow
-experiment, and a write-up in `docs/tuning/`. A setting wins only by 0.5 pt (mAP50-95, or HOTA
-for trackers; three YOLO seeds of one setup moved it by 0.25). Test is read once, at the end, and
-never picks a winner.
+experiment, and a write-up in `docs/tuning/`.
 
 ### YOLO26 training recipe
 
-Which settings train YOLO26 n, s and m best on the subset, in stages of one or two settings each,
-in about 21 GPU-hours, plus 13 for sliced training and denser splits. Details: [docs/tuning/yolo26-visdrone-vid.md](docs/tuning/yolo26-visdrone-vid.md).
+Which settings train YOLO26 n, s and m best on the subset, in stages of one or two settings each.
+Details: [docs/tuning/yolo26-visdrone-vid.md](docs/tuning/yolo26-visdrone-vid.md).
 
 - **One recipe for every size:** the ultralytics defaults at imgsz 1280 and 30 epochs. Fine-tuning
   on VisDrone adds 7–9 pt over the pretrained models, and imgsz 1280 another 4.3–7.4 pt over 640,
   the only setting that won for every size.
 - **What didn't help:** more epochs, optimizer and learning rate, zoom and mosaic augmentation,
-  class weights, a frozen backbone, sliced training, and a denser train split (won on val, not on
-  test, at 2× the cost).
+  class weights, a frozen backbone, sliced training, and a denser train split (lower frame stride).
 - **Inference:** the one-to-many head adds 1.1–1.8 pt on the same weights. SAHI sliced inference
   helps only on 4K frames, at 8–10× the latency. The confidence floor stays 0.25.
 - **Scores** (mAP50-95, %):
@@ -219,16 +216,11 @@ in about 21 GPU-hours, plus 13 for sliced training and denser splits. Details: [
   | val | 28.4 | 30.8 | 32.9 |
   | test | 25.0 | 26.6 | 28.3 |
 
-- **Against public checkpoints:** the recipe beats a public VisDrone-DET YOLO26 s and m by 1.2
-  and 1.4 pt on test.
-
 ### Auto-labeling config
 
 Can a zero-shot detector plus a tracker label VisDrone-VID clips well enough to train on? The
-winner is the [auto-labeler](docs/autolabel.md)'s default config (`mlops_cv.autolabel`); nothing
-in continuous training calls it yet. Labels are scored under VisDrone's ignored-region rule, so
-these numbers don't compare with the YOLO tuning. Details:
-[docs/tuning/autolabel-visdrone-vid.md](docs/tuning/autolabel-visdrone-vid.md).
+winner is the [auto-labeler](docs/autolabel.md)'s default config (`mlops_cv.autolabel`).
+Details: [docs/tuning/autolabel-visdrone-vid.md](docs/tuning/autolabel-visdrone-vid.md).
 
 - **Box detector:** Grounding DINO T and B, OWLv2, YOLOE-26 and SAM 3, then the box filter, fp16,
   tiling and the confidence floor. **GDINO-B** on VisDrone's 10 raw names wins (fp16, NMS off,
@@ -238,18 +230,13 @@ these numbers don't compare with the YOLO tuning. Details:
   **TrackTrack** at its defaults wins: 48.8 HOTA on the train clips (BoT-SORT 47.1) and 48.0 on val
   (46.7).
 - **Video trackers:** EdgeTAM, SAM 2.1 S and SAM 3's tracker, detecting every 5th frame, score
-  38.0, 42.9 and 44.6 HOTA (the SAM ones capped to fit 8 GB) at 2.1×, 6.6× and 10× the cost, so the
-  box tracker stays.
-- **Training on auto-labels** (YOLO26 s, mAP50-95 under VisDrone's rule, %):
+  38.0, 42.9 and 44.6 HOTA (the SAM ones capped to fit 8 GB) at 2.1×, 6.6× and 10× the cost.
+- **Training on auto-labels** (YOLO26 s, mAP50-95 under VisDrone's eval rule, %):
 
   | Trained on | val | test |
   |---|---|---|
   | auto-labels | 27.2 | 22.2 |
   | ground truth | 31.1 | 27.2 |
-
-  Auto-labels cost 5.0 pt (18.4 %) on test, most of it on two-three-wheelers, which get 0.35× the
-  ground truth's labels. They don't replace ground truth; whether they help beside it, on footage
-  nobody labeled, is not measured yet.
 
 ## Repository layout
 

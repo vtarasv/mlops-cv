@@ -11,8 +11,7 @@ without being trained on it.
 
 **Raw dataset**:
 A VisDrone benchmark as downloaded, annotated in its ten raw categories: VisDrone-VID (drone
-video already cut into numbered frames) or VisDrone-DET (standalone images). The detector learns
-from VisDrone-VID only.
+video already cut into numbered frames).
 _Avoid_: source data, VisDrone (unqualified)
 
 **Sequence**:

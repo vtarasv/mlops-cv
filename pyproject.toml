@@ -94,9 +94,7 @@ autolabel = [
     "transformers==5.8.0",
     "torch==2.12.1",
     "torchvision==0.27.1",
-    # the box tracker
     "ultralytics==8.4.72",
-    # ultralytics' box trackers; it pip-installs it unpinned at runtime otherwise
     "lap==0.5.13",
 ]
 

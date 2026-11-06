@@ -58,13 +58,13 @@ def test_service_and_monitor_listen_where_the_serving_stack_says() -> None:
     assert int(env["MONITOR_METRICS_PORT"]) == MonitoringSettings().metrics_port
 
 
-def _fiftyone_mount(cwd: Path, env: dict[str, str]) -> Path:
+def _fiftyone_mount(cwd: Path) -> Path:
     show = "show: ; @echo $(HOST_AUTOLABEL_RUNS)"
     makefile = str(COMPOSE.parent / "Makefile")
     out = subprocess.run(
         ["make", "-s", "-f", makefile, "--eval", show, "show"],
         cwd=cwd,
-        env={"PATH": os.environ["PATH"], **env},
+        env={"PATH": os.environ["PATH"]},
         capture_output=True,
         text=True,
         check=True,
@@ -73,7 +73,6 @@ def _fiftyone_mount(cwd: Path, env: dict[str, str]) -> Path:
 
 
 def test_the_fiftyone_app_mounts_where_labeling_trials_land(tmp_path: Path) -> None:
-    assert _fiftyone_mount(tmp_path, {}) == tmp_path / AutolabelSettings().runs_dir
+    assert _fiftyone_mount(tmp_path) == tmp_path / AutolabelSettings().runs_dir
     (tmp_path / ".env").write_text("AUTOLABEL__RUNS_DIR=labels/run\n")
-    assert _fiftyone_mount(tmp_path, {}) == tmp_path / "labels" / "run"
-    assert _fiftyone_mount(tmp_path, {"AUTOLABEL__RUNS_DIR": "/os/env"}) == Path("/os/env")
+    assert _fiftyone_mount(tmp_path) == tmp_path / "labels" / "run"

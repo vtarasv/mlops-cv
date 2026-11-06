@@ -98,12 +98,17 @@ class ServingSettings(BaseModel):
     max_inflight: int = Field(default=2, ge=1)  # detects at once, per service or consumer
 
 
+SAM3 = "facebook/sam3"
+# The labeler's detectors, the default first.
+DETECTORS = ("IDEA-Research/grounding-dino-base", SAM3)
+
+
 class AutolabelDetector(BaseModel):
     """The auto-labeler's text-prompted detector."""
 
     model_config = ConfigDict(extra="forbid")
 
-    model: str = "IDEA-Research/grounding-dino-base"  # or a SAM 3, picked by the name
+    model: str = DETECTORS[0]  # a Hugging Face repo id; ``SAM3`` loads SAM 3, any other GDINO
     # prompt text -> the merged class its boxes get; VisDrone's 10 raw names
     prompts: dict[str, str] = Field(
         default_factory=lambda: {n: YOLO_NAMES[CLASS_MERGE[c]] for c, n in RAW_NAMES.items()}
@@ -163,8 +168,15 @@ class AutolabelSettings(BaseModel):
     tracker: AutolabelTracker = AutolabelTracker()
     # the tracker's ``FLOOR_KEYS``: a box below it matches no track and starts none
     confidence_floor: float = 0.218
-    max_det: int = 300  # the top boxes kept per frame: val's cap, so trials score like val
+    max_det: int = 300  # the top boxes kept per frame: the YOLO validator's (ultralytics `max_det`)
     runs_dir: Path = Path("runs/autolabel")  # the FiftyOne App mounts it: HOST_AUTOLABEL_RUNS
+
+    @field_validator("detector")
+    @classmethod
+    def _known_detector(cls, detector: AutolabelDetector) -> AutolabelDetector:
+        if detector.model not in DETECTORS:
+            raise ValueError(f"detector.model {detector.model!r} is not one of {DETECTORS}")
+        return detector
 
 
 class Settings(BaseSettings):

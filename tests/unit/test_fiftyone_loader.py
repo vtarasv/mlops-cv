@@ -45,3 +45,10 @@ def test_ground_truth_splits_into_objects_and_ignored_regions() -> None:
     assert load_trial.ignored(frames[1], (100, 50)) == [
         {"label": "ignored", "bounding_box": [0.0, 0.0, 0.4, 1.0]}
     ]
+
+
+def test_footage_without_an_annotation_file_has_no_ground_truth(tmp_path: Path) -> None:
+    (tmp_path / "annotations").mkdir()
+    (tmp_path / "annotations" / "a.txt").write_text("1,1,0,0,10,10,1,4,0,0\n")
+    assert list(load_trial.ground_truth(tmp_path, "a") or {}) == [1]
+    assert load_trial.ground_truth(tmp_path, "new") is None

@@ -25,7 +25,7 @@ import numpy as np
 from pydantic import model_validator
 
 from mlops_cv.autolabel.labeler import Labeler, Labels, above, read_rgb, track_clip, tracker_args
-from mlops_cv.config.settings import AutolabelTracker
+from mlops_cv.config.settings import SAM3, AutolabelTracker
 from mlops_cv.tuning.autolabel_visdrone_vid import visdrone_vid
 
 logger = logging.getLogger(__name__)
@@ -227,7 +227,7 @@ class VideoTracker:
         # AutoModel on a SAM 3 repo loads its text-prompted detector, not the box-prompted tracker
         model_cls, processor_cls = (
             (transformers.Sam3TrackerVideoModel, transformers.Sam3TrackerVideoProcessor)
-            if "sam3" in cfg.model
+            if cfg.model == SAM3
             else (transformers.AutoModel, transformers.AutoProcessor)
         )
         self.cfg, self.device, self.dtype = cfg, device, torch.bfloat16

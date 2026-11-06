@@ -16,7 +16,13 @@ from typing import Any
 
 import numpy as np
 
-from mlops_cv.config.settings import FLOOR_KEYS, AutolabelDetector, AutolabelTracker, BoxFilter
+from mlops_cv.config.settings import (
+    FLOOR_KEYS,
+    SAM3,
+    AutolabelDetector,
+    AutolabelTracker,
+    BoxFilter,
+)
 from mlops_cv.data.convert_visdrone_vid import CLASS_MERGE, RAW_NAMES, YOLO_NAMES
 
 MERGED = {name: c for c, name in YOLO_NAMES.items()}
@@ -203,8 +209,8 @@ def grounding_dino(cfg: AutolabelDetector, device: str, max_det: int) -> Detect:
 
 
 def detector(cfg: AutolabelDetector, device: str, max_det: int) -> Detect:
-    """SAM 3 or Grounding DINO, picked by the model name."""
-    return (sam3 if "sam3" in cfg.model else grounding_dino)(cfg, device, max_det)
+    """SAM 3 for its repo id, Grounding DINO for any other."""
+    return (sam3 if cfg.model == SAM3 else grounding_dino)(cfg, device, max_det)
 
 
 class Labeler:

@@ -229,6 +229,15 @@ def test_the_detector_is_picked_by_model_name(monkeypatch: pytest.MonkeyPatch) -
     pick = {"IDEA-Research/grounding-dino-base": "grounding_dino", "facebook/sam3": "sam3"}
     for model, loader in pick.items():
         assert labeler.detector(AutolabelDetector(model=model), "cpu", 300) == loader
+    # only SAM 3's own repo id loads it; any other name is Grounding DINO
+    assert labeler.detector(AutolabelDetector(model="x/gdino-sam3"), "cpu", 300) == "grounding_dino"
+
+
+def test_the_labeler_takes_grounding_dino_b_or_sam3_only() -> None:
+    for model in ("IDEA-Research/grounding-dino-base", "facebook/sam3"):
+        assert AutolabelSettings(detector=AutolabelDetector(model=model)).detector.model == model
+    with pytest.raises(ValueError, match="not one of"):
+        AutolabelSettings(detector=AutolabelDetector(model="facebook/sam3.1"))
 
 
 def test_autocast_runs_matmuls_at_the_dtype_and_is_off_without_one() -> None:

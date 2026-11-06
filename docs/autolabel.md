@@ -16,18 +16,16 @@ flowchart LR
 ```
 
 The labeling config comes from the labeling trials in
-[tuning: auto-labeling VisDrone-VID](tuning/autolabel-visdrone-vid.md). GDINO-B won on train
-(0.4 pt behind SAM 3, inside the margin, at 2.4× its speed) and leads SAM 3 on val by 3.7 pt
-mAP50-95. TrackTrack beat BoT-SORT on the train clips (48.8 vs 47.1 HOTA) and held on val (48.0 vs
-46.7). The code is `mlops_cv.autolabel` (`Labeler`, `label_clip`, `annotation_lines`); the labeling
-trials track through the same code. Nothing in continuous training calls it yet.
+[tuning: auto-labeling VisDrone-VID](tuning/autolabel-visdrone-vid.md).
 
 ## Run it and view it in FiftyOne
 
 `python -m mlops_cv.autolabel <sequence dir>...` labels each VisDrone-VID `sequences/<seq>/`
 folder (frames `0000001.jpg` on, no gaps) and writes `<seq>.txt` to `--out`, by default
-`<runs_dir>/labeler/annotations/` (`runs/autolabel/labeler/annotations/`). GDINO-B takes about a minute for a 200-frame sequence on
-the 8 GB GPU.
+`<runs_dir>/labeler/annotations/` (`runs/autolabel/labeler/annotations/`). On the 8 GB GPU it
+takes ≈ 223 ms per frame, GDINO-B 208 and TrackTrack 15 ([Experiment
+3](tuning/autolabel-visdrone-vid.md#3-video-tracker-confirmation)): the val clips (2,846 frames)
+take about 11 min, the train clips (24,201) about 90.
 
 1. Pick sequences of a raw split, for example val's:
 
@@ -69,7 +67,8 @@ the 8 GB GPU.
 To keep two runs side by side, label into another folder (`--out runs/autolabel/<name>/annotations`)
 and load that one: each folder name becomes its own field, and reloading a folder overwrites its
 field. The sequences must sit under the raw VisDrone-VID dir (`DATA__RAW_DIR`), the App's only
-footage mount.
+footage mount, as `<split>/sequences/<seq>/`. A sequence without `<split>/annotations/<seq>.txt`
+loads with empty `ground_truth` and `ignored`, and `eval_<field>` leaves its frames out.
 
 ## Settings
 
@@ -78,7 +77,7 @@ defaults are the labeling trials' winner so far.
 
 | Key | Default | What |
 |---|---|---|
-| `detector.model` | `IDEA-Research/grounding-dino-base` | a `sam3` name loads SAM 3 (gated: `HF_TOKEN` in `.env`, run with `uv run --env-file .env`) |
+| `detector.model` | `IDEA-Research/grounding-dino-base` | or `facebook/sam3` (gated: `HF_TOKEN` in `.env`, run with `uv run --env-file .env`); any other id fails at startup |
 | `detector.prompts` | VisDrone's 10 raw names | prompt → the merged class its boxes get |
 | `detector.threshold` | 0.001 | the detector's own floor; it keeps its top 300 boxes |
 | `detector.dtype` | `float16` | `null` is fp32; GDINO runs it through autocast |
@@ -88,9 +87,9 @@ defaults are the labeling trials' winner so far.
 | `box_filter.min_score`, `nested_ios`, `max_objects` | off | a score floor, the nested-box rule, a top-K cap |
 | `tracker.model` | `tracktrack` | an ultralytics tracker YAML (`botsort`, `bytetrack`, …); no ReID, and `dets_del` stays off (it needs the YOLO predictor) |
 | `tracker.overrides` | `{}` | keys of that YAML over its defaults; a key it lacks fails when the tracker is built, the floor's two fail at load |
-| `confidence_floor` | 0.218 | the tracker's `track_high_thresh` = `new_track_thresh`: a box below it matches no track and starts none. GDINO-B's max-F1 confidence on train. Tracked boxes aren't cut by it again, as ultralytics' trackers don't; with TrackTrack's defaults none falls below it (its low-score stage starts at 0.25) |
+| `confidence_floor` | 0.218 | the tracker's `track_high_thresh` = `new_track_thresh`: a box below it matches no track and starts none. GDINO-B's max-F1 confidence on train. |
 | `runs_dir` | `runs/autolabel` | the command's output and the labeling trials' downloads and stored passes; the FiftyOne App mounts it (`make fiftyone-up` reads it from the env or `.env`) |
-| `max_det` | 300 | the top boxes kept per frame: val's cap, so trials score like val |
+| `max_det` | 300 | the top boxes kept per frame: the YOLO validator's cap (ultralytics `max_det`), so labeling trials score on YOLO val's scale |
 
 ## Output
 

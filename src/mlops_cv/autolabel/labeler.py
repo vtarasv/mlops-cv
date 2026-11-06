@@ -302,7 +302,7 @@ def label_clip(
     clip = ((rgb, labeler(rgb)) for rgb in frames)
     tracked = track_clip(tracker.model, tracker_args(tracker, floor), clip)
     for frame, (labels, _) in enumerate(tracked, start=1):
-        yield from annotation_lines(frame, above(labels, floor))
+        yield from annotation_lines(frame, labels)
 
 
 def raw_category(prompt: str, cls: int) -> int:

@@ -411,8 +411,8 @@ _Avoid_: frame stride, detection stride
 
 **Labeling config**:
 The tuned settings of the auto-labeler for one raw dataset: the detector, its prompts and
-thresholds, the box filter, and the tracker's settings. Auto-labels below its confidence floor
-are not kept, and a box below it starts no track and refreshes none. The winning one is
+thresholds, the box filter, and the tracker's settings. A box below its confidence floor starts
+no track and refreshes none; every tracked box is an auto-label. The winning one is
 `AutolabelSettings`' defaults.
 _Avoid_: per-dataset parameters
 

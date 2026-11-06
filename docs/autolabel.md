@@ -4,15 +4,15 @@ The auto-labeler labels VisDrone-VID clips with boxes and tracks, without being 
 Grounding DINO B (GDINO-B), prompted with VisDrone's 10 raw category names, finds boxes in each
 frame. The box filter drops the ones too small, too large or duplicated. TrackTrack, a fresh one
 per clip, links the kept boxes into tracks; the confidence floor is its threshold for a box to
-match or start a track, and auto-labels below it are not kept. Its output is VisDrone-VID
+match or start a track, and every tracked box is an auto-label. Its output is VisDrone-VID
 annotation files, so [ingestion](data.md) builds a subset from them as it does from VisDrone's own
 labels.
 
 ```mermaid
 flowchart LR
     F[RGB frames of a clip] --> D[GDINO-B on 10 raw names] --> B[box filter]
-    B --> T[TrackTrack, the floor as its thresholds] --> C[confidence floor]
-    C --> A[VisDrone-VID annotation file]
+    B --> T["TrackTrack: track_high_thresh = new_track_thresh = floor (0.218)"]
+    T --> A[VisDrone-VID annotation file]
 ```
 
 The labeling config comes from the labeling trials in
@@ -88,7 +88,7 @@ defaults are the labeling trials' winner so far.
 | `box_filter.min_score`, `nested_ios`, `max_objects` | off | a score floor, the nested-box rule, a top-K cap |
 | `tracker.model` | `tracktrack` | an ultralytics tracker YAML (`botsort`, `bytetrack`, …); no ReID, and `dets_del` stays off (it needs the YOLO predictor) |
 | `tracker.overrides` | `{}` | keys of that YAML over its defaults; a key it lacks fails when the tracker is built, the floor's two fail at load |
-| `confidence_floor` | 0.218 | auto-labels below it are not kept: GDINO-B's max-F1 confidence on train; also the tracker's `track_high_thresh` = `new_track_thresh` |
+| `confidence_floor` | 0.218 | the tracker's `track_high_thresh` = `new_track_thresh`: a box below it matches no track and starts none. GDINO-B's max-F1 confidence on train. Tracked boxes aren't cut by it again, as ultralytics' trackers don't; with TrackTrack's defaults none falls below it (its low-score stage starts at 0.25) |
 | `runs_dir` | `runs/autolabel` | the command's output and the labeling trials' downloads and stored passes; the FiftyOne App mounts it (`make fiftyone-up` reads it from the env or `.env`) |
 | `max_det` | 300 | the top boxes kept per frame: val's cap, so trials score like val |
 
